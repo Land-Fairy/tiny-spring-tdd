@@ -47,20 +47,20 @@
 
 | 章 | 主题 | 你会得到 |
 |---|---|---|
-| 00 | 读源码的方法论 + 环境搭建 | 断点策略、条件断点、IDEA 技巧、怎么对照真实源码 |
-| 01 | 从 `new` 到容器：一个 Map 的极限 | 第一个容器，以及它为什么不够用 |
+| [00](docs/chapters/00-methodology.md) | 读源码的方法论 + 环境搭建 | 断点策略、条件断点、IDEA 技巧、怎么对照真实源码 |
+| [01](docs/chapters/01-map-container.md) | 从 `new` 到容器：一个 Map 的极限 | 第一个容器，以及它为什么不够用 |
 
 ### 第 1 部 · Bean 的定义与创建　`milestone: v0.1`
 
 | 章 | 主题 | 你会得到 |
 |---|---|---|
-| 02 | BeanDefinition：容器的元数据模型 | 容器存的不是对象，是"造对象的图纸" |
-| 03 | 注册表与单例池（含线程安全） | `BeanDefinitionRegistry` + `SingletonBeanRegistry` |
-| 04 | 反射实例化：构造器参数名匹配 | 不用 CGLIB 也能做构造器注入（[ADR-0002](docs/adr/0002-no-cglib.md)） |
-| 05 | 属性填充与依赖注入 | `PropertyValue` → `populateBean` |
-| 06 | BeanFactory 的接口分层 | 为什么 `Listable` / `Hierarchical` / `AutowireCapable` 要拆开 |
-| 07 | Resource 抽象 | 一个接口统一 classpath / file / URL / 字节数组 |
-| 08 | XML 解析与 BeanDefinitionReader | 从配置文件读出图纸 |
+| [02](docs/chapters/02-bean-definition.md) | BeanDefinition：容器的元数据模型 | 容器存的不是对象，是"造对象的图纸" |
+| [03](docs/chapters/03-singleton-registry.md) | 注册表与单例池（含线程安全） | `BeanDefinitionRegistry` + `SingletonBeanRegistry` |
+| [04](docs/chapters/04-constructor-injection.md) | 反射实例化：构造器参数名匹配 | 不用 CGLIB 也能做构造器注入（[ADR-0002](docs/adr/0002-no-cglib.md)） |
+| [05](docs/chapters/05-property-injection.md) | 属性填充与依赖注入 | `PropertyValue` → `populateBean`，内省找 setter |
+| [06](docs/chapters/06-bean-factory-hierarchy.md) | BeanFactory 的接口分层 | 为什么 `Listable` / `Hierarchical` / `AutowireCapable` 要拆开 |
+| [07](docs/chapters/07-resource.md) | Resource 抽象 | 一个接口统一 classpath / file / URL / 字节数组 |
+| [08](docs/chapters/08-xml-reader.md) | XML 解析与 BeanDefinitionReader | 从配置文件读出图纸 |
 
 ### 第 2 部 · 上下文与生命周期　`milestone: v0.2`
 
@@ -138,6 +138,20 @@ mvn verify
 > `git -c http.version=HTTP/1.1 clone ...`
 
 ---
+
+## 修了旧章节的 bug，怎么同步到后面 30 个副本
+
+每一章都是一个**完整可运行的副本**（`step-NN-*`），后面章节的代码是从前面复制前进的。所以在第 05 章修一个 bug，同样的代码还躺在 06…35 里。
+
+```bash
+# 看一眼要动哪些模块（不写盘）
+./scripts/propagate.sh --from step-05-property-injection --commit <sha> --dry-run
+
+# 真传播：从第 05 章起逐章 apply，冲突即停
+./scripts/propagate.sh --from step-05-property-injection --commit <sha> --verify
+```
+
+规则写在 [`docs/CODE-STANDARDS.md`](docs/CODE-STANDARDS.md#向后传播scriptspropagatesh) 里，核心一条：**冲突停在现场，不许脚本猜**。
 
 ## 每一章长什么样
 

@@ -90,7 +90,9 @@
 		<!-- ===== 代码卫生 ===== -->
 		<module name="NeedBraces"/>
 		<module name="LeftCurly"/>
-		<module name="RightCurly"/>
+		<module name="RightCurly">
+			<property name="option" value="alone"/>
+		</module>
 		<module name="DefaultComesLast"/>
 		<module name="FallThrough"/>
 		<module name="EqualsHashCode"/>
@@ -105,8 +107,15 @@
 		<module name="EqualsAvoidNull"/>
 		<module name="MissingSwitchDefault"/>
 		<module name="NoFinalizer"/>
+		<!--
+			只禁 Throwable 与 Error，不禁 Exception：容器的回调边界（InitializingBean#afterPropertiesSet
+			声明 throws Exception）决定了框架必须 catch (Exception)，真实 Spring 在
+			AbstractAutowireCapableBeanFactory#initializeBean(:1821) 甚至 catch (Throwable)。
+			吞掉 Error（OOM、StackOverflowError）才是真正危险的，所以那条继续禁。
+			真实 Spring 6.2.x 的 src/checkstyle/checkstyle.xml 根本没有 IllegalCatch 这一条。
+		-->
 		<module name="IllegalCatch">
-			<property name="illegalClassNames" value="java.lang.Exception, java.lang.Throwable, java.lang.RuntimeException"/>
+			<property name="illegalClassNames" value="java.lang.Throwable, java.lang.Error"/>
 		</module>
 		<module name="IllegalThrows"/>
 		<module name="DeclarationOrder"/>

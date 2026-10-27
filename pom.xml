@@ -66,6 +66,14 @@
 
 	<modules>
 		<!-- 章节模块按教学顺序依次加入；每个目录都是一个可独立运行的历史快照 -->
+		<module>step-01-map-container</module>
+		<module>step-02-bean-definition</module>
+		<module>step-03-singleton-registry</module>
+		<module>step-04-constructor-injection</module>
+		<module>step-05-property-injection</module>
+		<module>step-06-bean-factory-hierarchy</module>
+		<module>step-07-resource</module>
+		<module>step-08-xml-reader</module>
 	</modules>
 
 	<dependencyManagement>

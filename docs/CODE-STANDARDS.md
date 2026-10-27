@@ -182,6 +182,88 @@ context  ──▶  beans  ──▶  core
 
 ---
 
+## 真实 Spring 参照仓（`@see` 的唯一事实来源）
+
+`@see` 和每章「🔍 真实 Spring 里它在哪」段里的全限定名，**不许凭记忆写**。
+本项目钉在 `spring-framework` **6.2.x** 分支（ADR-0004），只读参照仓放在仓库外：
+
+```bash
+scripts/refs.sh fetch    # 浅克隆到 ~/refs/spring-framework-6.2.x
+scripts/refs.sh status   # 路径 / commit hash / 正常还是降级
+```
+
+**硬规则：**
+
+1. 每个全限定类名，必须在参照仓里能 `find` 到同名文件。写不出来就说明记错了。
+2. 写"它砍掉了什么"之前，先打开那个真实类看一眼——差异描述常会被自己的想象带偏。
+3. 参照仓不可用时（CI、无网环境），允许降级，但**必须显式标注核对来源**：
+   官方 Javadoc URL，或"本地参照仓 + commit hash"。**不得留空，不得假装自己在本地核对过。**
+4. 每个里程碑 Release 记录核对用的 commit hash；降级时记录 `unavailable`。
+   这样读者能知道这份正文对应的是哪一版 Spring。
+
+参照仓不进仓库（`refs/` 已在 `.gitignore` 中），因此 `status` 打印的 commit hash
+是唯一可追溯的证据，发布时必须抄进 Release 说明。
+
+---
+
+## 向后传播（`scripts/propagate.sh`）
+
+本书的结构决定了它有一个别处没有的维护成本：**每章的代码是前章的副本**。第 05 章修一个 bug，同一份代码还存在于 `step-06`…`step-35`。手工同步三十遍一定会漏，所以用脚本。
+
+### 什么时候必须传播
+
+改动落在 `step-NN-*/src/main/java/` 下的**框架代码**（`org.springframework.*`）时，必须传播到后面所有章节。
+
+不需要传播的：
+
+- 本章特有内容（章节正文、该章的测试、该章的 `samples` 类）
+- 只有最新一章才有的类（后面还没有副本）
+- 根目录的配置（`pom.xml`、`config/`、CI）—— 这些本来就只有一份
+
+### 用法
+
+```bash
+# 1. 先在起始章节把修复提交（传播靠补丁，补丁要来自一个提交）
+git commit -am "fix(step-05): ..."
+
+# 2. 演练：只做检查，不写盘
+./scripts/propagate.sh --from step-05-property-injection --commit HEAD --dry-run
+
+# 3. 真跑：逐章 apply，可选每章跑测试
+./scripts/propagate.sh --from step-05-property-injection --commit HEAD --verify
+
+# 只传播某一两个文件
+./scripts/propagate.sh --from step-05-property-injection --commit HEAD \
+    --paths src/main/java/org/springframework/beans/PropertyValue.java
+
+# 只传到第 08 章为止
+./scripts/propagate.sh --from step-05-property-injection --commit HEAD --until step-08-xml-reader
+```
+
+退出码：`0` 成功；`1` 用法/环境问题（含目标工作区有未提交改动）；`2` 某模块冲突，已停在现场；`3` `--verify` 时测试失败。
+
+### 三条硬规则
+
+1. **冲突即停，不许猜。** 后续副本可能已经演进（那章的正文可能正依赖旧行为）。脚本只报告冲突位置，不尝试自动合并，也不跳过继续。
+2. **不留半个改动。** 冲突时脚本会把尝试过的文件还原，`git status` 必须干净地停下。
+3. **传播是独立提交。** 不要把它和修复混在一个提交里 —— 出问题时你要能只回滚传播。
+
+### 演练记录（2026-10-27，验证脚本本身）
+
+用一个**真实的小修复**跑通了全流程：
+
+- 修复：`step-05` 的 `PropertyValue` 构造器缺 `name` 非空校验（真实 Spring 在 `PropertyValue.java:72` 有 `Assert.notNull(name, "Name must not be null")`，本书漏了）。缺了它，`null` 名字会一路活到 `BeanWrapper`，最后报成 `Invalid property 'null' ...`，报错点离犯错点很远。
+- 补丁：提交 `b7794aa`，只改一个文件。
+- 传播：`step-06`、`step-07`、`step-08` 三个副本逐个 apply，每章 `mvn -pl <module> test` 通过；三份文件的 md5 与 `step-05` 一致（`1179df7f`）。
+- 幂等：再跑一次，三个模块全部「跳过（文件已一致）」，退出码 0。
+- 冲突路径：在一份临时副本里让 `step-07` 改动同一构造器后再传播，脚本报
+  `冲突标记在行 44` + `error: 打补丁失败：.../PropertyValue.java:40`，
+  退出码 2，`git status` 干净、无冲突标记残留。
+
+### 一条踩到的坑
+
+`git apply --check --3way` **不能**用来预检冲突：三方合并会冲突时它依然返回成功。只有真正 `git apply --3way` 之后，从索引里 `git diff --diff-filter=U` 才能看出冲突。脚本第一版就是被它骗过，把 `<<<<<<<` 留在了工作区。
+
 ## 测试规范
 
 - 框架：**JUnit 5 + AssertJ**。允许 `Mockito`（仅 test scope）。
