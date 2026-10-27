@@ -2749,3 +2749,121 @@ private Object invokeChain(int index, Object proxy, Method method, Object[] args
 **实践含义**：写拦截器时不要抛新的受检异常。真实 Spring 在 `AopUtils.invokeJoinpointUsingReflection`
 （`:367`）遇到 `IllegalArgumentException` 时抛的是 `AopInvocationException` —— 一个
 `RuntimeException`，正是为了不惊动这条 checked 规则。
+
+## 第 25 章
+
+### B-25-1 `MethodBeforeAdvice` 的 `target` 参数为什么是代理对象
+
+先确认事实：真实 Spring 的 `MethodBeforeAdviceInterceptor:57` 写的是
+`this.advice.before(mi.getMethod(), mi.getArguments(), mi.getThis())`，
+而 `MethodInvocation#getThis()` 的契约就是「**代理**对象」。`MethodBeforeAdvice#before` 的参数名却叫
+`target`，Javadoc 写「the target of the invocation」——**名字是历史包袱，实际拿到的是代理**。
+
+实际影响有两个，都很具体：
+
+1. **日志失控**。增强里写 `target.getClass().getSimpleName()`，打出来是 `$Proxy10`、`$Proxy11`…
+   序号每次启动都可能变。想在日志里定位业务类，必须换一条路。
+2. **「随手拿 target 继续调」会踩坑**。有人觉得「我拿到 target 就能调它的其他方法」，
+   于是写了 `((MyService) target).other()` —— 这里的 `target` 是代理，这次调用**会重新进链**
+   （所以可能重复记日志、重复开事务）。反过来，如果拿到的是真目标并直接调，就**绕过**整条链。
+
+想拿到真目标，有三条路：
+
+- 从 `MethodInvocation` 拿：`invocation.getTarget()`。这是最直接的一条，我们的
+  `ReflectiveMethodInvocation` 就提供了它（真实 Spring 的 `ProxyMethodInvocation` 也有）。
+- 从代理身上解包：如果代理实现了 `Advised`（真实 Spring 的代理默认都实现），
+  `((Advised) proxy).getTargetSource().getTarget()`；工具方法 `AopUtils.getTargetClass(proxy)`
+  会顺着 `TargetClassAware`/`Advised` 往里走。
+- 用 `@Aspect` 时的 `JoinPoint`：`joinPoint.getTarget()` 返回**真目标**，`joinPoint.getThis()` 返回**代理**。
+  这两个方法在同一个接口上并排出现，正是为了让这件事不再靠记忆。
+
+### B-25-2 `Pointcut` 拆成 `ClassFilter` + `MethodMatcher` 换来了什么
+
+如果只留 `matches(Method, Class)`，功能上确实不少——方法里自带类参数，什么都能判断。损失的是**四种能力**：
+
+1. **「只问类、不问方法」的快速判断**。真实 Spring 需要它：`AopUtils.canApply(Pointcut, Class)`
+   （`:225` / `:239`）只想知道「这个类有没有可能被这个切点命中」，一个类一次就够。如果接口只提供
+   `matches(Method, Class)`，这个问题的代价从 O(1) 变成 O(方法数)，而且答案还得自己「取并」。
+2. **粗筛（按代价排序）**。类名、包名、注解都是廉价的判断；参数类型、运行期实参是昂贵的。
+   分开之后，框架可以先用 `ClassFilter` 砍掉绝大多数类，再对剩下的跑方法级匹配
+   （`DefaultAdvisorChainFactory:75` 就是这个顺序）。
+3. **细粒度的缓存**。类级答案是「每个目标类一次」，方法级答案是「类 × 方法」。
+   混在一个方法里，调用方最多只能缓存「类 × 方法」，白白多算。
+4. **组合的类型化**。想表达「这些类 + 这些方法」时，`ClassFilter` 与 `MethodMatcher` 可以各自求交/求并
+   （真实 Spring 有一整套 `ComposablePointcut`）；合成一个大 `matches` 就只能靠闭包捕获，无法再拆开。
+
+一句话：**拆开不是为了能多做，而是为了能少做。**
+
+### B-25-3 不认识的 `Advice` 静默返回空数组，为什么会比崩溃更糟
+
+因为「没生效」和「没配置」在运行时长得一模一样。给一个具体场景：
+
+> 团队写了一个 `AuditAdvice implements MethodBeforeAdvice`（自定义的 `Advice` 家族成员，
+> 不是内置两种），忘了在 `DefaultAdvisorAdapterRegistry` 里注册对应的 `AdvisorAdapter`。
+
+- **抛异常**：容器启动就炸，栈里直接写着 `Unknown advice type: AuditAdvice`，五分钟修好。
+- **返回空数组**：链里少一个元素，业务照常跑，测试照常绿（测试只断言「方法能调通」）。
+  三个月后合规审计要「所有 `book*` 调用的审计日志」，翻遍日志库发现**从来没写过**。
+  这时要回答的问题不再是「怎么注册适配器」，而是「这三个月哪些操作没有留痕」。
+
+真实 Spring 选的是「炸」，而且是**受检异常**：`DefaultAdvisorAdapterRegistry#getInterceptors`（`:78`）
+声明 `throws UnknownAdviceTypeException`。受检的设计意图就是强迫调用方回答「不认识怎么办」——
+框架调用方选择把它包成 `AopConfigException` 在启动期抛出。
+
+这条经验的通用版本：**在「配置」路径上，宁可炸；在「数据」路径上，才考虑宽容。**
+
+### B-25-4 链缓存什么时候会失效
+
+真实 Spring 有**两级**缓存（`AdvisedSupport:513-535`）：
+
+```java
+if (this.methodCache != null) {
+	// 方法级缓存：键是 Method
+	cachedInterceptors = this.methodCache.get(new MethodCacheKey(method));
+	...
+} else {
+	// 全类共享一条链：所有方法命中同一批 Advisor 时，链本来就相同
+	cachedInterceptors = this.cachedInterceptors;
+	...
+}
+```
+
+判定「用哪一级」的逻辑在 `adviceChanged()`（`:539-552`）：**只要 advisors 里出现任何一个
+`PointcutAdvisor`，就建 per-method 缓存；否则全类共享一条链**（没有方法级切点，全部方法的链必然一样）。
+
+失效（或不该用缓存）有三种情形：
+
+1. **配置变了**。`addAdvisor` / `setTarget` / `setExposeProxy` 等改动都会走 `adviceChanged()`，
+   把 `methodCache`、`cachedInterceptors`、`proxyMetadataCache` 三个缓存全部置空（`:541-542` / `:610-611`）。
+2. **运行期匹配**。切点若 `isRuntime()` 为真，链里的元素是
+   `InterceptorAndDynamicMethodMatcher`——「这次匹配没有」需要实参才能回答。缓存缓的是
+   **「哪些候选器可能参与」**，真正的匹配每次调用都重跑；拿缓存结果当「一定拦」就会出错。
+3. **目标类不同**。`methodCache` 的键只有 `Method`——注意 `Method` 本身带声明类，
+   所以「同一个方法」是安全的；但如果切点依赖 `targetClass`（比如 `hasIntroductions`、
+   或按目标类注解匹配），而同一 `Method` 被不同子类实例调用，真实 Spring 靠
+   `InterceptorAndDynamicMethodMatcher` 或按 `targetClass` 分实例来兜住。
+
+我们的 `AdvisedSupport#getInterceptors` 每次都从头算。本章规模下这是对的取舍：链最多两三个元素，
+省下的复杂度比省下的纳秒值钱。真实 Spring 之所以必须缓存，是因为**生产环境里一条链可能几十个 Advisor，
+而每秒调用可能上百万次**。
+
+### B-25-5 一个 Advisor 能带多个增强吗
+
+`Advisor` 现在的契约只有 `getAdvice()`。要支持多个，最小的改动是把它变成
+`Advice[] getAdvices()`，同时把注册表的签名从 `MethodInterceptor[] getInterceptors(Advisor)`
+改成返回列表（其实真实 Spring 已经是 `MethodInterceptor[]`，数组本身就能放多个——
+所以**签名早就不拦着你了，拦着你的是 `Advisor#getAdvice()` 这个单数契约**）。
+
+但真实 Spring 明确选择了「**一个通知方法 = 一个 Advisor**」，理由是两条：
+
+1. **可排序**。链的顺序由 Advisor 列表的顺序唯一决定。一个 Advisor 若带两个增强，
+   就得额外回答「这两个谁先」——而这个顺序既不能靠 `@Order`（它标在类上），
+   也不能靠方法声明顺序（`getDeclaredMethods()` 的顺序在 JLS 里没有保证）。
+   拆成两个 Advisor 之后，排序问题消失了：它们本来就是两个元素，各自有 `order`，
+   同 `order` 时再按切面名 + 方法名兜底（`ReflectiveAspectJAdvisorFactory` 里的比较器）。
+2. **可缓存**。链缓存的键是 `Method`，值是「这批 Advisor 适配出的拦截器列表」。
+   Advisor 是**不可变的配置元素**，缓存才敢长期持有。若一个 Advisor 内部带可变数量的增强，
+   任何一次「运行时往 Advisor 里加一个增强」都会让整张缓存表失效。
+
+换句话说：**Advisor 之所以是「一个切点 + 一个增强」，不是因为实现偷懒，而是因为它是缓存与排序的最小单位。**
+想要「组合」，正确的位置是往 `Advised` 里多加几个 Advisor，而不是把多个增强塞进一个 Advisor。

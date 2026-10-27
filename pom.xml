@@ -90,6 +90,7 @@
 		<module>step-22-assembly-control</module>
 		<module>step-23-conversion-service</module>
 		<module>step-24-jdk-proxy</module>
+		<module>step-25-advisor</module>
 	</modules>
 
 	<dependencyManagement>
