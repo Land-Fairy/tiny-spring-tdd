@@ -83,6 +83,7 @@
 		<module>step-15-events</module>
 		<module>step-16-ordered</module>
 		<module>step-17-classpath-scanning</module>
+		<module>step-18-resource-pattern</module>
 	</modules>
 
 	<dependencyManagement>

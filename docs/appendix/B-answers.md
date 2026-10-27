@@ -1954,3 +1954,132 @@ B-02-3 讲过这个设计。
 跳过的段。
 
 → **第 17 章**（3.4 节 `skipMembers` + 5.1 节体量对照表）
+
+---
+
+## 第 18 章
+
+### B-18-1
+
+**能。** `a/**` 匹配 `a`。
+
+这是 Ant 风格的约定：`**` 匹配「零个或多个路径段」，零个是允许的。所以 `a/**` 既匹配
+`a/b`、`a/b/c`，也匹配 `a` 本身。
+
+要改成「不能」，改 `doMatch` 里这一段：
+
+```java
+if (cursor.pathExhausted()) {
+    return cursor.trailingSeparatorsAgree(pattern, path) || cursor.restIsAllWildcard();
+}
+```
+
+把 `|| cursor.restIsAllWildcard()` 删掉（或让它只接受「剩余模式恰好是 `**` 且**前面还有段**」）。
+删掉之后 `match("a/**", "a")` 会返回 `false`，因为路径先耗尽、而模式里还剩 `**`。
+
+真实 Spring 的 `AntPathMatcher` 是**能匹配**的——语义和本章一致。这也是为什么
+`classpath*:com/acme/**/*.class` 能扫到 `com/acme/` 根目录下的类：`**` 吞掉零层，
+模式退化成 `com/acme/*.class`。
+
+→ **第 18 章**（3.2 节「`**` 能匹配零层这件事很容易忘」）
+
+### B-18-2
+
+**因为数组没有包装、可以共享一个空常量、并且调用方不会误改。**
+
+三个理由，按重要性排：
+
+1. **空结果要便宜**。扫一个不存在的包是**正常情况**（依赖没装、包名写错），不是错误。
+   返回 `List` 就得为每次调用 `new ArrayList<>()`；返回数组可以共享一个 `EMPTY` 常量，
+   零分配。`findPathMatchingResources` 里那个 `private static final Resource[] EMPTY`
+   就是这个意思。
+2. **调用方意图明确**。「给我一组资源」是一次性快照，不是「给我一个你可以改的集合」。
+   真实 Spring 内部确实用 `Set<Resource>` 做去重（模块路径与 classpath 可能给出同一个资源），
+   但**出口是 `toArray`**——去重是实现的自由，数组是契约的形状。
+3. **和 `ResourceLoader.getResource` 对称**。一个返回 `Resource`，一个返回 `Resource[]`，
+   类型上就能看出「单条路径 vs 模式匹配」的区别。
+
+`Set` 的去重之所以必要：`findAllModulePathResources` 与 `findAllClassPathResources`
+可能都命中同一个 jar 里的同一个条目，用 `Set` 保证「一个类只扫一次」；
+否则同一张图纸会被注册两次，触发第 02 章那个「重复注册」异常。
+
+→ **第 18 章**（4.3 节「找不到时返回空数组，不是 `null`」）
+
+### B-18-3
+
+**去掉之后，就只能匹配 classpath 根下的 `repo/`，任何带包前缀的路径都匹配不上。**
+
+关键在于 `subPattern` 是**相对根目录**的。`**/repo/**/*.class` 的 `determineRootDir`
+返回空（因为第一个 `/` 之前就有 `*`），所以 `getResources("")` 拿到所有 classpath 根，
+`subPattern` 就是整条 `**/repo/**/*.class`。
+
+于是 `org/acme/repo/OrderRepository.class` 要被它匹配，必须靠开头那个 `**` 吞掉
+`org/acme`。
+
+改成 `repo/**/*.class` 后：`subPattern` 同样相对根目录，但它要求路径**以 `repo/` 开头**。
+`org/acme/repo/OrderRepository.class` 以 `org/` 开头 → 不匹配。只有
+`repo/OrderRepository.class`（直接在 classpath 根下）才匹配。
+
+这就是为什么扫包时生成的模式永远是 `basePackage + "/**/*.class"`：
+`basePackage` 已经是「确定前缀」，被 `determineRootDir` 切走当根目录用了，
+剩下的 `**/*.class` 从根目录往下比。
+
+→ **第 18 章**（3.4 节与 3.7 节）
+
+### B-18-4
+
+**会失败在 `getInputStream()`——`ClassPathResource` 只能按「classpath 相对路径」取流，
+而 `jar:file:/x.jar!/com/acme/A.class` 不是一个 classpath 路径。**
+
+`ClassPathResource.getInputStream()` 的实现是：
+
+```java
+InputStream is = this.classLoader.getResourceAsStream(this.path);
+if (is == null) {
+    throw new FileNotFoundException(getDescription() + " cannot be opened because it does not exist");
+}
+return is;
+```
+
+把 `jar:file:/x.jar!/com/acme/A.class` 当 `path` 传进去，`getResourceAsStream` 会去
+classpath 里找一个**名字就叫这个**的条目——当然找不到，返回 `null`，于是抛
+`FileNotFoundException`。而且这个异常的消息会误导人：它说「这个资源不存在」，
+可资源明明就在那个 jar 里。
+
+`UrlResource` 不做任何路径翻译，`getInputStream()` 就是
+`url.openConnection().getInputStream()`——`jar:` 协议的 `URLStreamHandler` 会去开 jar、
+定位条目。**协议的事交给协议处理器**，这就是 `UrlResource` 存在的理由。
+
+顺带一提：`ClassPathResource` 还有一个 `getFile()`，在 jar 场景下会抛
+`FileNotFoundException`（因为「classpath 里的东西」不是文件）。所以第 07 章我们
+故意没给它实现 `getFile()`——一个会在常见场景下抛异常的方法，不如没有。
+
+→ **第 18 章**（3.6 节「坑三」）／**第 07 章**（`ClassPathResource` 为什么不提供 `getFile`）
+
+### B-18-5
+
+**15000 次。真实 Spring 用 `stringMatcherCache` 把它降到「不同段模式的个数」量级。**
+
+算一下本章的实现：`doMatch` 的三段里，每次比较一对段就 `new AntPathStringMatcher(pattern)`
+一次。3000 个类 × 每个路径 5 段 = 15000 次 `Pattern.compile`。正则编译是**重量级操作**
+（要解析、要生成 NFA 节点），15000 次足够让一次启动慢上几百毫秒到数秒。
+
+真实 Spring 的做法：
+
+```java
+private final Map<String, AntPathStringMatcher> stringMatcherCache = new ConcurrentHashMap<>(256);
+
+protected AntPathStringMatcher getStringMatcher(String pattern) {
+    return this.stringMatcherCache.computeIfAbsent(pattern, AntPathStringMatcher::new);
+}
+```
+
+按**段模式**（不是整条路径）缓存。收益巨大是因为段模式的重复率极高：
+3000 个类的路径里，真正不同的段模式可能只有十几个（`*.class`、`service`、`repo`、
+`Order*`……）。15000 次编译 → 十几次编译 + 15000 次哈希表查询。
+
+为什么用 `ConcurrentHashMap` 而不是 `HashMap`？因为扫描可能被多个线程同时触发
+（多个上下文并行初始化）。这也是本章缺陷表里「正则每段编译一次，无缓存」那一行
+指向的东西——**性能缺陷不报错，只是慢**，最容易在重构时被一起改掉。
+
+→ **第 18 章**（缺陷表）／**第 31 章**（并发模型）
