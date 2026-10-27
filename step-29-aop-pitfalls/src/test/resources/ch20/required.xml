@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+	<bean id="requiredHolder" class="org.springframework.samples.ch20.RequiredHolder"/>
+
+	<bean id="autowiredProcessor"
+		  class="org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor"/>
+
+</beans>

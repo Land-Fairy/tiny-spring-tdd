@@ -3141,3 +3141,120 @@ targetSource.releaseTarget(target);           // 形参是 capture#1 of ? ——
 所以现实里最常见的组合是：**先用 `AopContext` 止血，把「这两个方法应该拆开」写进 TODO**。
 本书不反对这个顺序，但要记住一件事：`AopContext` 是把耦合从「代码里看不出来」变成「代码里写得明明白白」，
 它并没有消除耦合。真正消除耦合的只有第三、第二条出路。
+
+## 第 29 章
+
+### B-29-1 `final` 方法为什么在 JDK 代理下能拦，在 CGLIB 下不能？
+
+从「代理类继承自谁」看最清楚。
+
+JDK 代理生成的类形如：
+
+```java
+public final class $Proxy0 extends java.lang.reflect.Proxy implements Ticker {
+	@Override public final void beat() { /* 转发到 handler */ }
+	@Override public final void tick() { /* 转发到 handler */ }
+}
+```
+
+它的父类是 `java.lang.reflect.Proxy`，**不是 `TickerImpl`**。`tick()` 是它自己新写的一个方法，与
+`TickerImpl.tick()` 之间没有覆写关系。`final` 修饰符限制的是「子类不得覆写本方法」，而这里根本没有
+覆写发生 —— 所以 `final` 完全没参与。
+
+CGLIB 生成的是：
+
+```java
+public class TickerImpl$$EnhancerByCGLIB extends TickerImpl {
+	@Override public void beat() { /* 拦截逻辑 */ }
+	// tick() 无法生成：它是 final，覆写非法
+}
+```
+
+想拦截一个方法，就必须覆写它；`final` 方法禁止覆写，于是 CGLIB **只能不生成**这个覆写方法。
+注意这里的行为差别：`final` **方法**在 CGLIB 下是**静默不拦**（子类合法，只是少一个覆写），
+`final` **类**在 CGLIB 下是**直接失败**（`Cannot subclass final class com.acme.X`）——
+一个安静、一个吵闹，很多「有时生效有时不生效」的困惑就来自这个差别。
+
+所以「`final` 类不能代理」这句话只在 CGLIB 下成立：限制来自「子类化」这个手段本身。
+JDK 代理不子类化目标，`final` 类只要有接口，照样能被代理。
+
+### B-29-2 加了「创建中」标记并把环直接报错，场景五会变成什么现象？比栈溢出更好吗？
+
+会变成启动期一条点名到边的异常：
+
+```
+org.springframework.beans.factory.BeanCurrentlyInCreationException: Error creating bean with name 'alpha':
+Requested bean is currently in creation: Is there an unresolvable circular reference?
+```
+
+比栈溢出好，理由有三条：
+
+1. **错误里带「图」而不是「栈」**：点名了 `alpha` 与「正在创建」，读者立刻知道是环；栈溢出只给出
+   1024 层一模一样的 `doCreateBean`，唯一的线索是「层数很多」。
+2. **不依赖栈深度**：栈溢出什么时候炸取决于 JVM 栈大小和每帧大小，同一个 bug 在另一台机器上可能
+   崩在别的地方，甚至表现为 `StackOverflowError` 被某个 `catch (Throwable)` 吞掉。
+3. **不掩盖真实调用栈**：栈溢出把有用的调用栈挤出了打印上限。
+
+代价是**标记的清理必须绝对可靠**：`singletonsCurrentlyInCreation` 若在异常路径上没被移除，下一个
+合法创建的 Bean 会被误判成「环」。真实 Spring 在 `beforeSingletonCreation` / `afterSingletonCreation`
+里成对维护这个集合，并在 `catch` / `finally` 两处收尾 —— 这套「成对的生命周期方法」是三级缓存
+那章的地基。
+
+### B-29-3 早期引用与最终代理不是同一个对象时，注入方拿旧的会怎样？
+
+两种后果，一个关于**状态**，一个关于**增强**。
+
+**状态**：注入方持有的是那个「旧对象」。若容器最终放进单例池的是另一个实例（或目标被 `TargetSource`
+换成新实例，如热替换、`refresh()` 重建、`prototype` 重新创建），注入方读到的就是老状态：
+
+```java
+beta.getAlpha().getCount();          // 0  —— 老对象
+context.getBean("alpha", Alpha.class).getCount();   // 7  —— 单例池里的
+```
+
+同一时刻调两次「同一个 Bean」，答案不同。这类 bug 极难查，因为两个引用都「合法」。
+
+**增强**：旧引用若是裸目标（raw），那么通过它发起的调用**没有代理拦截** —— 事务、审计、缓存全部
+静默失效，业务代码完全正确。这就是真实 Spring 那句警告的含义：
+
+```
+Bean 'alpha' has been injected into other beans [beta] in its raw version as part of a circular reference,
+but has eventually been wrapped ...
+```
+
+它选择「打印警告而不是修复」，因为此刻替换注入方的引用已不可能（`beta` 的字段早就填好了）。
+所以真实 Spring 的正解是**从一开始就别让两种对象并存**：`getEarlyBeanReference` 在「提前暴露」
+那一刻就把代理造出来放进去，并用 `EarlyProxyReferences` 记录「已经包过谁」，让正常路径跳过重复包装。
+
+### B-29-4 速查表第 11 条为什么归到「顺序/嵌套」而不是「失效」？其中一次是 `@Transactional` 会怎样？
+
+因为它不属于「增强没跑」，而属于「增强跑了、但次数或时机与预期不符」—— 判据上完全不同：
+排「失效」看「链长度为 0」，排「重复」看「链长度大于你想的」。
+
+`@Transactional` 重复进入的后果很具体：传播行为是**每次进入都重新应用**的。
+
+- 若内外都 `REQUIRED`：两次都加入同一个物理事务，第二次进入不会开新事务，但会再做一次
+  `setRollbackOnly` 之类的判断 —— 表面看没事，实际是「同一事务被套了两层拦截」；
+- 若外层 `REQUIRED`、内层 `REQUIRES_NEW`：会在**已持有的行锁**上再开一个事务去更新同一行，
+  数据库里就是自己等自己，直到 `innodb_lock_wait_timeout` 超时；
+- 若内层 `NOT_SUPPORTED`：会把外层事务挂起，内层跑在没有事务的连接上，写完提交不上去，
+  回滚时外层看不见内层已经落库的部分。
+
+所以「重复增强」不是无害的重复劳动，它**放大了**传播语义的每一次副作用。
+
+### B-29-5 三条判据里哪一条无法靠读代码判断？
+
+第 3 问「这次调用是从代理发起的吗」。
+
+前两问是**静态**的：
+
+- 「是不是代理」看类型与容器配置（可推断，只是运行时确认更省事）；
+- 「方法在不在代理上」看接口、修饰符、是否 `static`（完全静态）。
+
+第 3 问是**动态**的：`this.foo()` 和 `bean.foo()` 在源码里长得一样，都是「对某个对象调用方法」，
+但前者的 `this` 是目标对象、后者是代理。判断它需要知道运行时**这个引用绑到了谁**。更麻烦的是
+间接路径 —— 把 `this` 存进字段、注册成回调、当作监听器发布出去 —— 源码上毫无痕迹，只能靠
+`AopUtils.isAopProxy(...)` 在运行期观察，或者靠断点里 `this == target` 确认。
+
+这也是为什么「自调用失效」是四个高频场景里唯一**没有其他迹象**的一个：它不报错、不警告，
+业务完全正确，只是增强静默消失。唯一的排查手段是运行时观察。
