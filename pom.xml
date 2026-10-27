@@ -80,6 +80,7 @@
 		<module>step-12-aware</module>
 		<module>step-13-lifecycle</module>
 		<module>step-14-scope-factorybean</module>
+		<module>step-15-events</module>
 	</modules>
 
 	<dependencyManagement>
