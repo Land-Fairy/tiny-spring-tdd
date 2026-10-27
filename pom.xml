@@ -75,6 +75,7 @@
 		<module>step-07-resource</module>
 		<module>step-08-xml-reader</module>
 		<module>step-09-application-context</module>
+		<module>step-10-bean-factory-post-processor</module>
 	</modules>
 
 	<dependencyManagement>

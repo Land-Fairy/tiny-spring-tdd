@@ -67,7 +67,7 @@
 | 章 | 主题 | 你会得到 |
 |---|---|---|
 | [09](docs/chapters/09-application-context.md) | ApplicationContext 与 `refresh()` | 容器的完整一生，12 步全景 |
-| 10 | BeanFactoryPostProcessor + Environment | 占位符 `${db.url}` 是谁替换的 |
+| [10](docs/chapters/10-bean-factory-post-processor.md) | BeanFactoryPostProcessor + Environment | 占位符 `${db.url}` 是谁替换的 |
 | 11 | **BeanPostProcessor 专章** | **"注解为什么生效"的最终答案** |
 | 12 | Aware 感知容器 | 让 Bean 拿到容器自己 |
 | 13 | 初始化与销毁：`@PostConstruct` / ShutdownHook | 生命周期回调的三条通道 |

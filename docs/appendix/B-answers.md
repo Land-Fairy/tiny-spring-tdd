@@ -1117,3 +1117,170 @@ if (existingDefinition != null) {
 再补一条经验：**同名不同承诺最容易在「同名类」上出现**。Spring 里 `refresh()`（上下文）、`refreshBeanFactory()`（可覆写钩子）、`onRefresh()`（子类钩子）三个名字里都有「refresh」，但一个都不能互相替代——本章把它们分成了三个不同的方法，就是为了让你看清这一点。
 
 → **第 09 章**（5.4 节）
+
+---
+
+## 第 10 章
+
+### B-10-1
+
+**问**：为什么「优先级」不需要一个 `priority` 字段？如果给每个 `PropertySource` 加一个 `int priority`，会多出哪些问题？
+
+**答**：因为**顺序本身就是优先级**，而顺序是数据结构自带的属性，不需要额外表达。
+
+加了 `int priority` 之后，会立刻多出四个问题：
+
+1. **同分怎么办**。两个来源都写 `priority = 100`，谁赢？于是你需要一条 tie-break 规则，而最自然的 tie-break 又是「插入顺序」——绕一圈回到原点是吧？那不如一开始就用插入顺序。
+2. **优先级是相对的，不是绝对的**。`addFirst` 的语义是「比现在所有的都高」，而不是「等于 0」。用数字表达相对关系，就必须保证数字空间够用、且新增来源时要重新编号——这是典型的「用绝对值模拟相对值」的坑。
+3. **无法表达「插到某个来源之前」**。真实 Spring 有 `addBefore(String relativePropertySourceName, ...)` 与 `addAfter(...)`（`MutablePropertySources:125` / `:138`）。这类「相对于某个具名来源」的操作，用整数优先级根本表达不了。
+4. **每次读取都要排序**。要么每次 `getProperty` 遍历前排序（浪费），要么每次插入后重排（复杂）。而链表顺序是「插入时决定一次、读取时零成本」。
+
+所以 `MutablePropertySources` 只有两个方法就够：
+
+```java
+public void addFirst(PropertySource<?> propertySource) {
+    this.propertySourceList.add(0, propertySource);
+}
+
+public void addLast(PropertySource<?> propertySource) {
+    this.propertySourceList.add(propertySource);
+}
+```
+
+`getProperty` 里的 `for` 循环天然实现了「第一个命中的赢」。
+
+→ **第 10 章**（3.1 节）
+
+### B-10-2
+
+**问**：如果把 `MutablePropertySources` 的底层从 `CopyOnWriteArrayList` 换成 `HashMap`（名字 → 来源），`getProperty` 还能工作吗？会丢掉什么能力？
+
+**答**：`getProperty` 的**单次查询**还能工作，但**「按优先级取第一个命中」这件事彻底坏了**。
+
+`HashMap` 只能回答「名字 X 对应的来源是哪个」，回答不了「哪个来源排在前面」。而 `getProperty` 的核心逻辑是：
+
+```java
+for (PropertySource<?> propertySource : this.propertySources) {   // ← 需要顺序
+    Object value = propertySource.getProperty(key);
+    if (value != null) {
+        return value.toString();
+    }
+}
+```
+
+换成 `HashMap` 后，迭代顺序由哈希决定。于是同一个属性在三个来源里都有值时，**返回哪个是不确定的**——而且它在你的机器上可能是对的（哈希恰好符合预期），换台机器就错。这正是第 09 章 2.4 节那个 bug 的同款：**不可复现的错误是最贵的错误**。
+
+除此之外还会丢三样：
+
+1. **`addFirst` / `addLast` 的语义**。Map 没有「头」和「尾」。
+2. **同名来源的检测**。真实 Spring 的 `addFirst` 会检查是否已存在同名来源并记 debug 日志；Map 实现下「同名」会被静默覆盖，你再也发现不了「两个地方都叫 systemProperties」。
+3. **稳定的 `iterator()`**。`PropertySources extends Iterable` 就是为了让调用方能有序遍历（本章 5.4 节组装来源时就要按顺序 `addLast`）。
+
+一句话：**「按名字精确查」与「按优先级取第一个」是两个不同的问题**，`HashMap` 只能解第一个。第 09 章 3.5 节讲「`beanDefinitionMap` 与 `beanDefinitionNames` 两个字段」，是同一个教训的另一次出现。
+
+→ **第 10 章**（3.1 节、4.1 节）／**第 09 章**（3.5 节）
+
+### B-10-3
+
+**问**：`${db.url:${db.host}:5432}` 这样的默认值里又含占位符，本书的解析器能正确处理吗？如果默认值里的占位符也解析不了会发生什么？
+
+**答**：能正确处理。走一遍 `resolveDefault`：
+
+1. `findMatchingSuffix` 数嵌套：外层 `${` 之后遇到内层 `${`，`nested=1`；遇到第一个 `}` 时 `nested` 减回 0 而不是返回；再遇到结尾 `}` 才 `nested==0` 命中。于是占位符名是完整的 `db.url:${db.host}:5432`。
+2. 先按**完整名字**查 `db.url:${db.host}:5432` → 不存在，返回 `null`。
+3. 进 `resolveDefault`：按第一个冒号切，`actualName = "db.url"`，`defaultValue = "${db.host}:5432"`。
+4. 查 `db.url` → 仍是 `null` → `replacePlaceholders(defaultValue, ...)` **递归**。
+5. 递归里 `db.host` 命中（假设配了 `localhost`）→ 得到 `localhost:5432`，回到外层作为 `propVal`。
+
+关键在于第 4 步：**默认值也要走完整的占位符解析**，而不是当纯字面量用。很多手写解析器在这一点上偷懒，结果 `${db.url:${db.host}:5432}` 会得到字面量 `"${db.host}:5432"`。
+
+**如果默认值里的占位符也解析不了**：
+
+- 严格模式（`resolveRequiredPlaceholders`）→ 递归里抛 `IllegalArgumentException: Could not resolve placeholder 'db.host' in value "${db.host}:5432"`。注意消息里的 `value` 是**递归那一层**的文本，所以你会看到默认值片段，而不是整行原文。排查时要意识到「报错文本可能只是原文的一个片段」。
+- 宽松模式（`resolvePlaceholders`）→ 递归那边把 `db.host` 原样保留，返回 `"${db.host}:5432"`；外层认为「默认值解析成功了」，于是把它填进去。**结果是占位符留在了最终文本里**——宽松模式的语义就是如此（它只保证「能解析的解析掉」），但这是个容易被忽视的陷阱：**宽松模式不会告诉你「部分成功」**。
+
+→ **第 10 章**（4.2 节、4.3 节）
+
+### B-10-4
+
+**问**：本章的 `PropertySourcesPlaceholderConfigurer` 会修改所有 Bean 定义，包括它自己。真实 Spring 为什么要跳过自己？请构造一个「不跳过就会失败」的具体配置。
+
+**答**：构造如下——把配置器写成 Bean，并给它一个含占位符的属性：
+
+```xml
+<bean id="placeholderConfigurer"
+      class="org.springframework.context.support.PropertySourcesPlaceholderConfigurer">
+    <property name="location" value="${config.dir}/app.properties"/>
+</bean>
+```
+
+现在走一遍不跳过自己的流程：
+
+1. 第 5 步调用 `postProcessBeanFactory`。
+2. 遍历所有定义，轮到 `placeholderConfigurer` 自己。
+3. 它要解析 `location` 里的 `${config.dir}`。
+4. 但 `config.dir` 这个属性**恰恰在 `app.properties` 里**——而 `app.properties` 的路径正是它要解析的那个值。
+
+**死结形成了**：要解析自己的属性，必须先读到属性文件；要读属性文件，必须先知道路径；路径里又有占位符。这不是「难」，是**逻辑上不可能**——除非占位符的值来自更早的来源（系统属性等），那就变成「有时能跑、有时不能」，比直接失败更糟。
+
+真实 Spring 的处理是一句判断加一句注释：
+
+```java
+// Check that we're not parsing our own bean definition,
+// to avoid failing on unresolvable placeholders in properties file locations.
+if (!(curName.equals(this.beanName) && beanFactoryToProcess.equals(this.beanFactory))) {
+```
+
+两个条件都要比：**同一个名字 + 同一个工厂**。只比名字不够——父子容器里可能有同名 Bean，跳过父容器的同名 Bean 就少处理了一个。
+
+本书没有这个判断，是因为本书的配置器用构造器接收 `Environment`，没有「属性文件位置」这类可能含占位符的属性（第 08 章的 XML 也不支持构造器参数）。**但限制存在，必须写下来**——这一节就是它的位置。
+
+顺带一提：这个「自己不能处理自己」的模式在框架里反复出现——日志系统初始化时无法用日志报告失败、编译器无法编译自己的第一版、事务管理器的事务无法靠自己的注解生效。识别它、显式跳过它，是成熟实现的标志。
+
+→ **第 10 章**（5.3 节）
+
+### B-10-5
+
+**问**：真实 Spring 把第 5 步拆成四轮。如果只实现两轮（先所有 `BeanDefinitionRegistryPostProcessor`，再所有 `BeanFactoryPostProcessor`），会破坏什么？
+
+**答**：会破坏**「谁先看到谁的图纸」这件事的可控性**，具体症状最能说明问题的是「包扫描 + 占位符」同时存在的项目。
+
+两轮实现大致是：
+
+```text
+轮 1：所有 BeanDefinitionRegistryPostProcessor（会新增图纸）
+轮 2：所有 BeanFactoryPostProcessor（会修改图纸）
+```
+
+它看起来对——新增在前、修改在后。问题出在**轮 1 内部没有排序**：
+
+假设项目里有两个 `BeanDefinitionRegistryPostProcessor`：
+
+- `scanner`：扫描 `com.example` 下的 `@Component`，把 `JdbcConfig` 变成图纸（图纸里带 `${db.url}`）
+- `importer`：依赖 `scanner` 已经注册的图纸来做一些推导
+
+如果登记顺序是 `importer, scanner`（取决于 XML 里的先后，或 `@Import` 的顺序），轮 1 里 `importer` 先跑，它找不到 `JdbcConfig` → **静默少做一件事**或直接 NPE。
+
+更常见的真实症状是这个：
+
+```text
+XML 里 Bean 的 ${db.url} 被正确替换了，
+但被 @Component 扫描出来的同名属性仍是字面量 "${db.url}"。
+```
+
+原因：`PropertySourcesPlaceholderConfigurer` 也是 `BeanFactoryPostProcessor`，它在**轮 2** 跑。如果某个 `BeanDefinitionRegistryPostProcessor` 在轮 1 之后、轮 2 之前没有完成，或者更常见的情况——两轮实现把「纯 BFPP」和「registry BFPP 的 postProcessBeanFactory」混在一轮里的顺序处理得不严谨——新注册的图纸可能根本没被遍历到。
+
+真实 Spring 的四轮正是为了把「排序能力」铺开：
+
+| 轮次 | 处理谁 | 靠什么排序 |
+| --- | --- | --- |
+| 1 | 程序式登记的 `BeanDefinitionRegistryPostProcessor` | 登记顺序 |
+| 2 | Bean 定义中的 `BeanDefinitionRegistryPostProcessor` 且 `PriorityOrdered` | 接口优先级 |
+| 3 | 同上但 `Ordered` | 数值 |
+| 4 | 剩下的所有 `BeanFactoryPostProcessor` | 无序（此时图纸已定型） |
+
+两轮方案丢掉的是**轮 2 与轮 3**：没有 `PriorityOrdered` / `Ordered`，两个 registry 后处理器之间的顺序就**完全取决于谁先被登记**，而登记顺序又取决于 XML 里的位置或注解扫描的类名排序——**一个字段的位置变动就能改变启动行为**。
+
+这正是第 16 章（`Ordered` / `PriorityOrdered`）存在的理由：**当「多个扩展点同时存在」时，顺序必须能被显式声明，而不能靠偶然**。
+
+→ **第 10 章**（4.5 节）／**第 16 章**／**第 17 章**
