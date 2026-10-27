@@ -182,6 +182,30 @@ context  ──▶  beans  ──▶  core
 
 ---
 
+## 真实 Spring 参照仓（`@see` 的唯一事实来源）
+
+`@see` 和每章「🔍 真实 Spring 里它在哪」段里的全限定名，**不许凭记忆写**。
+本项目钉在 `spring-framework` **6.2.x** 分支（ADR-0004），只读参照仓放在仓库外：
+
+```bash
+scripts/refs.sh fetch    # 浅克隆到 ~/refs/spring-framework-6.2.x
+scripts/refs.sh status   # 路径 / commit hash / 正常还是降级
+```
+
+**硬规则：**
+
+1. 每个全限定类名，必须在参照仓里能 `find` 到同名文件。写不出来就说明记错了。
+2. 写"它砍掉了什么"之前，先打开那个真实类看一眼——差异描述常会被自己的想象带偏。
+3. 参照仓不可用时（CI、无网环境），允许降级，但**必须显式标注核对来源**：
+   官方 Javadoc URL，或"本地参照仓 + commit hash"。**不得留空，不得假装自己在本地核对过。**
+4. 每个里程碑 Release 记录核对用的 commit hash；降级时记录 `unavailable`。
+   这样读者能知道这份正文对应的是哪一版 Spring。
+
+参照仓不进仓库（`refs/` 已在 `.gitignore` 中），因此 `status` 打印的 commit hash
+是唯一可追溯的证据，发布时必须抄进 Release 说明。
+
+---
+
 ## 测试规范
 
 - 框架：**JUnit 5 + AssertJ**。允许 `Mockito`（仅 test scope）。
