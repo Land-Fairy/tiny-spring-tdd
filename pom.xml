@@ -73,6 +73,7 @@
 		<module>step-05-property-injection</module>
 		<module>step-06-bean-factory-hierarchy</module>
 		<module>step-07-resource</module>
+		<module>step-08-xml-reader</module>
 	</modules>
 
 	<dependencyManagement>

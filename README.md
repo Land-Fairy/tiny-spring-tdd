@@ -60,7 +60,7 @@
 | [05](docs/chapters/05-property-injection.md) | 属性填充与依赖注入 | `PropertyValue` → `populateBean`，内省找 setter |
 | [06](docs/chapters/06-bean-factory-hierarchy.md) | BeanFactory 的接口分层 | 为什么 `Listable` / `Hierarchical` / `AutowireCapable` 要拆开 |
 | [07](docs/chapters/07-resource.md) | Resource 抽象 | 一个接口统一 classpath / file / URL / 字节数组 |
-| 08 | XML 解析与 BeanDefinitionReader | 从配置文件读出图纸 |
+| [08](docs/chapters/08-xml-reader.md) | XML 解析与 BeanDefinitionReader | 从配置文件读出图纸 |
 
 ### 第 2 部 · 上下文与生命周期　`milestone: v0.2`
 

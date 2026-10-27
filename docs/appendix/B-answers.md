@@ -917,3 +917,70 @@ if (!this.beanFactory.isSingleton("greeter")) {
 这三类的共同特征：**它们都不是「读不到」，而是「读到了不一样的东西」**。`contains` 这类弱断言天生只能验证「有没有」，验证不了「一样不一样」。所以本章的验收断言必须是相等性断言。
 
 这也是 `CODE-STANDARDS.md` 里那条「测试要钉住行为而不是钉住不崩溃」的具体体现。
+
+---
+
+## 第 08 章
+
+### B-08-1
+
+**答**：典型场景是「默认配置 + 环境覆盖」：jar 里打一份 `default-beans.xml` 定义数据源与业务 Bean，部署时在外部目录再放一份 `override-beans.xml`，只写要改的那几个 Bean（比如把 `dataSource` 换成生产库）。真实 Spring 的用法是 `new ClassPathXmlApplicationContext("classpath:default-beans.xml", "file:./override-beans.xml")`，后者覆盖前者。
+
+如果反过来——跨文档也报错——会破坏三件事：① 覆盖式配置这个用法直接消失，只能复制整份配置来改，改一处要维护两份；② `parent` 容器与子容器共用同名基础设施 Bean 的模式无法实现（第 06 章）；③ Spring Boot 的 `application.properties` → `application-prod.properties` 叠加机制在 XML 上就没有对应物了。
+
+而同一文档内重复没有正当理由：一份文件里写两遍同一个 id，几乎只能是复制粘贴事故，**而且你无法从文件内容判断哪一份「后来居上」是有意的**。
+
+→ **第 08 章**（3.4 节与 2.3 节）
+
+### B-08-2
+
+**答**：真实 Spring 的转换发生在 **`AbstractAutowireCapableBeanFactory#applyPropertyValues` → `BeanWrapperImpl#setPropertyValue` → `TypeConverterDelegate#convertIfNecessary`** 这条链上，最终由 `SimpleTypeConverter` 配合 `ConversionService`（默认 `ApplicationConversionService` 或用户注册的 `FormattingConversionService`）完成 `String → int` 这类转换。
+
+不能放在解析阶段，原因有三条：
+
+1. **目标类型还不知道**。解析时手里只有 `class="..."` 这个字符串，类还没 `Class.forName`。`<property name="age" value="18"/>` 里，`18` 该变成 `int` 还是 `Integer` 还是 `String`，取决于目标字段的声明类型——而那是填充阶段（对象已存在、`PropertyDescriptor` 已就绪）才知道的。
+2. **可能根本不需要转换**。如果目标字段是 `String`，`value="18"` 就该保持字符串。同一份图纸在不同目标类型下需要不同的结果，所以转换必须发生在「知道目标」的地方。
+3. **转换可能失败，而失败必须发生在创建该 Bean 时**。`value="abc"` 填 `int` 应该在「造这个 Bean」时报错（第 05 章的 `BeanCreationException` 加壳），而不是在「读配置文件」时报错——因为错误的性质是「这个 Bean 的属性值不对」，排查方向是那个 Bean。
+
+→ **第 23 章**（`ConversionService`）
+
+### B-08-3
+
+**答**：两者解决的是**不同**问题。
+
+- **禁 DOCTYPE + 禁外部实体**解决的是：**不可信 XML 不得触达外部资源**。它把「DTD 声明」这条路整个关掉，因此 XXE 无从谈起。代价是完全不支持带 DTD 的 XML。
+- **`entityResolver` 白名单**解决的是：**可信的来源可以声明 DTD，但只能解析到白名单里的 DTD**。真实 Spring 的 `ResourceEntityResolver`/`DelegatingEntityResolver` 把 `spring-beans.dtd`、`spring-beans.xsd` 这类 systemId 重定向到 jar 内的本地副本——既让老配置能用，又保证「永不联网、永不读本机任意路径」。
+
+本书可以选更简单的那个，因为**我们没有任何存量配置需要兼容**：本书的 XML 头只有 `<?xml version="1.0"?>`，没有 DOCTYPE，也没有 XSD 校验。没有兼容负担时，白名单是多余的一层。
+
+反过来说，如果本书要支持 DTD，那么正确做法不是「打开 DOCTYPE」（那就把 XXE 放回来了），而是照真实 Spring 那样：**允许 DOCTYPE 声明，但用 entityResolver 把所有 systemId 映射到本地白名单，未命中的一律拒绝**。
+
+→ **第 08 章**（3.5 节）
+
+### B-08-4
+
+**答**：场景：注册表里已有 `greeter`（来自另一份文件），本次加载的文档里有 5 个 `<bean>`，其中 1 个 id 是 `greeter`。
+
+- 「数文档里的 `<bean>` 元素」→ 返回 **5**
+- 「注册表前后之差」→ 返回 **4**
+
+调用方的预期是 4：`loadBeanDefinitions` 的文档写的是 "the number of bean definitions found"（真实 Spring 原文），但它的实际用途是「本次新增了多少张图纸」。在覆盖场景下，覆盖掉的那一张不是「新增」，把它计入会导致上层统计（比如启动日志里的 "Loaded N bean definitions"）虚高。
+
+更麻烦的是返回值会被用来做判断：真实 Spring 的 `PathMatchingResourcePatternResolver` 在某些路径下会检查「这一批资源里到底有没有加载到图纸」，如果返回值因为覆盖而虚高，就会出现「明明什么都没加载，却说加载了 5 个」。
+
+真实 Spring 选的是「前后之差」，本书照抄。
+
+→ **第 08 章**（4.2 节）
+
+### B-08-5
+
+**答**：如果 `resolvePlaceholders` 就地修改图纸上的 `MutablePropertyValues`，第一次 `getBean` 之后图纸里的 `RuntimeBeanReference` 就被替换成了**那一个具体对象**。后果按严重程度排：
+
+1. **`prototype` 作用域立刻坏掉**（最先炸的就是它）。原型的目标就是「每次给一个新对象」，但图纸里的引用已经指向第一次造出来的那个对象——于是第二次 `getBean` 得到的 `greeter` 字段是**旧对象**，而且这个旧对象可能是垃圾回收不了的（被图纸持有）。
+2. **单例也会坏**：`lazy-init` 的 Bean 本来应该晚创建，但图纸一旦被解析过（比如被另一条创建路径顺带填充过），引用就变成对象了，等于强行提前创建。
+3. **热重载/刷新场景彻底不可用**：`refresh()`（第 09 章）要销毁旧单例、重建新单例。如果图纸里存着旧对象，重建出来的对象仍然指着上一代的对象，形成「新旧混用」——这类 bug 的表现是「配置改了但不生效」，极难查。
+4. **跨容器复用同一份图纸时出错**：同一份 `BeanDefinition` 若被两个容器共享（父容器/子容器各有一份引用），就地修改会让两个容器互相污染。
+
+所以解析必须是**纯函数**：读图纸、返回新值、图纸不动。真实 Spring 在 `applyPropertyValues` 里用 `new MutablePropertyValues(deepCopy)` 也是同一个理由——而且它连集合、数组都深拷贝了，因为浅拷贝留下的可变集合同样会被写坏。
+
+→ **第 08 章**（3.6 节）／**第 30 章**（循环依赖时图纸复用）
