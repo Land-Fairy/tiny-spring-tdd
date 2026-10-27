@@ -66,6 +66,7 @@
 
 	<modules>
 		<!-- 章节模块按教学顺序依次加入；每个目录都是一个可独立运行的历史快照 -->
+		<module>step-01-map-container</module>
 	</modules>
 
 	<dependencyManagement>
