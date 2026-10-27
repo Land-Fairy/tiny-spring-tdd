@@ -684,3 +684,132 @@ catch 掩盖真正的错误类型」，而不是「Exception 永远不许出现�
 再决定是缩小范围、原地标注、还是调整结构。
 
 → **本章 4.5 节**、`docs/CODE-STANDARDS.md` 闸门 3。
+
+---
+
+## 第 06 章
+
+### B-06-1
+
+具体损失有两类，第二类才是致命的。
+
+**第一类：实现方的义务变大。** 如果 `getBeanNamesForType` 长在 `BeanFactory` 上，那么每一个「想当容器」的东西都必须实现枚举，包括只背一个 `HashMap` 的测试桩、只用来喂一个 Bean 的脚手架、以及真实 Spring 里那个 `StaticListableBeanFactory`。本章的 `MapBackedBeanFactory` 会从六个方法变成七个——而它存在的全部意义就是「证明调用方只依赖六个方法」。
+
+**第二类（致命）：把 O(n) 且会造对象的操作塞进「取一个 Bean」的契约里。** `getBean` 是 O(1) 的（查表 + 可能造一个），而枚举要遍历全部图纸，`getBeansOfType` 更会把匹配的**全部**对象造出来。合在一层意味着：任何拿到 `BeanFactory` 的代码，都可以用法上「合理地」触发一次全量实例化。真实世界里这就是「某个工具类里一句 `getBeansOfType(DataSource.class)` 把五个连接池全初始化了」的事故来源。
+
+拆层的收益是**能力与代价绑在一起**：想要枚举能力，就必须显式声明 `ListableBeanFactory`；拿到了这个类型，读代码的人一眼就知道「这里有遍历，可能很贵」。
+
+→ **第 14 章**（`FactoryBean` 的 `allowEagerInit` 就是这条代价的极端形态）
+
+### B-06-2
+
+不是「出 bug」，而是一个很具体的现象：**`getBean` 会返回 `null`，而不是抛异常**。
+
+推演一遍。子容器里没有 `greeter`，父容器里有。误用 `containsBean` 之后：
+
+```java
+if (!containsBean("greeter")) {      // containsBean 递归到父容器，返回 true
+    return getBeanFromParent("greeter");   // ← 永远不会走到
+}
+BeanDefinition definition = this.beanDefinitionMap.get("greeter");   // null（本地没有图纸）
+if (definition == null) {
+    return getSingleton("greeter");   // 本地单例池也没有 → 返回 null
+}
+```
+
+于是 `getBean("greeter")` 返回 `null`。如果调用方写的是 `getBean("greeter", Greeter.class)`，`requiredType.isInstance(null)` 为 `false`，会变成一句莫名其妙的 `NoSuchBeanException: Bean named 'greeter' is expected to be of type ... but was actually of type ...`——后面那个 `bean.getClass()` 还会再抛一次 NPE。
+
+这里有两层教训：
+
+1. **`containsBean` 的「递归」语义只适合回答「这一族容器里有没有」，不适合用来做「我本地有没有」的分流判断。** 名字相近的两个方法，语义差着一个递归。
+2. **`getSingleton` 查不到时返回 `null` 而不是抛异常**，这意味着「返回 null」这条路是通的——类型系统不会提醒你。真实 Spring 在 `doGetBean` 里同样有这个问题，它的对策是整条链路上尽量早抛（`getSingleton` 之后紧跟着的 `if (sharedInstance != null)` 分支之外全是异常路径），不留「返回 null」的口子。
+
+→ **第 32 章**（`getBean` 全链路逐行，会看到真实 Spring 怎样用「早抛」代替「返回 null」）
+
+### B-06-3
+
+现象：`GreetingRenderer` 会在「Bean 明明存在」的情况下认为它不存在，或者把单例当原型。
+
+具体一点。如果渲染器改成：
+
+```java
+if (!this.beanFactory.isSingleton("greeter")) {
+    throw new IllegalStateException("greeter 必须是单例");
+}
+```
+
+那么用真实容器跑 → `isSingleton` 返回 `true`（图纸的默认作用域），测试通过。用 `MapBackedBeanFactory` 跑 → `isSingleton` 走 `containsBean`，名字在 Map 里 → 也返回 `true`，测试**还是**通过。看起来很好。
+
+但把名字写错成 `"greter"` 时，两者分道扬镳：
+
+| 容器 | `isSingleton("greter")` |
+| --- | --- |
+| 真实 `DefaultListableBeanFactory` | 抛 `NoSuchBeanException` |
+| `MapBackedBeanFactory` | 返回 `false`（`containsBean` 为 false） |
+
+于是一个「应该炸」的用例，在桩上变成「不炸」。**假红还是假绿，取决于是哪一边错了**——这里桩更宽松，所以真 bug 被吞掉了。
+
+替身的义务边界可以这样表述：
+
+- 替身必须满足**调用方会用到的方法**的契约，包括错误语义（抛什么异常、什么时候抛）。
+- 替身可以完全省略**没人调用的方法**的实现——「省略」和「实现错」是两件事。
+- 一旦调用方开始调用一个新方法，替身就必须补齐那个方法的契约，否则测试测的是「替身的假设」而不是「被测对象的行为」。
+
+这也是本章 4.5 节那个「默认实现」看起来像糊弄、其实是正确做法」的原因——但它的前提是「当前没人调」。
+
+→ **第 11 章**（`BeanPostProcessor` 会把这种「替身契约漂移」放大成真实故障）
+
+### B-06-4
+
+后果是：**这一类 Bean 的配置错误重新变成「运行期才发现」**。
+
+`preInstantiateSingletons` 的全部价值是把故障从「第一个请求进来时」提前到「启动时」。跳过「依赖 `FactoryBean` 的 Bean」意味着这些 Bean 在启动期不被创建，所以：
+
+1. 它们图纸里的属性错误（类型不匹配、属性名拼错）不会在启动时暴露；
+2. 它们的构造器依赖缺失也不会暴露；
+3. 它们的 `afterPropertiesSet()` 校验不会跑。
+
+而 `FactoryBean` 恰恰是最容易配置错的一类 Bean——它的产出类型要靠**调用 `getObject()` 才能确定**，配置错了往往不报错，只是产出 `null`（第 14 章会看到真实 Spring 为此专门处理 `NullBean`）。
+
+那为什么不干脆全都提前造？因为**「造出来」和「能安全造出来」是两件事**。`FactoryBean` 的 `getObject()` 可能有副作用（建立一个到外部系统的连接、启动一个后台线程），启动期就调用它等于把「用到才连」变成「启动就连」——这会改变应用的启动时间与失败模式。真实 Spring 的处理是：**默认 `allowEagerInit=true`（提前造），但提供开关让调用方自己承担**。
+
+**结论**：这不是「跳过对不对」的问题，是「把选择权给谁」的问题。核心原则只有一条——**默认要能让错误尽早暴露，但必须给出退出的开关，并且开关的效果要写进文档。**
+
+→ **第 14 章**（`FactoryBean` 与 `NullBean`）
+
+### B-06-5
+
+两条切分依据，而且**必须与接口的切法不同源**，否则拆出来只是重复劳动。
+
+**依据一：状态归属。** 谁持有哪个字段，谁就是那一层。
+
+| 状态 | 归属 | 真实 Spring 的类 |
+| --- | --- | --- |
+| `singletonObjects` / `registeredSingletons` / `singletonLock` | 单例池 | `DefaultSingletonBeanRegistry` |
+| `factoryBeanObjectCache` | `FactoryBean` 产出缓存 | `FactoryBeanRegistrySupport` |
+| `mergedBeanDefinitions` / `parentBeanFactory` / `beanPostProcessors` | 「一个 Bean 怎么造」的上下文 | `AbstractBeanFactory` |
+| `beanDefinitionMap` | 图纸表 | `DefaultListableBeanFactory` |
+
+状态归属是**最硬**的切分依据，因为它决定了字段能不能 `private`。如果按接口切（「谁调用」），你会得到一堆共享字段的兄弟类——Java 没有多重继承，那样的拆分在实现层根本落不了地。
+
+**依据二：流程阶段。** 「造一个 Bean」是一条固定流水线：
+
+```
+解析名字 → 查单例池 → 解析图纸（含父容器合并） → 选构造器 → 实例化
+        → 填属性 → 初始化（BPP 前 / afterPropertiesSet / BPP 后） → 注册销毁回调
+```
+
+每个阶段需要的东西不一样，所以天然是「模板方法 + 子类补阶段」的形状。真实 Spring 的 `doCreateBean` 就是模板方法，`createBeanInstance` / `populateBean` / `initializeBean` 是阶段，各自可以被子类覆写。
+
+**为什么两种切法的标准不一样**：
+
+|  | 接口切法 | 继承切法 |
+| --- | --- | --- |
+| 出发点 | **谁在调用**（外部视角） | **谁拥有状态与阶段**（内部视角） |
+| 变化的原因 | 调用方需求变了 | 实现机制变了（比如换用 CGLIB 实例化） |
+| 判断错误的症状 | 调用方被迫依赖不需要的方法 | 字段被迫 `protected`，子类之间互相踩 |
+| 能否独立演进 | 能（加一个接口不影响实现） | 不能（父类改字段会影响全部子类） |
+
+**一句话**：接口回答「别人能让我干什么」，继承回答「我自己怎么分工」。
+
+→ **第 32 章**（真实 Spring 的五层继承链逐层展开）
