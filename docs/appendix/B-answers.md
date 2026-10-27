@@ -1550,3 +1550,107 @@ public class OrderRepository implements InitializingBean {
 **真实 Spring 的解法**：不自动登记，而是提供一个显式 API 让调用方交回对象——`AutowireCapableBeanFactory#destroyBean(Object existingBean)`（`:335`）。调用方负责生命周期，容器只负责「帮我把该跑的销毁回调跑完」。这是责任划分，不是能力缺失。
 
 → **第 13 章**（3.4 节）与 **第 14 章**（作用域的真面目）。
+
+---
+
+## 第 14 章
+
+### B-14-1
+
+**答**：因为单例与原型不需要「外部持有者」。
+
+单例的持有者是容器自己的 `singletonObjects` 表——这个表在 `DefaultSingletonBeanRegistry` 里，`getBean` 的 singletons 分支直接用它，硬编码一行 `getSingleton(beanName, factory)` 就够了。原型的持有者是**没有人**：每次调用都 `doCreateBean`，不需要任何表，也不需要销毁回调（第 13 章已经解释过原型不被容器销毁）。
+
+其余作用域的共同点是「持有者不在容器里」：`thread` 的持有者是线程本地的 Map，`request` 的持有者是 HTTP 请求的 attribute，`session` 是会话。容器不可能内建一张「所有可能存在的持有者」的表，所以只能让调用方注册一个 `Scope` 实现，由它自己回答「从哪取、什么时候作废」。
+
+反过来把四个全做成 `Scope` 实现会让代码更统一吗？会把「内建的生命周期」和「外部注册的扩展点」混成同一个概念，代价有三个：
+
+1. **热路径多一层间接**：`getBean` 对单例是最高频的调用（第 11 章的 `AutowiredAnnotationBeanPostProcessor` 每个字段注入都要走一次），现在直接查一张 `ConcurrentHashMap`；改成 `scope.get(...)` 后要过接口分派、`ThreadLocal` 查找或 attribute 查找。
+2. **单例池的关键能力会丢**：`singletonObjects` 被别处需要——`destroySingletons` 要遍历它、`getSingletonNames` 要暴露它、`getBeanNamesForType` 要靠它枚举、「单例提前暴露」要靠它（第 30 章三级缓存）。这些都在 `DefaultSingletonBeanRegistry` 上，挪进一个 `Scope` 就没有自然的归属了。
+3. **启动期校验没了**：内建分支让「`scope` 的取值只有两种可能」这件事在编译期就确定了一半；一旦全部走 `Scope`，拼错 `scope="singleton2"` 要到运行时 `getBean` 才炸。
+
+真实 Spring 也是这个取舍：`AbstractBeanFactory#doGetBean` 里 `if (mbd.isSingleton()) ... else if (mbd.isPrototype()) ... else { ... getScope... }` 是硬编码三分支（`:337/:354/:365`），`Scope` 只覆盖第三支。
+
+→ **第 14 章**（3.2 作用域三分支）
+
+### B-14-2
+
+**答**：不会更简单，会立刻坏掉——第一个出问题的就是单例作用域。
+
+如果把签名改成 `get(String name, T object)`（传造好的对象），那么调用方在 `get` 之前就必须先创建对象。对单例来说，这意味着**每次 `getBean` 都创建一个实例然后被作用域里的旧实例顶掉**：
+
+```java
+// 假设签名是 get(String, Object)
+Object created = createBean(beanName);          // 每次都白造一个
+Object actual = scope.get(beanName, created);   // 作用域里已有，creates 被丢弃
+return actual;
+```
+
+后果不是「多几个垃圾对象」这么轻：`createBean` 会跑构造器、属性填充、`@PostConstruct`、`BeanPostProcessor` 链（包括 AOP 代理）。一个单例 Bean 会被创建成千上万次，每次都有副作用——数据库连接池被建了又漏，`@PostConstruct` 里的注册被重复执行，AOP 代理被反复生成导致内存爆。
+
+真实 Spring 的 `Scope#get(String, ObjectFactory<?>)` 用工厂正是为了「**只有真的需要时才创建**」，它的 Javadoc（`Scope.java:58-74`）把这个意思写得很直白：
+
+> Return the object with the given name from the underlying scope, **creating it if not found in the underlying storage mechanism**. This is the central operation of a Scope, and the only operation that is absolutely required.
+
+至于为什么用 `ObjectFactory` 而不是 `Supplier<T>`：`ObjectFactory`（`org.springframework.beans.factory.ObjectFactory`）是 Spring 1.0 时代就存在的接口，只有一个 `getObject()`，语义就是「延迟获取一个可能受容器管理的对象」。`Supplier` 是 JDK 8 才有的，而且 Spring 的很多 SPI 方法签名一旦发布就不能改——这不是设计选择，是历史包袱 + 兼容性约束。
+
+→ **第 14 章**（1.3、3.2）
+
+### B-14-3
+
+**答**：看工厂的 `isSingleton()`，与图纸的 scope 无关——**每次拿到的是同一个产品**（前提是工厂自己是同一个实例）。
+
+产品是否需要缓存由 `getObjectFromFactoryBean` 的 `factory.isSingleton() && containsSingleton(beanName)` 决定（第 14 章 3.5）。注意第二个条件：`containsSingleton(beanName)` 是「工厂本身在单例池里」。所以这个组合会产生四种情形：
+
+| 图纸 scope | 工厂 `isSingleton()` | 结果 |
+|---|---|---|
+| singleton | true | 工厂一个；产品一个（缓存在 `factoryBeanObjectCache`） |
+| singleton | false | 工厂一个；**每次 `getBean(x)` 都是新产品**（工厂说「我的产品不是单例」） |
+| prototype | true | 工厂每次新；但**每个工厂各自缓存一个产品**——因为新工厂的缓存表是空的，所以调用方每次仍拿到不同产品 |
+| prototype | false | 全都是新的 |
+
+题目问的组合是第三行：图纸 `scope="prototype"` + 工厂 `isSingleton()` 返回 true。此时 `containsSingleton(beanName)` 为 false（工厂是原型，不在单例池），所以 `getObjectFromFactoryBean` 走的是非缓存分支，**每次 `getBean(x)` 都调一次 `getObject()`**。也就是说：工厂说「我的产品是单例」，但容器的缓存条件没满足，这个「单例」名不副实。
+
+真实 Spring 完全一样，`FactoryBeanRegistrySupport:120` 的条件就是 `factory.isSingleton() && containsSingleton(beanName)`。这个不对称很容易踩：**`FactoryBean.isSingleton()` 的语义是「产品是否可复用」，但它只在工厂自身被单例化时才被真正尊重**。
+
+→ **第 14 章**（3.5）
+
+### B-14-4
+
+**答**：前者好在「不用知道内部表、且会正确触发创建」。
+
+`getSingleton("factory")` 是 `DefaultSingletonBeanRegistry` 上的方法，它只查表，**不创建**。如果工厂还没被创建（比如从未有人 `getBean` 过它），它返回 `null`。三个具体会返回 `null` 的场景：
+
+1. **工厂还没被实例化**（懒加载，或还没到 `preInstantiateSingletons`）；
+2. **工厂是原型的**——原型根本不在 `singletonObjects` 里，永远是 `null`；
+3. **工厂在父容器里**：`getSingleton` 只查本容器，不回退（回退是 `getBean` 的事）。
+
+`getBean("&factory")` 走完整流程：剥前缀 → 按作用域取本体（该建就建，该问父容器就问）→ `getObjectForBeanInstance` 断言它是 `FactoryBean` → 返回工厂。所以：
+
+- 它**一定**返回非 null（或者在拿不到时抛出有意义异常）；
+- 它对原型工厂返回新实例（语义正确）；
+- 它会走 `BeanPostProcessor` 链，拿到的工厂与容器里一致；
+- 如果那个 Bean 不是工厂，它会抛 `BeanIsNotAFactoryException` 而不是给你一个「看起来对」的对象。
+
+还有一个隐含好处：`getSingleton` 是 `public` 的 `DefaultSingletonBeanRegistry` API，直接用它意味着调用方**依赖了具体实现类**。第 06 章讲的分层在这里正好兑现——`ApplicationContext` 的公开契约里没有 `getSingleton`。
+
+→ **第 14 章**（3.4、5.2）
+
+### B-14-5
+
+**答**：需要「一个作用域边界标识」和「一个让容器能查到它的持有者」，`SimpleThreadScope` 只提供了后者的一半。
+
+批处理程序的天然边界是「一次 job 执行」。要让它成为作用域，最少两样东西：
+
+1. **一个 `Scope` 实现，以 job 为 key 持有对象**：内部是 `Map<String, Map<String, Object>>`（jobId → beanName → 实例），而不是 `ThreadLocal`。因为线程池里的线程会跨 job 复用——用线程当边界，第二个 job 会拿到第一个 job 的残留对象。
+2. **一个边界的开启/关闭时机**：job 开始时创建 contextId、job 结束时调用 `scope.remove(name)` 逐个清理（并触发销毁回调）。这相当于 Web 里 `RequestContextListener` 的角色——没有它，作用域只知道「取」，不知道「什么时候该清」。
+
+`SimpleThreadScope` 不够，是因为它把「边界」硬编码成了线程：
+
+- 线程池复用 → 残留对象跨 job 泄漏（和 `ThreadLocal` 内存泄漏是同一个模式）；
+- 同一线程里并发跑两个 job（异步编排里常见）→ 两个 job 共享同一个 Map，直接串数据；
+- 没有 `remove` 的调用者 → 销毁回调永远不跑（第 14 章 4.3 节那条 `scopedBeanIsNotInTheSingletonPool` 测试就是这个现象的正面断言）。
+
+`SimpleThreadScope` 的 Javadoc 里真实 Spring 自己写着它「not registered by default」且「for testing and special purposes」，就是这个原因：**线程作用域只适合「线程 = 边界」的场合**。
+
+→ **第 14 章**（1.3、3.3、4.3）
