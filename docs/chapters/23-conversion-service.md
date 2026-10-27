@@ -188,9 +188,11 @@ try (GenericApplicationContext context = context(serviceWithMoney())) {
 beanFactory.addBeanPostProcessor(new AutowiredAnnotationBeanPostProcessor(beanFactory));
 ```
 
-### 红四之后：346 个测试全绿
+### 红四之后：348 个测试全绿
 
-模块内 346 个测试、六道闸门全绿。行覆盖 87.2%、分支 76.5%。
+模块内 348 个测试、六道闸门全绿。**干净构建**（`clean verify`）下行覆盖 86.6%、分支 75.6%。
+
+这里有一个必须记下来的坑：先跑 `test`、再跑 `verify` 得到的数字会**偏高**（我们一度看到 87.2% / 76.5%）。原因是 jacoco 的 `target/jacoco.exec` 默认**追加**写入，先前那些临时探针测试（`ProbeTests` 之类，后来删掉了）留下的覆盖记录还在里面。断言覆盖率之前必须 `clean`，否则测的是「历史上所有跑过的测试」，不是「现在仓库里的测试」。
 
 ## 3. 实现
 
@@ -355,6 +357,8 @@ public void setConversionService(ConversionService conversionService) {
 ```
 
 因为 `@Value` 注入、属性填充走的都是 `getTypeConverter()`，换掉它就换掉了整个容器的转换规则。测试里那五步（登记 → `canConvert` → `convert` → 换服务 → `@Value` 生效）就是这条线的证据。
+
+线上的最后一环由 `WiringTests` 补上：它不手写 `BeanDefinition`，而是把一个 `@Configuration` 类交给第 21 章的 `ConfigurationClassPostProcessor`，让 `@Bean`、`@Profile`、`@Value` 三条链路一起跑。**换掉转换服务的那个容器，必须是一个完整的容器** —— 否则「换服务生效」证明的只是「测试脚手架生效」。
 
 ### 3.7 第六步：两种失败必须分得开
 
