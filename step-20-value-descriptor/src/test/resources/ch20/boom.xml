@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+	<bean id="boomService" class="org.springframework.samples.ch20.BoomService"/>
+
+	<bean id="autowiredProcessor"
+		  class="org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor"/>
+
+</beans>

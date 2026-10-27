@@ -85,6 +85,7 @@
 		<module>step-17-classpath-scanning</module>
 		<module>step-18-resource-pattern</module>
 		<module>step-19-autowire-candidates</module>
+		<module>step-20-value-descriptor</module>
 	</modules>
 
 	<dependencyManagement>

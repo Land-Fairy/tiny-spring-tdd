@@ -2176,3 +2176,115 @@ expected single matching bean but found 2: a, b                  ← 多个候�
 再在 5.3 节理解真实框架为什么不肯放过。
 
 项目里该选哪个，取决于你的代码是**被自己人消费**（宽容 + 日志警告）还是**被外部消费**（严格抛错）。
+
+## 第 20 章
+
+### B-20-1 岔口为什么用「注解给没给值」而不是「字段类型是不是 String」？
+
+两种判断的结果相反的例子有一堆，最直接的一个：**`@Autowired String name`**。
+
+- 按「注解给没给值」判断：`getSuggestedValue()` 是 `null`，走 **Bean 路线**，
+  去找一个 `String` 类型的 Bean（可能是 `@Bean String appName()` 注册的）。
+- 按「字段类型是不是 String」判断：走**值路线**，可 `@Autowired` 根本没给文本，
+  `suggestedValue` 是 `null`，于是要么把一个 `null` 塞进字段，要么在 `resolveValue` 里
+  `Integer.valueOf(null)` 之类的路径上崩掉——而它本该是一个正常的 Bean 注入。
+
+反方向的例子同样成立：**`@Value` 标在 `Object` 或 `List<String>` 字段上**
+（`@Value("#{...}")`、`@Value("${a},${b}")` 之类），按类型判断会把它送进候选链，
+得到 `NoSuchBeanException: No bean of type [java.lang.Object] is registered`——
+配置值被当成「要一个 Bean」。
+
+一句话：**注解是意图的载体，类型是结果的描述**。意图只有一个（要么给我值、要么给我 Bean），
+类型可以有好几层（`String` 既是值也是 Bean 的类型）。判断要跟着意图走。
+
+### B-20-2 `PropertySourcesPlaceholderConfigurer` 装两次会怎样？
+
+**(a) 功能上没区别。** 解析器链变成「宽松 → 严格 → 宽松 → 严格」。
+严格解析器是**幂等**的：第一次跑完，要么所有占位符都替换了（第二次看到的是成品，
+没有 `${` 可替换），要么已经抛异常终止了 refresh。所以第二次装不改变结果。
+
+**(b) 会多绕一圈，而且有真实的坏处。**
+
+1. **性能**：每次 `resolveEmbeddedValue` 要过四条 resolver 而不是两条。`@Value` 很多的容器里，
+   这是启动期可观的重复工作（真实 Spring 的 `resolveEmbeddedValue` 对每个 `@Value` 字段调用一次）。
+2. **泄漏**：`embeddedValueResolvers` 是个只增不减的 `List`，每个配置器**实例**贡献一条。
+   容器里如果因为配置失误注册了 N 个配置器实例，每条链都多 N 条 lambda 持有 `Environment` 引用。
+3. **最阴的一条**：两个配置器若挂**不同的 `Environment`**，先注册的那个严格解析器会先抛——
+   报错里的「解析不了」可能来自一个你以为没生效的属性源。排查时看到的消息与实际生效的配置对不上。
+
+真实 Spring 兜住重复注册的两道措施：`AbstractApplicationContext#prepareBeanFactory` 用
+`if (!beanFactory.hasEmbeddedValueResolver())` 避免重复装默认那条；
+`PropertySourcesPlaceholderConfigurer` 本身作为 `BeanFactoryPostProcessor` 只被
+`PostProcessorRegistrationDelegate` 应用一次。
+
+### B-20-3 为什么「加壳」只能有一个地方？
+
+两处各包一次，会得到这样的消息（我们实测踩到过）：
+
+```
+BeanCreationException: Could not inject field 'port' of bean 'greetingService' (declared in ...GreetingService)
+  caused by BeanCreationException: Could not resolve value '${app.port}' for field 'port' of bean
+             'greetingService' (declared in ...GreetingService)
+  caused by TypeMismatchException: Failed to convert value of type 'java.lang.String' to required
+             type 'int' for property 'port' ...
+```
+
+**字段名出现三次，Bean 名两次，声明类两次。** 具体坏处：
+
+1. **堆栈多一层**：`getCause()` 链长一跳，日志里 `Caused by` 多一节；用户贴日志时经常只贴第一段，
+   于是「根因」被截掉。
+2. **两个格式必然漂移**：`resolveValue` 那层的文案是「值解析失败」，`injectFields` 那层是「字段注入失败」。
+   两个人在两个地方各改一次文案，同一类故障就有两种说法，监控规则一改就漏。
+3. **排查要多轮对话**：用户贴的是哪一层不可控。你问「有字段名吗」，他说有（内层）；
+   你再问「Bean 名呢」，他说有（外层）。来回两轮才发现是同一个异常的两层皮。
+
+一条规则：**异常只在「知道全部上下文」的那一层包一次**。
+`injectFields` 同时知道 `beanName`、`descriptor`（字段名 + 声明类），
+所以它才是那唯一的一层；`resolveValue` 只知道自己手里有个字符串。
+
+### B-20-4 把 `populateBean` 的顺序反过来，哪些测试会红？
+
+**(a) 会红的测试：**
+
+| 测试 | 现在的断言 | 反转后 |
+|---|---|---|
+| `ch20/XmlOverrideTests.xmlPropertyIsAppliedAfterTheAnnotation` | `from-xml`（XML 赢） | `Hi`（注解赢） |
+| `ch05/PropertyPopulationTests`（XML 属性填充） | 属性值生效 | 若同一字段既在 XML 又在注解里，语义反了；纯 XML 的用例仍绿 |
+| `ch08` 的 XML 类型转换用例 | `<property name="port" value="8080"/>` 生效 | 同上的边界情况才会红 |
+
+**关键点**：反转不会让全部测试崩，只会让**「两条通道同时作用于一个字段」**的那一类测试红。
+这正是这类设计错误最危险的地方——单通道测试全绿，只有交叉场景能暴露。
+
+**(b) 真实 Spring 为什么选「注解先、XML 后」？**
+
+因为**XML 是部署期可改的，注解是编译期写死的**。运维要临时把某个 `@Value("${app.greeting}")`
+改成别的值，最方便的手段就是在 XML 里加一行 `<property>`，不改源码、不重新编译。
+让「更晚能被修改的东西」后应用，等于给运维留了一个覆盖口子。
+
+反过来的顺序（注解赢）会让这个口子彻底失效：运维改了 XML、启动成功、行为不变，
+而且**没有任何报错**——排查成本极高。Spring 选择「后跑赢」不是随手定的，
+是按「谁更可能被当作环境适配手段」排的。
+
+### B-20-5 `getSuggestedValue()` 该不该放在 `DependencyDescriptor` 上？
+
+**放在描述符上会出事的场景**：想支持第二种值注解时。
+
+假设第 21 章要加 `@ConfigValue`（或 `@Value` 的元注解变体），或者要给 `@Value` 与自定义注解
+排优先级。因为 `getSuggestedValue()` 里写死了 `field.getAnnotation(Value.class)`，
+你必须**改 `DependencyDescriptor`**——而它是 `beans.factory.config` 包里的通用元数据类，
+被 `resolveDependency`、集合注入、错误消息全都依赖。为一个「读注解的策略」改一个「描述事实的类」，
+等于让所有用到描述符的代码重新编译、重新审一遍。
+
+**放在 resolver 上会麻烦的场景**：resolver 需要 `descriptor.getAnnotations()`——
+「策略」反过来依赖「事实」，所以描述符仍然得把注解数组暴露出来（真实 Spring 的
+`DependencyDescriptor#getAnnotations` 就是干这个的）。另外每个 resolver 实现都要重复
+「遍历注解找 `@Value`」这段代码。
+
+**真实 Spring 为什么愿意接受后者**：因为这段代码**只写一次**
+（`QualifierAnnotationAutowireCandidateResolver#findValue:426`），而策略的可替换性带来的是真实需求——
+Spring Boot 的 `ConfigurationPropertiesBindingPostProcessor`、`@Value` 的 SpEL 变体、
+测试框架的 `@MockBean`，都需要在「值从哪来」这一层插一脚。**一个可替换的策略点，
+换掉了 N 处 if 判断**；而代价只是一个 `getAnnotations()` 的暴露。
+
+判断标准可以记成一句：**「事实」进描述符，「读法」进策略**。同一个字段有 `@Value` 是事实；
+`@Value` 这个注解算不算「值」、要不要先看 `@Qualifier`，是读法。
