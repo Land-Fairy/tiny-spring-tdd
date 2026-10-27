@@ -264,3 +264,160 @@ java.lang.IllegalStateException: Bean definition for 'counter' has no bean class
 `resourceDescription` 两个槽位，就是为了让消息能自己说清「谁、在哪、缺什么」。
 
 → **第 33 章**（异常体系与排错）。
+
+---
+
+## 第 03 章
+
+### B-03-1　去掉快路径（删掉锁外那次读），功能上还对吗？代价是什么？
+
+**答**：功能上仍然正确。
+
+锁内那次 `singletonObjects.get` 才是真正的判空，锁外那次是**纯优化**——它不改变任何结果，
+只改变「多少调用需要去抢锁」。删掉它，并发测试依旧全绿，`creations()` 依旧是 1。
+
+代价是**所有 `getBean` 都被串行化**。即使池子里早就有这个对象，也要走一遍
+`lock()` → `get` → `unlock()`。`ReentrantLock` 在无竞争时也要一次 CAS 加一次 volatile 写，
+有竞争时还要排队与线程挂起/唤醒。对一个 `getBean` 调用极频繁的应用（每次注入解析、
+每次 `ObjectProvider#getObject`）来说，这会把读取吞吐压到接近单线程。
+
+真实 Spring 因此保留快路径，注释只有一行（`DefaultSingletonBeanRegistry.java:211`）：
+
+```
+// Quick check for existing instance without full singleton lock.
+```
+
+它敢这么做的理由是**写侧已经把可见性管好了**：`putIfAbsent` 建立的 happens-before 关系
+保证「读到非 null 引用」时，对象已经在构造器里完成了全部初始化。所以锁外读不会读到半成品。
+
+→ **第 31 章**（并发模型：锁、延迟、ObjectFactory 的关系）。
+
+### B-03-2　`addSingleton` 用 `putIfAbsent` 一次完成「查 + 写」，`registerSingleton` 为什么还要先判 null？
+
+**答**：因为这是两种**性质不同**的错误，需要两种不同的异常。
+
+`ConcurrentHashMap` 不允许 null 键或 null 值。所以 `putIfAbsent(null, x)` 和
+`putIfAbsent(k, null)` 都会抛 `NullPointerException`——一条完全不给上下文的异常。
+调用方看到 `NullPointerException` 只会知道「某个地方传了 null」，不知道是**名字**错了还是
+**对象**错了。真实场景里这条消息几乎等于没说。
+
+更本质的区别在语义：
+
+| 情况 | 谁的错 | 该抛什么 |
+| --- | --- | --- |
+| 传进来的参数本身非法 | 调用方写错了代码 | `IllegalArgumentException` |
+| 参数合法，但当前状态不允许 | 运行时的状态冲突 | `IllegalStateException` |
+
+「名字为 null」是第一种，「同名已注册」是第二种。把两者混成一个异常，排错时就得靠猜。
+
+真实 Spring 在 `registerSingleton` 开头用 `Assert.hasText` / `Assert.notNull`
+（`DefaultSingletonBeanRegistry.java:141` 起），它们抛的正是 `IllegalArgumentException`。
+
+→ **第 33 章**（异常体系与排错）。
+
+### B-03-3　`registeredSingletons` 的内容和 `singletonObjects.keySet()` 一样，删掉它会坏什么？
+
+**答**：坏的是**顺序契约**和**名单的来源**，不是「有没有这个名字」。
+
+具体两处（真实 Spring 的用法）：
+
+1. `getSingletonNames()`（`DefaultSingletonBeanRegistry.java:499`）直接返回
+   `registeredSingletons` 的快照。`ConcurrentHashMap.keySet()` 的迭代顺序是**哈希顺序**，
+   同一个应用两次启动可能给出不同的顺序。而这个方法的典型消费者是日志、诊断端点、
+   调试工具——顺序会变，就意味着两次启动的日志无法对比。
+2. `getSingletonCount()`（`:504`）数的是 `registeredSingletons.size()`，而不是
+   `singletonObjects.size()`。
+
+还有一层不显眼的作用：`registeredSingletons` 是
+`Collections.synchronizedSet(new LinkedHashSet<>(256))`（`:97`）。在
+`synchronizedSet` 上做 `toArray()` 是**原子**的，拿到的是一份一致的快照；而
+`ConcurrentHashMap.keySet()` 的迭代是**弱一致**的（迭代期间新增的条目可能看得到也可能看不到）。
+对于「列出当前所有单例」这种诊断用途，一致性比吞吐重要。
+
+**一个必须纠正的常见推测**：很多人（包括我在写这一节时）会以为 `destroySingletons`
+靠 `registeredSingletons` 决定销毁顺序。**不是。** 真实实现遍历的是
+`disposableBeans`（`private final Map<String, DisposableBean> disposableBeans = new LinkedHashMap<>();`，
+`:128`），并**反向**遍历（`destroySingletons`，`:696` 起）：
+
+```java
+synchronized (this.disposableBeans) {
+	disposableBeanNames = StringUtils.toStringArray(this.disposableBeans.keySet());
+}
+for (int i = disposableBeanNames.length - 1; i >= 0; i--) {
+	destroySingleton(disposableBeanNames[i]);
+}
+```
+
+所以准确的说法是：`registeredSingletons` 承载的是**名单的顺序与一致性**，销毁顺序由另一份
+`LinkedHashMap` 承载。这条「查一下源码，而不是顺着推理往下写」的经验，比答案本身更值得记。
+
+→ **第 13 章**（初始化与销毁）、**第 30 章**（三级缓存对 `registeredSingletons` 的清理时机）。
+
+### B-03-4　如果为了「提高性能」把原型作用域的 Bean 也放进池子，会发生什么？
+
+**答**：从语义和代码两个角度都立刻崩。
+
+**语义角度**：原型作用域的承诺是「每次给我一个新的、独立的实例」。这正是它存在的理由——
+需要每次独立状态的场景（一次请求的上下文、一个有状态的命令对象、一个非线程安全的工具实例）。
+一旦进池子，第二次 `getBean` 就会命中池子还你同一个对象，原型**退化成单例**，
+而且是「伪装成原型的单例」——图纸上写着 `prototype`，行为却是 `singleton`。这类声明与行为不一致
+的缺陷最难查，因为它不报错。
+
+**代码角度**：看你把 `addSingleton` 放在哪：
+
+- 保留 `putIfAbsent` 语义 → 第二次创建后写入时发现同名已有对象，抛
+  `IllegalStateException: Could not register object [...] under bean name 'x': there is already object [...] bound`。
+  于是这个 Bean 从第二次 `getBean` 起**每次都抛异常**。
+- 改成 `put` 静默覆盖 → 更糟。每次 `getBean` 都先造一个新对象、再把池子里的旧对象覆盖掉。
+  调用方拿到的是新对象（看起来「对」），但每次都在做一次无意义的构造；更严重的是，
+  如果在池子被覆盖前有别的线程读到了旧对象，它就被永久遗留在那里没人管，
+  构造器里打开的资源也就没人关。
+
+**真实 Spring 怎么保证**：`AbstractBeanFactory#doGetBean` 里对单例和原型是两条完全分开的路径。
+原型走 `else if (mbd.isPrototype())` 分支，里面只调 `createBean`，**完全不触碰**任何单例缓存
+（包括三级缓存）。本章的 `getBean` 里那个唯一的 `if` 就是这条分界线的极简版本：
+
+```java
+if (beanDefinition.isPrototype()) {
+	return createBean(beanName, beanDefinition);
+}
+return getSingleton(beanName, () -> createBean(beanName, beanDefinition));
+```
+
+→ **第 14 章**（作用域与 FactoryBean）。
+
+### B-03-5　一把锁保护所有单例，会阻塞什么？真实 Spring 6.2 怎么缓解？
+
+**答**：会阻塞**毫不相干的两个 Bean**。
+
+构造一个具体场景：容器启动中，`dataSource` 的构造器要连数据库（可能 2 秒，
+还可能因为网络抖动卡到 30 秒超时）；`loggerFactory` 只需要 1 毫秒。
+本章的实现里，创建 `loggerFactory` 的线程必须等 `dataSource` 的锁释放——
+如果这两个 Bean 是由两个线程按依赖顺序分别触发的（真实场景里很常见：
+主线程初始化一部分，某个后台 bootstrap 线程初始化另一部分），那么 1 毫秒的工作
+被 30 秒的工作挡住了。
+
+这个缺陷在真实 Spring 里造成过一个比「慢」严重得多的问题，就是我们第 00 章追到的
+`gh-34902`：一个线程在创建 `FactoryBean` 时持锁，另一个线程在做「按类型找候选 Bean」的判定
+（`AbstractAutowireCapableBeanFactory#getSingletonFactoryBeanForTypeCheck`，`:997`），拿不到锁 → 结果**不是报错，而是静默地把这个 Bean
+从候选列表里漏掉**。issue 原文：
+
+> Depending on the use case it will either result in an exception or even worse into a **silently ignored bean**.
+
+修复提交 `fa168ca78ae134e82db8eacc109bb29266b36fb1`（Juergen Hoeller，2025-05-14，
+"Revise FactoryBean locking behavior for strict/lenient consistency"）带来的方案就是 6.2 的
+`tryLock` + strict/lenient 三态（`DefaultSingletonBeanRegistry.java:263` 起）：
+
+| 运行阶段 | `lockFlag` | 抢不到锁时怎么办 |
+| --- | --- | --- |
+| 协调式 bootstrap，strict 模式 | `FALSE` | `acquireLock = false`：**根本不加锁**，由上层保证串行 |
+| 协调式 bootstrap，lenient 模式 | `TRUE` | 改用 `lenientCreationLock`，在**锁外**创建，并打一条 info 日志说明「别的线程正持锁创建其它 Bean」 |
+| 普通运行期 | `null` | `singletonLock.lock()`：**硬等**，和本章实现一样 |
+
+关键取舍写在源码注释里：在锁外创建是有代价的——
+"There is just a risk of collisions when triggering creation of other beans as dependencies of the current bean."
+也就是说，允许锁外创建，就等于接受「当前 Bean 在创建过程中又去触发别的 Bean 创建」时可能撞车。
+所以这个放宽**只在启动期、且调用方明确知道自己在做什么**（coordinated bootstrap）时生效；
+普通运行期仍然是本章那套最保守的硬等。
+
+→ **第 31 章**（并发模型：锁、延迟、ObjectFactory）。
