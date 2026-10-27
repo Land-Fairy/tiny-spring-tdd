@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 @DisplayName("PropertyValues：一批「属性名 → 值」的有序容器")
 class MutablePropertyValuesTests {
@@ -47,6 +48,14 @@ class MutablePropertyValuesTests {
 		MutablePropertyValues pvs = new MutablePropertyValues().add("repeat", 1).add("repeat", 5);
 
 		assertThat(pvs.size()).isEqualTo(2);
+	}
+
+	@Test
+	@DisplayName("属性名不能为 null：错误要在构造它的那一刻就报")
+	void nullNameIsRejectedAtConstruction() {
+		assertThatExceptionOfType(IllegalArgumentException.class)
+			.isThrownBy(() -> new MutablePropertyValues().add(null, "x"))
+			.withMessageContaining("Name must not be null");
 	}
 
 }

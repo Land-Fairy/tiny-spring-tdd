@@ -40,6 +40,12 @@ public class PropertyValue {
 	 * @param type 期望的目标类型，可为 {@code null}
 	 */
 	public PropertyValue(String name, Object value, Class<?> type) {
+		if (name == null) {
+			// 与真实 Spring 的 Assert.notNull(name, "Name must not be null") 对齐。
+			// 没有这一行，null 名字会一路活到 BeanWrapper，最后变成
+			// "Invalid property 'null' ..." —— 报错点离犯错点太远。
+			throw new IllegalArgumentException("Name must not be null");
+		}
 		this.name = name;
 		this.value = value;
 		this.type = type;
