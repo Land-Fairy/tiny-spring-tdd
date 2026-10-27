@@ -1284,3 +1284,85 @@ XML 里 Bean 的 ${db.url} 被正确替换了，
 这正是第 16 章（`Ordered` / `PriorityOrdered`）存在的理由：**当「多个扩展点同时存在」时，顺序必须能被显式声明，而不能靠偶然**。
 
 → **第 10 章**（4.5 节）／**第 16 章**／**第 17 章**
+
+---
+
+## 第 11 章
+
+### B-11-1　把第 6 步挪到最后，哪些测试会红？为什么真实项目里几周后才被发现？
+
+会红的只有 `BeanPostProcessorRegistrationTests` 的三条（`recorder` 的 `events()` 少两个事件、
+`getBeanPostProcessorCount()` 为 0、以及依赖注解注入的两条）。
+
+真实项目里之所以发现得晚，是因为这个缺陷**不产生任何错误**：
+
+1. 后处理器完全不跑，但 Bean 照样被创建、照样返回。症状只有「功能没生效」——AOP 不织入、
+   `@Autowired` 全是 `null`、`@Transactional` 不开事务。
+2. 而「功能没生效」的业务表现千奇百怪（数据没写库、权限没校验），人第一反应是查业务代码，
+   不是查容器装配顺序。
+3. 只要有人手工 `new` 一个 Bean 或者用 `@Bean` 绕开容器，测试局部还能通过，问题被进一步掩盖。
+
+这就是真实 Spring 专门写 `BeanPostProcessorChecker`（warn 在 `PostProcessorRegistrationDelegate` `:429`）
+打警告的原因：**把「静默失效」变成「启动期可见的日志」**。
+→ **第 11 章**（3.6、5.3 节）
+
+### B-11-2　after 返回代理后，「这个 Bean 是单例吗」还成立吗？
+
+成立，而且这正是单例池的定义没变、但**池里放的东西变了**。
+
+- `getSingleton` 返回的是 `applyBeanPostProcessorsAfterInitialization` 的**返回值**，也就是代理。
+- `getBean` 每次都从同一个池子里取，所以拿到的一直是同一个代理对象（单例仍然成立）。
+- 但 Bean 内部的 `this` 指向原始对象，和池里的代理**不是同一个对象**。这就是「自调用失效」：
+  在方法内部调 `this.other()` 不会经过代理，所以事务/切面都不生效。
+- 顺带一个副作用：`getBean(Class)` 的类型检查是对**代理**做的。JDK 动态代理只实现接口，
+  所以「按具体类查」会查不到——真实 Spring 因此在 `getType` 里做了 `FactoryBean`/代理的特殊处理。
+→ **第 28 章**（自调用与 `AopContext`）、**第 26 章**（代理在哪产生）
+
+### B-11-3　元数据缓存的失效条件是什么？为什么 `@Configuration` 却要重新解析？
+
+真实 Spring 的缓存是 `ConcurrentHashMap<Class<?>, InjectionMetadata>`，键是**类**。
+失效条件只有两类：
+
+1. 类被重新定义（`Class` 对象换了）——正常运行期不会发生；
+2. Bean 定义被刷新（`postProcessMergedBeanDefinition` 再次被调用，且 `InjectionMetadata.needsRefresh()`
+   为真，例如原型 Bean 的 `pvs` 变了）。
+
+所以它敢缓存：**注解是写在类上的，类不变，注入点就不变**。
+
+`@Configuration` 不同，它要重新解析，因为要处理的不是「类上的注解」而是「方法上的 `@Bean` 定义的**图纸**」——
+图纸是可以被 `BeanFactoryPostProcessor` 改的（第 10 章），也可能随 `@Profile`、`@Conditional` 变化（第 22 章）。
+缓存的是「解析结果」，而解析结果依赖运行期状态，所以不能跨环境复用。
+→ **第 21 章**（full vs lite）、**第 10 章**（图纸可被改）
+
+### B-11-4　如果 BPP 也设计成 `void`（不能替换对象），AOP 还能实现吗？
+
+不能，至少不能以现在这种方式。
+
+`void` 意味着后处理器只能**改**对象（改字段、改状态），不能**换**对象。而 AOP 代理必然是一个新对象：
+`GreetingService$$Proxy` 实例和 `GreetingService` 实例是两个不同对象。如果容器最后放进池里的
+永远是原始对象，那么调用方拿到的就是原始对象，切面无处安放。
+
+补充两点：
+1. 理论上可以「把代理的所有逻辑塞进原始对象的字段里」——那就是 CGLIB 之外的另一种实现思路，
+   但 Java 无法在语言层面把一个类的方法整体重定向，所以做不到。
+2. 返回值链还有个附加好处：**多个后处理器可以层层包装**（代理套代理），
+   `null` 语义又给了「我不管这个 Bean」的优雅表达。`void` 两者都给不了。
+→ **第 11 章**（3.5 节链式语义）、**第 26 章**
+
+### B-11-5　`@Autowired` 标在构造器上时，`postProcessProperties` 还有意义吗？
+
+没有——构造器执行时对象还不存在，属性填充阶段根本没开始。
+
+构造器注入走的是**另一条路**：`AutowireCandidateResolver` + `ConstructorResolver`。
+真实 Spring 在 `AbstractAutowireCapableBeanFactory#determineConstructorsFromBeanPostProcessors`（`:1227`）
+里问后处理器「这个类该用哪个构造器」，那一刻用的接口是 `SmartInstantiationAwareBeanPostProcessor`
+（`AutowiredAnnotationBeanPostProcessor` 也实现了它），返回的候选构造器交给
+`autowireConstructor` 去解析参数（第 04 章逐行看过的那段）。
+
+所以同一个后处理器，在**两个不同时刻**被问了两个不同的问题：
+- 造对象前：「你有推荐的无参之外的构造器吗？」
+- 填属性时：「这些字段里有要注入的吗？」
+
+这也解释了为什么 `@Autowired` 的构造器路径不需要 `postProcessProperties`：
+依赖在对象出生那一刻就已经是构造器参数了。
+→ **第 04 章**（构造器解析）、**第 19 章**（依赖决策链）
