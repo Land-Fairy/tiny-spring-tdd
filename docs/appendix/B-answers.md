@@ -813,3 +813,107 @@ if (!this.beanFactory.isSingleton("greeter")) {
 **一句话**：接口回答「别人能让我干什么」，继承回答「我自己怎么分工」。
 
 → **第 32 章**（真实 Spring 的五层继承链逐层展开）
+
+---
+
+## 第 07 章
+
+### B-07-1 不提供 `getFile()` 带来的麻烦，以及真实 Spring 怎么补
+
+**真实场景**：第 17 章的包扫描。`@Component` 扫描要遍历 `com.example.app` 这个包下**所有** `.class` 文件，最终必然落到 `File.listFiles()` 或 `Path` 遍历上——这件事只能对「目录」做，不能对「流」做。`ClassPathResource` 没有 `getFile()` 时，扫描器拿到的只是一个不透明的 `InputStream`，无从下手。
+
+**真实 Spring 的补法**是分层，而不是在 `ClassPathResource` 上无条件加 `getFile()`：
+
+1. `Resource` 接口声明 `getFile()`，同时声明 `isFile()`（默认 `false`）——**先问「我能不能当文件」，再动手**。
+2. `AbstractFileResolvingResource` 实现 `getFile()` 与 `isFile()`（404 行），处理 `file:` URL、`jar:` URL 内的条目、Windows 的 `file:./x` 等格式。
+3. 于是「jar 里的资源没有 `File`」这件事有了一个**可查询的答案**，而不是一个运行期异常。
+
+`PathMatchingResourcePatternResolver` 正是靠 `isFile()` 分支：是文件就遍历目录，不是文件就走 `JarURLConnection` 逐个读条目。**抽象没被破坏，因为「能当文件」被显式建模成了一个能力，而不是一个假设。**
+
+一句话总结：真实 Spring 不是「提供了 `getFile()`」，而是「提供了 `isFile()` 让调用方能先问」。
+
+### B-07-2 classpath 上有「没权限」吗？`false` 会造成什么
+
+**存在，但很窄**。三种情况：
+
+1. **jar 包本身不可读**（权限位 `000`，或所在目录无执行权限）——`getResourceAsStream` 会抛 `FileNotFoundException`／`IOException`，`AbstractResource.exists()` 吞掉后答 `false`。
+2. **安全沙箱**（`SecurityManager`，已废弃但仍在一些老应用服务器里）拦住了 `getResourceAsStream`。
+3. **jar 内条目损坏或 ZIP 结构错误**——`getResourceAsStream` 抛 `ZipException`。
+
+**后果**：`exists()` 答 `false`，于是上层认为「资源不存在」，做了一个**错误的降级决定**。具体到本章的场景，最坏的一条路是：
+
+```java
+	if (!resource.exists()) {
+		return DEFAULT_CONFIG;        // 静默用默认配置
+	}
+```
+
+于是「生产环境的 `beans.xml` 读不了」被伪装成「用户没配 `beans.xml`」，程序带着默认配置启动成功，行为全错。**这比直接崩在启动期糟糕得多**——故障从「看得见」变成「看不见」。
+
+这也是为什么本章在 1.4 节说「`exists()` 会静默地撒谎」是比 `null` 更隐蔽的问题：`null` 至少会在某处炸出一个 NPE，而 `exists()==false` 可能与真实情况完全无法区分。
+
+`FileSystemResource` 覆写 `exists()` 正是为了避开这一类：`Files.exists()` 不打开流，所以「没权限但有文件」答 `true`。`ClassPathResource` 做不到这一点——classpath 上没有「文件属性」这个概念可查（可能压根不是文件），只能开流。**这不是本书的简化，是 classpath 抽象的固有局限。**
+
+### B-07-3 手写正则会判错、`URL` 构造器判对的例子
+
+**例子：`jar:file:/opt/app/lib/x.jar!/conf/beans.xml`**
+
+手写正则最常见的是 `^[a-zA-Z][a-zA-Z0-9+.-]*:`，它**能**识别 `jar:`。所以换一个更典型的：
+
+**例子：Windows 路径 `C:/conf/beans.xml`**（或 `C:\conf\beans.xml`）
+
+- 手写正则：`C:` 完全符合 `<scheme>:` 的形状 → 判成「有协议」，于是走 URL 分支 → `new URL("C:/conf/beans.xml")` 在真实 JVM 上抛 `MalformedURLException: unknown protocol: c` → **最终失败**。
+- `new URL(...)` 自己判：同样抛 `MalformedURLException` → 落进 `catch`，被当成 classpath 路径。
+
+两者在这个例子上结论**相同**，但手写正则的版本是「先判成 URL、再去构造 URL、构造失败」，多一次失败路径；而更糟的是另一种情况：
+
+**例子：`classpath:ch07/app.properties`**
+
+- 手写正则：`classpath:` 完全符合 `<scheme>:` → 判成 URL → `new URL("classpath:...")` 抛 `MalformedURLException: unknown protocol: classpath`。
+- 结果一样会落到 `catch`。**但如果正则判断被用来「提前决定分支」，就会跳过「先查 `classpath:` 前缀」这条特例**——而这条特例正是本章 2.3 节那个红要教的东西。
+
+**为什么这里的异常是「权威判据」而不是「流程控制」**：
+
+「一个字符串是不是合法 URL」这个问题，Java 里的**唯一权威**就是 `new URL(s)` 的成功与否。它背后是一套协议注册表（`URL` 的 `protocol` 查找走 `URLStreamHandlerFactory` + `java.protocol.handler.pkgs` 属性），第三方可以注册新协议。任何用手写正则或手写白名单的替代品，都会在「有人注册了新协议」时判错。
+
+判断某件事是否属于「权威判据式异常」的标准是三条：
+
+1. 这个 API 的成功路径**本身就产出你要的东西**（`new URL` 产出的正是需要的 `URL` 对象）；
+2. 「失败」的原因只有一种且无需区分（这里只有 `MalformedURLException`）；
+3. 没有等价的布尔查询方法（`URL` 没有 `URL.isValid(String)`）。
+
+三条全中 → 用异常做分支是对的。反例：`File.exists()` 就有布尔版本，所以「用 `try { new FileInputStream(f) } catch { ... }` 判断文件存在」才是坏代码。
+
+### B-07-4 `null` 与异常的判断规则
+
+一条规则：
+
+> **`null` 表示「这个属性不适用于本对象」；异常表示「这次操作没能完成」。**
+> 换个说法：问「谁的属性」用 `null`，问「做成了吗」用异常。
+
+对照本章两处：
+
+| 调用 | 问题类型 | 答案 |
+| --- | --- | --- |
+| `ByteArrayResource.getFilename()` | 「你有文件名吗？」——问的是**对象的属性** | 没有 → `null`。内存里的字节数组**天然**没有名字，这不是失败 |
+| `ClassPathResource.getInputStream()` | 「流给我了吗？」——问的是**操作是否完成** | 没完成 → 抛 `FileNotFoundException` |
+
+三个可操作的推论：
+
+1. **`Optional` 比 `null` 更适合「属性可能不适用」**，但 `getFilename()` 留在 `null` 是因为接口要跟真实 Spring 对齐（真实 `Resource#getFilename` 的 Javadoc 明说「return the filename, or {@code null}」）。
+2. **集合返回值永远不要用 `null` 表示「空」**——空集合是「操作成功、结果为零」，用 `Collections.emptyList()`。
+3. **凡是调用方无法自己补齐信息的失败，必须抛异常**。「资源不存在」调用方补不齐（它不知道 `class path` 还是 `file`），所以必须由资源自己抛并带上 `getDescription()`。
+
+### B-07-5 `isEqualTo` 那条断言漏掉会怎样
+
+去掉 `assertThat(fromFile).isEqualTo(fromClasspath)`、只保留「两个都能读」会漏掉三类 bug：
+
+**一、编码相关的 bug。** `ClassPathResource` 与 `UrlResource` 如果一条路用 `StandardCharsets.UTF_8`、另一条用平台默认编码（`new InputStreamReader(in)`），那么在同一台机器上中文内容可能都「能读出来」，但**只有一条路的 `greeting.prefix=你好，` 是对的**。断言里 `contains("greeting.prefix=Hello,")` 只查 ASCII 前缀，永远不会红；`isEqualTo` 会因为值不同而红。
+
+**二、行尾与 BOM 相关的 bug。** `Files.newInputStream` 与 `URLConnection.getInputStream` 对同一个文件给出的字节是相同的，但如果 `FileSystemResource` 走的是 `Files.readString`（会处理 BOM）而 `UrlResource` 用的是原始流（BOM 会变成 `\uFEFF` 留在第一行的 key 里），两边的 `Map` 的 key 就不同：一个是 `greeting.prefix`，另一个是 `\uFEFFgreeting.prefix`。两边都「能读出内容」，但只有 `isEqualTo` 会红。
+
+**三、解析细节的偏差。** 本章 `parse()` 特意保留值里的尾随空格（`"greeting.prefix" → "Hello, "`）。如果哪条路顺手 `trim()` 了整行，值会变成 `"Hello,"`——`containsKey` 仍然通过，`isEqualTo` 红。
+
+这三类的共同特征：**它们都不是「读不到」，而是「读到了不一样的东西」**。`contains` 这类弱断言天生只能验证「有没有」，验证不了「一样不一样」。所以本章的验收断言必须是相等性断言。
+
+这也是 `CODE-STANDARDS.md` 里那条「测试要钉住行为而不是钉住不崩溃」的具体体现。

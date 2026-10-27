@@ -59,7 +59,7 @@
 | [04](docs/chapters/04-constructor-injection.md) | 反射实例化：构造器参数名匹配 | 不用 CGLIB 也能做构造器注入（[ADR-0002](docs/adr/0002-no-cglib.md)） |
 | [05](docs/chapters/05-property-injection.md) | 属性填充与依赖注入 | `PropertyValue` → `populateBean`，内省找 setter |
 | [06](docs/chapters/06-bean-factory-hierarchy.md) | BeanFactory 的接口分层 | 为什么 `Listable` / `Hierarchical` / `AutowireCapable` 要拆开 |
-| 07 | Resource 抽象 | 一个接口统一 classpath / file / URL / 字节数组 |
+| [07](docs/chapters/07-resource.md) | Resource 抽象 | 一个接口统一 classpath / file / URL / 字节数组 |
 | 08 | XML 解析与 BeanDefinitionReader | 从配置文件读出图纸 |
 
 ### 第 2 部 · 上下文与生命周期　`milestone: v0.2`

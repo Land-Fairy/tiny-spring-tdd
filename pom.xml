@@ -72,6 +72,7 @@
 		<module>step-04-constructor-injection</module>
 		<module>step-05-property-injection</module>
 		<module>step-06-bean-factory-hierarchy</module>
+		<module>step-07-resource</module>
 	</modules>
 
 	<dependencyManagement>
