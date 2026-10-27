@@ -54,7 +54,7 @@
 
 | 章 | 主题 | 你会得到 |
 |---|---|---|
-| 02 | BeanDefinition：容器的元数据模型 | 容器存的不是对象，是"造对象的图纸" |
+| [02](docs/chapters/02-bean-definition.md) | BeanDefinition：容器的元数据模型 | 容器存的不是对象，是"造对象的图纸" |
 | 03 | 注册表与单例池（含线程安全） | `BeanDefinitionRegistry` + `SingletonBeanRegistry` |
 | 04 | 反射实例化：构造器参数名匹配 | 不用 CGLIB 也能做构造器注入（[ADR-0002](docs/adr/0002-no-cglib.md)） |
 | 05 | 属性填充与依赖注入 | `PropertyValue` → `populateBean` |

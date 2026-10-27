@@ -129,3 +129,138 @@ EnglishGreeter.class.isInstance(proxy)     // false —— 具体类没了
 
 → **第 24 章**（JDK 动态代理）、**第 26 章**（代理在哪一步产生）、
 **第 27 章**（代理对象的属性填充，这个坑的正身）。
+
+---
+
+## 第 02 章
+
+### B-02-1　为什么 `isSingleton()` 把空串也算成单例，而不直接把默认值写成 `"singleton"`？
+
+**答**：因为图纸在注册那一刻**还不知道**自己的作用域。
+
+一张 `ChildBeanDefinition` 的作用域可能要从父定义继承过来。如果默认值写成 `"singleton"`，
+那么「没声明作用域」和「声明了单例」就是同一个值，继承逻辑无法区分这两件事——
+它会把「本该从父定义继承 prototype」的子定义误判成显式单例。
+
+所以真实 Spring 用 `SCOPE_DEFAULT = ""` 表示「未定」，并让 `isSingleton()` 在未定时**先按单例算**：
+
+```java
+return SCOPE_SINGLETON.equals(this.scope) || SCOPE_DEFAULT.equals(this.scope);
+```
+
+后果是：容器在任何时刻都不会看到「既不是单例也不是原型」这个没人处理的状态（除了 `null`，
+见下一题）。这是一个典型的**用「偏向安全的默认值」换「状态机不留空洞」**的设计。
+
+→ **第 08 章**（父子定义与继承）、**第 14 章**（作用域的真正生效点）。
+
+### B-02-2　`setScope(null)` 之后图纸既不是单例也不是多例，`doGetBean` 会走哪条分支？
+
+**答**：走 `else` 分支——也就是「既不是单例、也不是原型」的那条**兜底分支**。
+
+真实 `AbstractBeanFactory#doGetBean` 的分支链是这样的（`AbstractBeanFactory.java`）：
+
+```java
+if (mbd.isSingleton()) {                                              // :337  从单例池取，或创建后放入
+	...
+}
+else if (mbd.isPrototype()) {                                         // :354  每次都新建
+	...
+}
+else {                                                                // :365  自定义作用域
+	String scopeName = mbd.getScope();
+	if (!StringUtils.hasLength(scopeName)) {
+		throw new IllegalStateException("No scope name defined for bean '" + beanName + "'");  // :368
+	}
+	Scope scope = this.scopes.get(scopeName);
+	if (scope == null) {
+		throw new IllegalStateException("No Scope registered for scope name '" + scopeName + "'");
+	}
+	...
+}
+```
+
+第三个分支本来是给 `request`、`session`、`application` 这类自定义作用域准备的。
+`scope = null` 时前两个判断都是 `false`，于是掉进 `else`；而 `StringUtils.hasLength(null)`
+为 `false`，所以**在查作用域表之前就被拦下**，抛出的是
+`No scope name defined for bean 'x'`——**不是** `No Scope registered for scope name 'null'`。
+
+这两个消息是两种不同的失败，别混：
+
+| 作用域的值 | 抛出的消息 | 含义 |
+| --- | --- | --- |
+| `null` | `No scope name defined for bean 'x'` | 图纸上根本没写作用域名（脏数据） |
+| `"request"` 但未注册 | `No Scope registered for scope name 'request'` | 写了名字，但这个环境里没有该作用域（比如非 Web 环境） |
+
+**结论**：`setScope(null)` 不是「清空」，而是「把作用域设成一个连名字都没有的状态」。
+想清空请用 `SCOPE_DEFAULT`（空串）——空串在第 02 章第一节就会被 `isSingleton()` 接走，
+根本走不到这个分支。这条在真实代码里没有任何防御，全靠约定。
+
+→ **第 14 章**（作用域与 `Scope` 接口）。
+
+### B-02-3　`beanClass` 字段为什么是 `Object` 而不是 `String`？
+
+**答**：因为图纸有**两个入口**，而它们塞进来的是不同类型。
+
+- 配置驱动（XML / properties）拿到的是字符串：`"com.example.Foo"`
+- 代码驱动（`@Bean` 方法、测试、程序化注册）拿到的是 `Class` 对象：`Foo.class`
+
+如果字段是 `String`，第二条路就得先 `getName()` 再存，看起来也行——但会丢掉一个能力：
+**「这个类型是否已经被加载」这个信息**。存 `Class` 意味着类已经加载且校验过；
+存 `String` 意味着还没加载。真实 Spring 靠 `hasBeanClass()` 区分这两种状态
+（`AbstractBeanDefinition.java:485`），并据此决定要不要走 `resolveBeanClass(ClassLoader)`
+（`:498`）——那一步会涉及类加载器选择、`ClassUtils.forName` 的数组类型语法（`[Ljava.lang.String;`）等一堆细节。
+
+用 `Object` 一个字段吃下两种形态，再由 `getBeanClassName()` 统一成「类名」这一个视图，
+是**用一次类型不安全换取零信息损失**。代价是那句强制转换——所以真实字段才要 `volatile`
+并且取出来先赋给局部变量（`Object beanClassObject = this.beanClass;`）再判断。
+
+→ **第 04 章**（参数名与 `ClassUtils`）、**第 08 章**（XML 解析产出的正是字符串形态）。
+
+### B-02-4　`ConcurrentHashMap` 在单线程注册的场景下有代价吗？为什么真实 Spring 还是选了它？
+
+**答**：有代价，但代价小到可以忽略，而收益是「不需要在架构上禁止并发」。
+
+代价有三项：
+
+1. **内存**：每个 `ConcurrentHashMap` 有自己的 `Node` 数组和计数器，比 `HashMap` 多一点。
+2. **单次写慢一点**：`put` 要做 CAS 或桶级加锁。启动时注册几千个定义，多出的时间在毫秒量级。
+3. **弱一致性迭代**：`keySet().toArray()` 拿到的是快照式视图，迭代期间别的线程注册不会抛
+   `ConcurrentModificationException`，但也不保证看到全部。
+
+真实 Spring 选它的理由是**使用场景不受控**：用户可能在任意线程调用 `getBean`，
+甚至可能在运行时通过 `registerSingleton` / 动态注册定义。框架不能假设「只有启动阶段单线程」，
+所以它在数据结构层面就把这个假设去掉了。
+
+本章的诚实结论是：**`ConcurrentHashMap` 只保证了「这张表本身」线程安全，
+没有保证「基于这张表的两步操作」线程安全**——`get` 到 `null` 然后 `put` 一个新对象，
+中间另一个线程可能也 `get` 到 `null`。第 03 章的单例池正是撞在这上面。
+
+→ **第 03 章**（为什么需要单独的锁）、**第 31 章**（并发模型与 `ObjectFactory`）。
+
+### B-02-5　`createBean` 里为什么先查 `beanClassName == null`？
+
+**答**：因为 `Class.forName(null)` 抛出的 `NullPointerException` **连消息都没有**。
+
+这不是修辞。在 JDK 21 上实测（`Class.forName(null)` 直接放在 `try` 里）：
+
+```
+java.lang.NullPointerException: null
+```
+
+冒号后面是**空**的——`getMessage()` 返回 `null`。用户拿到的全部信息就是「空指针了」，
+既不知道是哪个 Bean，也不知道缺什么。而加了检查之后：
+
+```
+java.lang.IllegalStateException: Bean definition for 'counter' has no bean class name
+```
+
+一句话同时给出了**哪个 Bean**（`counter`）、**缺什么**（类名）、**这是哪类问题**
+（容器状态不完整，不是空指针）。这就是「前置校验」的全部价值——
+把内部异常翻译成领域语言。
+
+真实 Spring 里对应的是 `AbstractAutowireCapableBeanFactory#resolveBeanClass` 抛出的
+`CannotLoadBeanClassException`，消息里同样带 beanName 和类名。第 33 章会把这一整套
+「异常消息该怎么写」摊开讲：`BeanCreationException` 的构造函数里专门留了 `beanName` 和
+`resourceDescription` 两个槽位，就是为了让消息能自己说清「谁、在哪、缺什么」。
+
+→ **第 33 章**（异常体系与排错）。
