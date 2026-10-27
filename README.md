@@ -91,7 +91,7 @@
 
 | 章 | 主题 | 你会得到 |
 |---|---|---|
-| 24 | JDK 动态代理原理（含字节码落盘） | `$Proxy0` 长什么样 |
+| [24](docs/chapters/24-jdk-proxy.md) | JDK 动态代理原理（含字节码落盘） | `$Proxy0` 长什么样 |
 | 25 | Pointcut / Advice / Advisor | Spring AOP 的基本单元是 Advisor，不是"切面类" |
 | 26 | 织入生命周期：AutoProxyCreator | 代理在哪一步产生 |
 | 27 | 代理对象的属性填充 | 注入的到底是代理还是目标？ |

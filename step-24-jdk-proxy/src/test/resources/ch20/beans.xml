@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+	<bean id="greetingService" class="org.springframework.samples.ch20.GreetingService"/>
+
+	<bean id="typeProbe" class="org.springframework.samples.ch20.TypeProbe"/>
+
+	<bean id="optionalHolder" class="org.springframework.samples.ch20.OptionalHolder"/>
+
+	<bean id="autowiredProcessor"
+		  class="org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor"/>
+
+</beans>

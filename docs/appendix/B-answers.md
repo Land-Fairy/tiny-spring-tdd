@@ -2626,3 +2626,126 @@ catch (ConversionFailedException | ConverterNotFoundException ex) {
 原因正是「语义分类」的副作用：`IllegalArgumentException` 这个名字太宽，`setPropertyValue` 里任何一处抛出的参数错误都会被当成「转换失败」包成 `TypeMismatchException`，把真正的原因埋进 cause 里。真实 Spring 之所以要单独造一层 `ConversionException`，就是为了拿到一个**只覆盖转换这一族**的父类型 —— 宽，但不至于宽到误捕。
 
 这就是两种分类的取舍：语义分类（入参不合法）读起来自然，但借用了别人也在用的类型；分层分类（转换失败）多一个抽象类，换来一个专属的 catch 边界。真实 Spring 选了后者，本书因为「已经有一条现成的 `IllegalArgumentException` 链」而选了前者 —— 代价写进了缺陷表第 11 条。
+
+## 第 24 章
+
+### B-24-1 代理对象的 `equals` 该返回什么
+
+先把问题拆开：`p.equals(t)` 与 `t.equals(p)` 是**两次不同的调用**，它们各自落到谁身上？
+
+- `p.equals(t)`：`equals` 声明在 `Object` 上，代理类覆写了它，于是进 handler。我们的实现（无拦截器时
+  `method.invoke(this.target, args)`）会把它转发成 `t.equals(t)` —— 因为参数里那个 `t` 被原样传给了目标
+  对象自己，而 `Object.equals` 是引用比较，`t == t` 为真，返回 `true`。
+- `t.equals(p)`：`t` 是普通对象，直接走它自己的 `equals`。`Object.equals` 拿引用比，`t != p`，返回 `false`。
+
+于是 **`p.equals(t) == true` 而 `t.equals(p) == false`，对称性被破坏**。这不是"实现得不够好"，而是
+"把 `equals` 无脑转发给目标"这个策略自带的矛盾：代理说"我就是目标"，目标说"我不认识你"。
+
+真实 Spring 的做法是**不让这种矛盾发生**。`JdkDynamicAopProxy#invoke`（`:175`）只在
+`!this.cache.equalsDefined` 时才接管 `equals`；而 `equalsDefined` 是**扫描被代理的接口**得出的
+（`ProxiedInterfacesCache` 构造器里，`:336-350` 遍历 `proxiedInterfaces` 的 `getDeclaredMethods()`，
+看有没有接口自己声明了 `equals`）。也就是说：
+
+- 如果接口自己声明了 `equals`，那是业务语义，Spring 把调用转发给目标；
+- 如果接口没声明，那 `equals` 就是 `Object` 的引用比较语义，改由 `JdkDynamicAopProxy#equals`（`:265`）
+  处理，规则是 `other == this` 或"两个代理的 advised 配置等价"
+  （`AopProxyUtils.equalsInProxy`，`:227`：被代理接口数组相等 + advisors 相等 + TargetSource 相等）。
+
+注意这个规则跟"目标对象的 `equals`"完全无关。原因很实际：**代理对象的身份取决于它的配置，而不是它的目标**。
+两个代理指向同一个目标、但切面不同，它们就是两个不同的东西。
+
+另外 `hashCode`（`:297`）也遵循同样思路：`JdkDynamicAopProxy.class.hashCode() * 13 +
+this.advised.getTargetSource().hashCode()`，跟目标对象的 `hashCode` 无关。
+
+### B-24-2 `getClass()` 拦不到、`toString()` 拦得到，为什么
+
+`getClass()` 在 `Object` 上声明为 `public final native Class<?> getClass()`。`final` 意味着**任何子类都不能
+覆写**，代理类 `extends Proxy`、`Proxy` 也没覆写它，所以这个调用直接在 `java.lang.Object` 的方法体里执行，
+字节码里根本没有进 handler 的入口。`javap -p` 的输出里也找不到它 —— 那里只有 `equals`/`hashCode`/
+`toString` 三个 `Object` 方法和业务接口方法。
+
+`toString()` 不是 `final`，所以代理类能覆写（`javap -p` 里明明白白列着
+`public final java.lang.String toString();`）。注意它自己带 `final`——那是**代理类的**方法加了 `final`，
+防止你继承代理类再改，跟"能不能覆写 `Object.toString`"不是一回事。
+
+这对"用代理做懒加载/远程调用"有三层意味：
+
+1. **不能用 `proxy.getClass()` 判断真实类型**，它永远返回 `$ProxyN`。真实类型要用
+   `AopUtils.getTargetClass(proxy)`（内部拆 `TargetClassAware`、`Advised#getTargetSource`）。
+2. **`proxy.getClass()` 不会触发任何副作用**，但 `proxy.toString()` 会进 handler —— 所以如果你在 handler 里
+   做"初始化真实对象"，一句日志（`log.info("{}", proxy)`）就把懒加载提前了。这是个经典事故。
+3. `equals`/`hashCode` 进 handler 意味着：把代理对象当 `HashMap` 的 key 时，走的是 handler 的逻辑
+   （我们的实现转发给目标，真实 Spring 用"配置等价"），两种实现不能混用同一个 map。
+
+### B-24-3 `final class` 实现了接口，两种代理分别怎样
+
+**JDK 动态代理：能。** 因为它生成的类 `extends java.lang.reflect.Proxy` 并 `implements` 你的接口 ——
+它是"另造一个实现类"，**不是目标的子类**。目标类是不是 `final` 完全无关；目标类的方法是不是 `final`
+也无关（代理类调的是接口方法，接口方法在实现类里即便 `final` 也能被虚分派到）。
+
+**CGLIB：不能。** CGLIB 生成的是目标类的子类。JVM 层面 `final class` 不允许继承，字节码校验会直接拒绝
+（`VerifyError` / CGLIB 报 `Cannot subclass final class`）。同理，`final` 方法不能被覆写 —— Spring 遇到
+`final` 方法时会**静默漏拦**（它不能为了一个方法放弃整个代理），这是"我的切面为什么对某个方法不生效"的
+最常见原因之一（第 28 章会专门讲失效场景合集）。
+
+所以 `final class` 恰好是"JDK 代理能、CGLIB 不能"的场景。这也是 Spring 默认优先 JDK 代理的一条隐含理由。
+
+### B-24-4 多个拦截器的最小改动
+
+`JdkDynamicAopProxy` 现在只有一个 `InvocationHandler interceptor` 字段。改成链，`getProxy()` **一行都不用动**
+（第 3.2 节留的伏笔），只需在 `invoke` 里加一个"按下标递归"的私有方法：
+
+```java
+@Override
+public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+	return invokeChain(0, proxy, method, args);
+}
+
+private Object invokeChain(int index, Object proxy, Method method, Object[] args) throws Throwable {
+	if (index == this.interceptors.size()) {
+		try {
+			return method.invoke(this.target, args);      // 链尾：真正的业务调用
+		}
+		catch (InvocationTargetException ex) {
+			throw ex.getTargetException();
+		}
+	}
+	InvocationHandler current = this.interceptors.get(index);
+	return current.invoke(proxy, method, args,
+			(p, m, a) -> invokeChain(index + 1, p, m, a));   // 传给下一个
+}
+```
+
+真实 Spring 没有这么做，理由是 `InvocationHandler.invoke(Object, Method, Object[])` 这个签名**缺三样东西**：
+
+1. **没有"往下走"的入口**。想继续，只能把下一个 handler 作为构造参数塞进来 —— 于是每个拦截器都要知道
+   "下一个是谁"，链的顺序变成对象的构造顺序，无法用 `Ordered`/`@Order` 在运行期排序（第 16 章那套排序
+   机制用不上）。
+2. **没有上下文对象**。拦截器常要改参数、改返回值、读方法上的注解、拿目标对象、拿代理对象。为了做这些
+   它必须先反射一次（拿到参数类型、注解），而 JDK 只给它一个裸的 `Method`。Spring 定义了
+   `MethodInvocation`：`getMethod()`、`getArguments()`、`getThis()`、`proceed()`、`getTarget()` 全在里面。
+3. **无法适配 CGLIB**。CGLIB 的 `MethodInterceptor#intercept(obj, method, args, proxy)` 是另一套签名。
+   Spring 让两条技术路线都产出一个 `MethodInvocation`，于是切面代码（`MethodInterceptor`）两边通用 ——
+   这就是"接口决定依赖方向"的又一例。
+
+顺带一句：`ReflectiveMethodInvocation.proceed()` 里有个 `currentInterceptorIndex` 计数器，作用跟我们上面
+那个 `index` 参数一模一样。我们这十几行，是它 297 行里 `proceed()`（`:162`、`:167`）的核。
+
+### B-24-5 `UndeclaredThrowableException` 何时出现，为什么是 checked
+
+**出现条件**（看第 5.4 节那张 Exception table）：handler（或它调用的代码）抛出一个
+**受检异常**，而这个异常既没在**接口方法的 `throws`** 里声明、也不是 `Error` / `RuntimeException`。
+后两类原样抛出（table 的前两行），其余 `Throwable` 被包成 `UndeclaredThrowableException`（第三行 → 26 号指令）。
+
+**为什么是 checked**：因为它是"代理机制的产物"，不是业务概念。代理对调用方的隐含承诺是"我抛出的异常都在
+方法签名里"，一旦这条兑现不了，就必须让调用方**被迫**看见 —— 如果它是 unchecked，调用方连
+`catch (Exception)` 都不一定写，异常会静默穿透到线程顶层。Java 的异常分类规则在这里被用来强制
+"契约被破坏必须显式暴露"。
+
+**接口声明了 `throws IOException` 呢**：`IOException` 会原样抛出（不包装），其它未声明的受检异常仍会被包。
+换句话说，包装与否的判断依据是**接口方法的签名**，不是目标方法的签名 —— 这也是为什么"目标方法偷偷多抛了
+一个受检异常"会在代理层炸成 `UndeclaredThrowableException`，而直接调用目标时编译期就会拦住你。
+
+**实践含义**：写拦截器时不要抛新的受检异常。真实 Spring 在 `AopUtils.invokeJoinpointUsingReflection`
+（`:367`）遇到 `IllegalArgumentException` 时抛的是 `AopInvocationException` —— 一个
+`RuntimeException`，正是为了不惊动这条 checked 规则。

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+	<!--
+		注意声明顺序：stamp(2)、audit(1)、tag(PriorityOrdered 999)。
+		如果容器「按声明顺序执行」，结果会是 "hello [stamp] [audit] [tag]" —— 审计拿到的是中间结果。
+		排序做对之后：tag 先跑（PriorityOrdered 压过所有 Ordered），再按数值 audit(1)、stamp(2)，结果才是 "hello [tag] [audit] [stamp]"。
+	-->
+	<bean id="stampProcessor" class="org.springframework.samples.ch16.StampingPostProcessor"/>
+	<bean id="auditProcessor" class="org.springframework.samples.ch16.MarkingPostProcessor"/>
+	<bean id="tagProcessor" class="org.springframework.samples.ch16.TaggingPostProcessor"/>
+
+	<bean id="greeter" class="org.springframework.samples.ch16.PlainGreeter"/>
+
+</beans>
