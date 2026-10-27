@@ -81,7 +81,7 @@
 |---|---|---|
 | [17](docs/chapters/17-classpath-scanning.md) | 包扫描：ASM 元数据 vs 反射 | `@ComponentScan` 底层在扫什么 |
 | [18](docs/chapters/18-resource-pattern.md) | `PathMatchingResourcePatternResolver` | 包扫描的底层是 ant 路径匹配 |
-| 19 | `@Autowired` / `@Qualifier` / 类型匹配决策链 | 90% 的 `NoUniqueBeanDefinitionException` 死在这里 |
+| [19](docs/chapters/19-autowire-candidates.md) | `@Autowired` / `@Qualifier` / 类型匹配决策链 | 90% 的 `NoUniqueBeanDefinitionException` 死在这里 |
 | 20 | `@Value` 与 `DependencyDescriptor` | 字段注入的元数据长什么样 |
 | 21 | `@Configuration` + `@Bean`：full vs lite | 配置类方法互相调用为什么返回同一实例 |
 | 22 | `@Import` / `@Conditional` / `@Profile` / `@Lazy` | 条件装配思想（不讲 Boot，只讲机制） |

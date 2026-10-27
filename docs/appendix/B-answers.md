@@ -2083,3 +2083,96 @@ protected AntPathStringMatcher getStringMatcher(String pattern) {
 指向的东西——**性能缺陷不报错，只是慢**，最容易在重构时被一起改掉。
 
 → **第 18 章**（缺陷表）／**第 31 章**（并发模型）
+
+## 第 19 章
+
+### B-19-1 把名字匹配和优先级对调，哪个测试会红？
+
+`nameMatchOutranksPriority` 会红。样本 `ShadowHolder` 的字段名是 `germanTranslator`，
+两个候选 `frenchTranslator`（`@Order(1)`）与 `germanTranslator`（`@Order(2)`）。
+按真实顺序选名字对得上的 `germanTranslator`；顺序对调后优先级先跑，选 `frenchTranslator`，
+断言失败：
+
+```
+expected: "Hallo"
+ but was: "Bonjour"
+```
+
+如果 `germanTranslator` 上没有 `@Order`，`orderOf` 返回 `null`，优先级那一步只在
+**所有候选都没有顺序**时才放弃，于是 `best == null`，仍会落到名字匹配——结果碰巧一样。
+所以这个测试必须让两个候选**都有** `@Order`，才能把顺序差异暴露出来。
+
+### B-19-2 `orderOf` 返回 `null` 而不是 `LOWEST_PRECEDENCE`，救回了什么？
+
+救回 `fieldNameIsTheLastResort`。该样本 `AmbiguousHolder` 有两个候选：`userRepository` 与
+`orderRepository`，都没标 `@Order`，字段名是 `orderRepository`。
+
+- 若「没标」视作 `LOWEST_PRECEDENCE`：两个都等于 `2147483647`，`tied.size() == 2`，
+  `highestPriority` 直接抛 `NoUniqueBeanDefinitionException`，名字匹配永远没机会跑。
+- 返回 `null` 时两个都跳过，`best == null`，函数返回 `null`，决策链继续走到名字匹配，正确注入。
+
+关键区别是语义：「没有优先级」和「优先级并列最低」不是同一件事。用同一个值表示两者，
+会把「未声明」误判成「冲突」。
+
+### B-19-3 为什么 `List<Greeter>` 注入全部候选，空集合该报错吗？
+
+因为集合注入绕过了决策链——调用方要的是「所有能配上的」，不存在「选一个」的问题。
+真实 Spring 在 `doResolveDependency` 里第一件事就是调 `resolveMultipleBeans`（:1726），
+消歧还没开始。
+
+**零候选时真实 Spring 会报错**，而且细节反直觉：
+
+```java
+// resolveMultipleBeanCollection
+Map<String, Object> matchingBeans = findAutowireCandidates(...);
+if (matchingBeans.isEmpty()) {
+    return null;                       // 注意：不是返回空集合
+}
+```
+
+返回 `null` 意味着「集合注入这条路没给出结果」，控制权回到 `doResolveDependency`，
+最终走到 `raiseNoMatchingBeanFound`：
+
+```
+No qualifying bean of type 'com.acme.Greeter' available:
+expected at least 1 bean which qualifies as autowire candidate.
+```
+
+也就是说 `@Autowired List<Greeter>` 在容器里**一个 `Greeter` 都没有时启动就失败**。
+`required=false` 时则返回 `null`，字段保持 `null`（不是空列表）。
+
+这个设计值得理解：`required=true` 的语义是「这个依赖必须被满足」，
+而「空集合」并没有满足依赖——它只是把一个明显的配置错误推迟到运行时空指针。
+本书简化成返回空集合（见第 3.3 节），代价是丢失了这个早期失败。
+
+### B-19-4 `@Qualifier` 写错名字抛哪个异常？
+
+抛 `NoSuchBeanException`，不是 `NoUniqueBeanDefinitionException`。
+
+原因是 `@Qualifier` 不是决策链的一步，而是**候选集合的构造条件**：真实 Spring 在
+`findAutowireCandidates` → `isAutowireCandidate(beanName, descriptor)` → `checkQualifiers`
+阶段就把不匹配的候选排除了，决策链看到的是「零个候选」。
+
+两种错误消息因此不同：
+
+```
+expected at least 1 bean which qualifies as autowire candidate   ← 零个候选
+expected single matching bean but found 2: a, b                  ← 多个候选，消不掉
+```
+
+排障意义极大：看到 `at least 1` 去查名字拼写与注解位置，看到 `single` 去加 `@Primary` 或改字段名。
+**把这两种病混成一个异常，等于把分诊点删掉。**
+
+### B-19-5 「两个 `@Primary`」该宽容还是该严格？
+
+- **宽容更好**的场景：大型多人项目里，某模块把实现类临时标了 `@Primary` 做实验，忘了删，
+  而调用方另有 `@Qualifier` 兜底。严格模式下整个上下文起不来，所有人被一个人阻塞；
+  宽容模式下 `@Qualifier` 能救回来，实验代码在下次 review 时被发现。
+- **严格更好**的场景：库作者发布 SDK，两个实现都标了 `@Primary`。这时用户无从判断哪个是默认，
+  宽容模式会让行为依赖注册顺序——**不可预测比崩溃更坏**。
+
+真实 Spring 选严格，因为它服务于「框架」这个角色：配置错误必须尽早、明确地失败。
+本书选宽容，因为它服务于「教学」这个角色：让读者先看到完整决策链跑完的样子，
+再在 5.3 节理解真实框架为什么不肯放过。
+
+项目里该选哪个，取决于你的代码是**被自己人消费**（宽容 + 日志警告）还是**被外部消费**（严格抛错）。

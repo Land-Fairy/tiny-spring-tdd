@@ -84,6 +84,7 @@
 		<module>step-16-ordered</module>
 		<module>step-17-classpath-scanning</module>
 		<module>step-18-resource-pattern</module>
+		<module>step-19-autowire-candidates</module>
 	</modules>
 
 	<dependencyManagement>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+    <bean id="audience" class="org.springframework.samples.ch11.ConsoleAudience"/>
+
+    <bean id="greetingService" class="org.springframework.samples.ch11.GreetingService"/>
+
+    <bean id="recorder" class="org.springframework.samples.ch11.Recorder"/>
+
+    <bean id="recordingProcessor" class="org.springframework.samples.ch11.RecordingBeanPostProcessor"/>
+
+</beans>
