@@ -2421,3 +2421,129 @@ return cglibMethodProxy.invokeSuper(enhancedConfigInstance, beanMethodArgs);   /
 3. 更麻烦的是**注入路径**：允许 `null` 意味着字段注入可以把 `null` 塞进一个非 `@Nullable` 的字段，然后在下一次方法调用时炸，栈里完全没有「这个 Bean 是 `null`」的信息。
 
 所以真实 Spring 的规则是分档的：**单例不允许 `null`（抛 `BeanInstantiationException`），prototype 允许**。这条规则背后是一个更普遍的判断——**「唯一性」越强的位置，`null` 越应该当场变成错误**。同样一条规则在 `@Value` 上重演：`isRequired()` 为 `true` 时值缺失当场报错，为 `false` 时才允许「什么都没有」。
+
+## 第 22 章
+
+### B-22-1 条件为什么必须在图纸阶段判断？
+
+**图纸阶段判断的理由有三条，一条比一条致命。**
+
+第一条是**查询的谎言**。条件在创建阶段才判的话，图纸还在，于是 `getBeanNamesForType(TrackedBean.class)` 会返回那个名字；调用方（人或 `@Autowired` 的候选过滤）会把它算进候选。等到真正创建时才抛异常——抛在工厂方法体里，栈里全是 `ConstructorResolver` / `SimpleInstantiationStrategy`，看起来像「这个方法写错了」，而方法本身是对的。
+
+第二条是**副作用不可撤销**。走到创建阶段意味着构造器已经跑过、`BeanPostProcessor` 已经施加过、`InitializingBean` 已经调过。此时说「不该创建」，只能销毁——而销毁回调本身也可能有副作用（关连接、提交事务）。**判断越晚，代价越大。**
+
+第三条是**信息已经变了**。条件大多要问环境或问图纸（`Environment`、别的配置类、profile）。环境的可变部分（`setActiveProfiles`）在图纸阶段之后还可能被改；图纸表在创建阶段已经被别的 `BeanFactoryPostProcessor` 改过。**同一个条件在两个阶段可以有不同答案**——这正是真实 Spring 要引入 `ConfigurationPhase` 的原因，而不是它没想到「一次判完就好」。
+
+**反例。** `@Conditional` 为假但图纸留着，注入点写成 `@Autowired List<TrackedBean> beans`：容器把假货算进候选，创建时整批失败，栈顶是「第 3 个候选创建失败」，而第 3 个其实压根不该存在。
+
+**能不能在 `getBean` 里再判一次条件来救？** 不能，三个理由：① `preInstantiateSingletons` 遍历图纸时照样会调 `getBean`，除非那里也判——那就变成「两处都要判」，条件写两遍；② 「名字存在」这个谎言已经散播给所有查询者（按类型查、`@Qualifier` 匹配、`getBeanNamesForType`），`getBean` 里再判只是把这批调用方逐个打回去；③ 条件可能有状态（我们的 `ConditionEvaluator` 每次新建实例就是防这个），判两次得到两个答案时，你没有任何依据说哪个对。
+
+结论：**「存不存在」是一个图纸阶段的事实，只能在图纸阶段确定。**
+
+### B-22-2 遍历中删图纸、加图纸会怎样？`:435` 解决了什么、没解决什么？
+
+**删图纸是安全的。** 遍历用的是快照（真实 Spring `ConfigurationClassPostProcessor:365` 先 `String[] candidateNames = registry.getBeanDefinitionNames()`，我们的循环同理），删掉一个还没轮到的图纸，下一轮 `getBeanDefinition(beanName)` 会抛 `NoSuchBeanDefinitionException`——真实 Spring 在这里用 `ConfigurationClassUtils.checkConfigurationClassCandidate` 再过滤一次，我们靠 `processed` 集合加 `containsBeanDefinition` 判空。这是我们和真实 Spring 的一个实现差异：它们「先筛候选再处理」，我们「处理时再筛」。
+
+**加图纸在本轮看不见。** 快照决定了新图纸要等下一轮。单独一份配置类通常够用（`@Import` 的展开是递归的，走的是同一个 `processed` 集合，不依赖主循环），但如果某个 `BeanFactoryPostProcessor` 在**我们的** `postProcessBeanFactory` 之后再登记图纸，那些图纸永远不会被解析。
+
+真实 Spring 用「再扫一遍」解决（`:435-451`）：
+
+```java
+if (registry.getBeanDefinitionCount() > candidateNames.length) {
+	Set<String> oldCandidateNames = Set.of(candidateNames);
+	Set<String> newCandidateNames = ...
+	candidateNames = newCandidateNames;   // 回到循环开头，只处理差集
+}
+```
+
+它解决的是**收敛问题**：只要还有新增的配置类候选，就再来一轮，直到不增。
+
+它**没有**解决的是**顺序不确定性**。假设配置类 `A` 的条件里问「容器里有没有 `dataSource`」，而 `dataSource` 由配置类 `B` 的 `@Bean` 方法登记——如果 `A` 先被处理，答案是「没有」，`A` 被跳过；`B` 先被处理则相反。两个配置类的字母序决定了结果，这是真实存在的一类 bug。
+
+真实 Spring 的对策就是两阶段：`PARSE_CONFIGURATION` 阶段不问「有没有 Bean」（因为那时还没有），`REGISTER_BEAN` 阶段才问（那时全部图纸都齐了）。条件自己声明想在哪个阶段被判，两难被拆成了两次判断。
+
+### B-22-3 「与」语义的 `Condition`
+
+`@Profile({"dev","test"})` 是「或」。要做「与」，必须**自己造注解**——不能复用 `@Profile`，因为它自带 `@Conditional(ProfileCondition.class)`，「或」的行为会同时生效：
+
+```java
+@Target({ ElementType.TYPE, ElementType.METHOD })
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Conditional(AllProfilesCondition.class)
+public @interface AllProfiles {
+
+	String[] value();
+
+}
+```
+
+```java
+public class AllProfilesCondition implements Condition {
+
+	@Override
+	public boolean matches(ConditionContext context, AnnotatedElement element) {
+		Set<String> active = Set.of(context.getEnvironment().getActiveProfiles());
+		for (String required : ((AllProfiles) element.getAnnotation(AllProfiles.class)).value()) {
+			if (!active.contains(required)) {
+				return false;          // 任何一个不在，立即 false——「与」的短路方向与「或」相反
+			}
+		}
+		return true;
+	}
+
+}
+```
+
+注意两处细节：`value()` 为空时返回 `true`（空条件不该否掉任何东西），以及**读注解必须从元素上直接取**——如果写成组合注解（在 `@AllProfiles` 上再套一层），`element.getAnnotation(AllProfiles.class)` 取不到，得走本章的 `AnnotationSupport.findAnnotations`。这就是「元注解能力」为什么是必需品：只要用户开始组合注解，直接 `getAnnotation` 就全废了。
+
+**真实 Spring 为什么不做「与」？** 因为 profile 的绝大多数用法是「这几个环境里都要」：`@Profile({"dev","test"})` 表示「本地和 CI 都启用这个内存版数据源」。把它理解成「与」会让这条最常见的声明变成「永远不生效」（一个进程只能有一个 `activeProfiles` 里的 dev，不可能同时是 dev 又是 test），而且是**静默**不生效——最难查的那种。
+
+真实 Spring 的 profile 匹配只做两件事：精确匹配与 `!` 取反。它故意不提供前缀匹配（`dev-*`）或表达式（`a & b`），理由是那会鼓励「把配置分层做成命名约定」——一旦有了命名约定，就没有人知道某个 profile 到底启用了什么。
+
+### B-22-4 重载的 `@Bean` 方法，和上一章那条缺陷是同因吗？
+
+**同因。** 根因只有一句：**我们拿「方法名」当方法的身份。**
+
+上一章 `findBeanMethods` 用的是 `Map<String, Method>`，并且 `putIfAbsent(method.getName(), method)`——两个重载的同名方法，第二个被静默丢掉（缺陷表里那条「同名 `@Bean` 方法（重载）只取第一个」）。
+
+这一章红二之后，同一个数据结构又长出第二个症状：`beanNamesByMethod` 也是 `Map<String, String>`，拦截器按 `methodName` 找 Bean 名。生成类是按**签名**覆写的（`int anInt(int)` 与 `int anInt(long)` 会生成两个不同的覆写方法），但两者在拦截器里都落到同一个 `methodName` 字符串上——**签名信息在跨过生成类边界时被丢掉了**。
+
+所以两个症状的共同前提是「`methodName` 足以标识一个方法」。它不成立，有两个后果：重载被静默吞掉（上一章）、拦截器无法区分重载（这一章）。
+
+修法要让信息一路带到底，三步：
+
+1. `findBeanMethods` 改成 `Map<Method, String>`（`Method` 本身带签名，`hashCode`/`equals` 就按签名比）。
+2. 拦截器签名从 `doInvoke(enhanced, methodName, args)` 改成 `doInvoke(enhanced, descriptor, args)`，或者继续传名字但**同时**传参数类型列表。
+3. 生成器里那句 `invokestatic ConfigMethodInterceptor.invoke` 要能表达「哪个重载」——最省的办法是传方法描述符字符串（`anInt(I)I`），让它自己去查一张 `descriptor → Bean 名` 的表。
+
+这也解释了我们为什么把这条缺陷留了两章没修：它不是「忘了」，而是修它会牵动生成器的常量池与调用约定。**一个数据结构选错的代价，往往要到下一次跨边界时才结算。**
+
+### B-22-5 要在哪插钩子才能实现 `DeferredImportSelector`？
+
+钩子必须挂在**「所有初始配置类都处理完」之后**——也就是 `postProcessBeanFactory` 主循环之外。真实 Spring 的位置就在 `parser.parse(...)` 的最后一行：`this.deferredImportSelectorHandler.process()`（`ConfigurationClassParser:198`）。
+
+为什么不能挂在递归里？因为递归每一层都可能在新增图纸，只有主循环结束才保证「用户写的配置全部解析过」。`DeferredImportSelector` 的全部意义就是「等别人都说完我再说」——Spring Boot 的 `@EnableAutoConfiguration` 靠它判断「用户有没有自己定义 `DataSource`」，这个判断只有在用户配置全部就位后才有意义。
+
+最小实现四步：
+
+```java
+// 1. 收集：importClasses 里遇到 DeferredImportSelector 不执行，先存起来
+private final List<DeferredImportSelectorHolder> deferredSelectors = new ArrayList<>();
+
+// 2. 主循环结束后统一排序（真实 Spring 用 AnnotationAwareOrderComparator）
+deferredSelectors.sort(comparing(holder -> holder.selector(), AnnotationAwareOrderComparator.INSTANCE));
+
+// 3. 逐个执行，把返回的类名当普通 @Import 处理
+for (DeferredImportSelectorHolder holder : deferredSelectors) {
+	for (String className : holder.selector().selectImports(holder.metadata())) {
+		registerImportedClass(Class.forName(className), processed);
+	}
+}
+
+// 4. 执行完再补一轮 processConfigurationClass（导入进来的可能是配置类）
+```
+
+第 4 步容易被漏：`DeferredImportSelector` 返回的类**自己可能是个配置类**，它里面的 `@Bean` 方法还得走一遍「收集图纸 + 条件判断 + 增强」。而这次不能靠主循环——主循环已经结束了。所以要么递归调用 `processConfigurationClass`（我们现在的实现方式，`@Import` 已经这么做），要么在 `postProcessBeanFactory` 末尾再套一层「有新增就再来一轮」（真实 Spring 的 `:435` 干的就是这件事）。
+
+两个方案的分界是：**递归负责「深度」，再扫一遍负责「广度」。** 我们的实现只有深度（`@Import` 递归），所以一旦引入「延迟执行」这种广度需求，就得补上外层循环。
