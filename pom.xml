@@ -74,6 +74,14 @@
 		<module>step-06-bean-factory-hierarchy</module>
 		<module>step-07-resource</module>
 		<module>step-08-xml-reader</module>
+		<module>step-09-application-context</module>
+		<module>step-10-bean-factory-post-processor</module>
+		<module>step-11-bean-post-processor</module>
+		<module>step-12-aware</module>
+		<module>step-13-lifecycle</module>
+		<module>step-14-scope-factorybean</module>
+		<module>step-15-events</module>
+		<module>step-16-ordered</module>
 	</modules>
 
 	<dependencyManagement>

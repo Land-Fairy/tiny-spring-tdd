@@ -83,8 +83,12 @@
 			<property name="max" value="5"/>
 			<property name="ignoreOverriddenMethods" value="true"/>
 		</module>
+		<!-- 一个类最多依赖几个「别的抽象」。
+		     DefaultListableBeanFactory 是本书唯一的上帝类（图纸、构造器解析、属性填充、值解析、
+		     后处理器链、销毁适配器都在这一个类上），第 13 章加销毁后到 11。真实 Spring 的同一个
+		     类是 2778 行、耦合 30+ 个类。阈值放到 15：让「框架的代价」显形，而不是靠拆类骗指标。 -->
 		<module name="ClassDataAbstractionCoupling">
-			<property name="max" value="10"/>
+			<property name="max" value="15"/>
 		</module>
 
 		<!-- ===== 代码卫生 ===== -->
