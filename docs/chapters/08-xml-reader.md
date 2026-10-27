@@ -381,7 +381,9 @@ public class BeanDefinitionValueResolver {
 		try (InputStream inputStream = resource.getInputStream()) {
 			InputSource inputSource = new InputSource(inputStream);
 			inputSource.setSystemId(resource.getDescription());
-			return newDocumentBuilderFactory().newDocumentBuilder().parse(inputSource);
+			DocumentBuilder builder = newDocumentBuilderFactory().newDocumentBuilder();
+			builder.setErrorHandler(new ThrowingErrorHandler());   // 见第三处要点
+			return builder.parse(inputSource);
 		}
 		catch (IOException ex) {
 			throw new BeanDefinitionStoreException(
