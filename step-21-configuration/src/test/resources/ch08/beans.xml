@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+	<bean id="greeter" class="org.springframework.samples.ch08.EnglishGreeter"/>
+
+	<bean id="controller" class="org.springframework.samples.ch08.GreetingController">
+		<property name="greeter" ref="greeter"/>
+		<property name="prefix" value="Mr. "/>
+	</bean>
+
+	<bean id="lazyGreeter" class="org.springframework.samples.ch08.ChineseGreeter" scope="prototype" lazy-init="true"/>
+</beans>

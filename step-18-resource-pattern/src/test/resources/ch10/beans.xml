@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+	<bean id="jdbc" class="org.springframework.samples.ch10.JdbcConfig">
+		<property name="url" value="${db.url}" />
+		<property name="user" value="${db.user:sa}" />
+		<property name="ddl" value="${ddl:none}" />
+	</bean>
+</beans>

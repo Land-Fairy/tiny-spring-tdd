@@ -1856,3 +1856,773 @@ protected void invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory b
 4. **一句话总结**：不是「注解生效后才创建代理」，而是「**代理创建时去读注解**」。所谓「顺序」，指的是「谁包谁」。
 
 → **第 16 章** 3.4、4.3、5.4；**第 26 章**（自动代理创建器）、**第 27 章**（代理对象的属性填充）
+
+---
+
+## 第 17 章
+
+### B-17-1 `@Retention(CLASS)` 的注解读得到吗？读不到是 bug 吗？
+
+**答**：读不到——本书的解析器只认 `RuntimeVisibleAnnotations` 一个属性名，而 `@Retention(CLASS)`
+的注解进的是 `RuntimeInvisibleAnnotations`，`else` 分支把它连同长度一起 `skipNBytes` 跳过了。
+
+**这不是 bug，是如实实现了承诺**：`ClassMetadata` 的 Javadoc 说的是「注解可见范围 = 运行时可见」，
+和 `java.lang.reflect` 的边界完全一致。如果你真想读到 CLASS 级注解，得再加一个
+`if ("RuntimeInvisibleAnnotations".equals(attributeName))` 分支复用同一段解析逻辑——技术上
+只是多一个字符串比较。
+
+真正的重点是：**为什么要两套属性？** 因为「编译期工具想看的注解」和「运行期想看的注解」不是同一批。
+Lombok 的 `@Data`、`@NonNull` 是 `SOURCE` 级，压根不在字节码里；`@Nullable`（JSpecify）常是 `CLASS` 级，
+让编译器插件和静态分析工具看，但运行期不留痕迹——这样不增加运行时元数据体积。
+
+→ **第 17 章**（3.2 节「注解在最后的属性表里」）
+
+### B-17-2 把 `visited` 改成 static 会出什么事？
+
+**答**：第一次扫描能把元注解走通，**第二次扫同一个包就全丢了**。因为 `visited` 记的是
+「这次递归里已经走过的注解类型」；改成 static 之后它跨调用存活，第二次遇到 `@Service` 时
+`visited.add("org...Service")` 返回 `false`（已存在），函数立刻 `return false`——于是
+`@Service`、`@Repository` 的类全被判成「不是组件」，`registersComponentsAndDerivedAnnotations`
+第二次运行就会从 6 变成 3。
+
+更麻烦的是它的表现形式：**同一个测试单独跑是绿的，全量跑是红的**（或者反过来），取决于哪个
+`@BeforeEach` 先建工厂。这就是「不可复现的测试」的典型成因——共享可变状态。
+
+真实 Spring 不做这种「已访问集合」缓存，它缓存的是**推导结果**（某个注解类型的 meta-annotation
+集合），缓存条目是纯函数结果，重复使用无副作用。要缓存就缓存结果，不要缓存「过程状态」。
+
+→ **第 17 章**（3.7 节「`visited` 不是可选的」+ 5.4 节对照表）
+
+### B-17-3 为什么图纸里写类名，不写 `Class` 对象？
+
+**答**：四条理由，第一条最硬：
+
+1. **扫描阶段不能加载类**（本章的整个论点）。`Class.forName` 会触发加载 → 链接 → 初始化，
+   静态块就跑了。写类名让「读字节码」与「造对象」彻底解耦。
+2. **延迟创建**。`lazy-init="true"` 的 Bean 在整个启动期都不该被创建；如果图纸里已经是 `Class`，
+   说明类已经被加载了——那就不叫延迟了。
+3. **prototype 作用域**需要「每次取都造一个新的」，图纸必须可复用、可重复消费；`Class` 对象虽然
+   也能重复 `newInstance`，但类名还能配合 `ClassLoader` 换实现（真实 Spring 的 `setBeanClassLoader`、
+   `resolveBeanClass` 就是干这个的）。
+4. **序列化与跨 ClassLoader**。真实 Spring 里 `BeanDefinition` 会被 `SerializedBeanFactoryReference`
+   之类的东西带着走；`Class` 对象跨 ClassLoader 是不可移植的，而字符串是。
+
+顺带一个反差：`AbstractBeanDefinition` 里的字段是 `private volatile Object beanClass`——
+**类型是 `Object`**，因为它要么装类名字符串、要么装已经解析好的 `Class`。第 02 章的思考题
+B-02-3 讲过这个设计。
+
+→ **第 17 章**（3.8 节「扫描阶段全程不加载，创建阶段才加载」）
+
+### B-17-4 类里有 `static { System.exit(1); }`，扫描会炸吗？
+
+**答**：**不会**。本书的扫描器读的是 `.class` 文件的字节，`System.exit` 是方法体里的字节码，
+而 `skipNBytes` 按长度把方法区整段跳过了——它连「这里有一句 `System.exit`」都不会知道。
+真实 Spring 用 ASM 时也一样，而且 `PARSING_OPTIONS` 里的 `SKIP_CODE` 明确表示「方法体一概不看」，
+连解析都不解析。
+
+这正是第 17.2 节「答案一：反射遍历」会炸的原因：`Class.forName("...LegacyBridge")` 的默认行为是
+`initialize = true`，静态块立刻执行，`System.exit(1)` 直接终止 JVM——你只是想数一下注解，
+进程没了。而且这个失败**没有堆栈、没有日志**，`exit code` 就是 1。
+
+顺便把「不初始化」的三种写法分清：
+
+| 写法 | 会初始化吗 |
+|---|---|
+| `Class.forName(name)` | 会（第二个参数默认 `true`） |
+| `Class.forName(name, false, loader)` | 不会，但**已经链接**，而且占了元数据空间 |
+| 读 `.class` 字节（ASM / 本书） | 完全不碰 JVM 的类元数据 |
+
+→ **第 17 章**（1 节「三种随手能想到的答案」+ 5.5 节「ASM 的收益不是速度」）
+
+### B-17-5 markerInterface 能扫到吗？要读哪个字段？
+
+**答**：本书扫不到，因为 `skipMembers(in, interfaceCount)` 把 `interfaces` 段整段跳过了，
+`ClassMetadata` 上也没有「我实现了哪些接口」这个方法。
+
+要做的话需要两步：
+
+1. 解析 `interfaces` 段：`u2 interfaces_count` 后面跟 `interfaces_count` 个 `u2` 常量池下标，
+   每个指向一个 `CONSTANT_Class`，再查一层拿到 UTF8 描述符（`com/acme/Marker`），转成全限定名。
+   这和 `this_class` 的处理完全一样（本书的 `className(...)` 方法已经写了这段转换）。
+2. 在 `ClassMetadata` 上加 `Set<String> getInterfaceNames()`，然后扫描器的判断从
+   「注解里有 includeAnnotationType」扩展成「或者接口里有 markerInterface」。
+
+真实 Spring 的做法是 `AssignableTypeFilter`（配 `AbstractTypeHierarchyTraversingFilter`），
+它比「查接口名单」更麻烦：要沿**父类链**递归查（`Foo extends Bar`，`Bar implements Marker`，
+`Foo` 也算匹配），而且要考虑 `considerInterfaces` 开关。`SimpleClassMetadata`（真实 104 行）
+提供 `getInterfaceNames()`，`ClassMetadata`（122 行）提供 `getSuperClassName()`——两个都是本书
+跳过的段。
+
+→ **第 17 章**（3.4 节 `skipMembers` + 5.1 节体量对照表）
+
+---
+
+## 第 18 章
+
+### B-18-1
+
+**能。** `a/**` 匹配 `a`。
+
+这是 Ant 风格的约定：`**` 匹配「零个或多个路径段」，零个是允许的。所以 `a/**` 既匹配
+`a/b`、`a/b/c`，也匹配 `a` 本身。
+
+要改成「不能」，改 `doMatch` 里这一段：
+
+```java
+if (cursor.pathExhausted()) {
+    return cursor.trailingSeparatorsAgree(pattern, path) || cursor.restIsAllWildcard();
+}
+```
+
+把 `|| cursor.restIsAllWildcard()` 删掉（或让它只接受「剩余模式恰好是 `**` 且**前面还有段**」）。
+删掉之后 `match("a/**", "a")` 会返回 `false`，因为路径先耗尽、而模式里还剩 `**`。
+
+真实 Spring 的 `AntPathMatcher` 是**能匹配**的——语义和本章一致。这也是为什么
+`classpath*:com/acme/**/*.class` 能扫到 `com/acme/` 根目录下的类：`**` 吞掉零层，
+模式退化成 `com/acme/*.class`。
+
+→ **第 18 章**（3.2 节「`**` 能匹配零层这件事很容易忘」）
+
+### B-18-2
+
+**因为数组没有包装、可以共享一个空常量、并且调用方不会误改。**
+
+三个理由，按重要性排：
+
+1. **空结果要便宜**。扫一个不存在的包是**正常情况**（依赖没装、包名写错），不是错误。
+   返回 `List` 就得为每次调用 `new ArrayList<>()`；返回数组可以共享一个 `EMPTY` 常量，
+   零分配。`findPathMatchingResources` 里那个 `private static final Resource[] EMPTY`
+   就是这个意思。
+2. **调用方意图明确**。「给我一组资源」是一次性快照，不是「给我一个你可以改的集合」。
+   真实 Spring 内部确实用 `Set<Resource>` 做去重（模块路径与 classpath 可能给出同一个资源），
+   但**出口是 `toArray`**——去重是实现的自由，数组是契约的形状。
+3. **和 `ResourceLoader.getResource` 对称**。一个返回 `Resource`，一个返回 `Resource[]`，
+   类型上就能看出「单条路径 vs 模式匹配」的区别。
+
+`Set` 的去重之所以必要：`findAllModulePathResources` 与 `findAllClassPathResources`
+可能都命中同一个 jar 里的同一个条目，用 `Set` 保证「一个类只扫一次」；
+否则同一张图纸会被注册两次，触发第 02 章那个「重复注册」异常。
+
+→ **第 18 章**（4.3 节「找不到时返回空数组，不是 `null`」）
+
+### B-18-3
+
+**去掉之后，就只能匹配 classpath 根下的 `repo/`，任何带包前缀的路径都匹配不上。**
+
+关键在于 `subPattern` 是**相对根目录**的。`**/repo/**/*.class` 的 `determineRootDir`
+返回空（因为第一个 `/` 之前就有 `*`），所以 `getResources("")` 拿到所有 classpath 根，
+`subPattern` 就是整条 `**/repo/**/*.class`。
+
+于是 `org/acme/repo/OrderRepository.class` 要被它匹配，必须靠开头那个 `**` 吞掉
+`org/acme`。
+
+改成 `repo/**/*.class` 后：`subPattern` 同样相对根目录，但它要求路径**以 `repo/` 开头**。
+`org/acme/repo/OrderRepository.class` 以 `org/` 开头 → 不匹配。只有
+`repo/OrderRepository.class`（直接在 classpath 根下）才匹配。
+
+这就是为什么扫包时生成的模式永远是 `basePackage + "/**/*.class"`：
+`basePackage` 已经是「确定前缀」，被 `determineRootDir` 切走当根目录用了，
+剩下的 `**/*.class` 从根目录往下比。
+
+→ **第 18 章**（3.4 节与 3.7 节）
+
+### B-18-4
+
+**会失败在 `getInputStream()`——`ClassPathResource` 只能按「classpath 相对路径」取流，
+而 `jar:file:/x.jar!/com/acme/A.class` 不是一个 classpath 路径。**
+
+`ClassPathResource.getInputStream()` 的实现是：
+
+```java
+InputStream is = this.classLoader.getResourceAsStream(this.path);
+if (is == null) {
+    throw new FileNotFoundException(getDescription() + " cannot be opened because it does not exist");
+}
+return is;
+```
+
+把 `jar:file:/x.jar!/com/acme/A.class` 当 `path` 传进去，`getResourceAsStream` 会去
+classpath 里找一个**名字就叫这个**的条目——当然找不到，返回 `null`，于是抛
+`FileNotFoundException`。而且这个异常的消息会误导人：它说「这个资源不存在」，
+可资源明明就在那个 jar 里。
+
+`UrlResource` 不做任何路径翻译，`getInputStream()` 就是
+`url.openConnection().getInputStream()`——`jar:` 协议的 `URLStreamHandler` 会去开 jar、
+定位条目。**协议的事交给协议处理器**，这就是 `UrlResource` 存在的理由。
+
+顺带一提：`ClassPathResource` 还有一个 `getFile()`，在 jar 场景下会抛
+`FileNotFoundException`（因为「classpath 里的东西」不是文件）。所以第 07 章我们
+故意没给它实现 `getFile()`——一个会在常见场景下抛异常的方法，不如没有。
+
+→ **第 18 章**（3.6 节「坑三」）／**第 07 章**（`ClassPathResource` 为什么不提供 `getFile`）
+
+### B-18-5
+
+**15000 次。真实 Spring 用 `stringMatcherCache` 把它降到「不同段模式的个数」量级。**
+
+算一下本章的实现：`doMatch` 的三段里，每次比较一对段就 `new AntPathStringMatcher(pattern)`
+一次。3000 个类 × 每个路径 5 段 = 15000 次 `Pattern.compile`。正则编译是**重量级操作**
+（要解析、要生成 NFA 节点），15000 次足够让一次启动慢上几百毫秒到数秒。
+
+真实 Spring 的做法：
+
+```java
+private final Map<String, AntPathStringMatcher> stringMatcherCache = new ConcurrentHashMap<>(256);
+
+protected AntPathStringMatcher getStringMatcher(String pattern) {
+    return this.stringMatcherCache.computeIfAbsent(pattern, AntPathStringMatcher::new);
+}
+```
+
+按**段模式**（不是整条路径）缓存。收益巨大是因为段模式的重复率极高：
+3000 个类的路径里，真正不同的段模式可能只有十几个（`*.class`、`service`、`repo`、
+`Order*`……）。15000 次编译 → 十几次编译 + 15000 次哈希表查询。
+
+为什么用 `ConcurrentHashMap` 而不是 `HashMap`？因为扫描可能被多个线程同时触发
+（多个上下文并行初始化）。这也是本章缺陷表里「正则每段编译一次，无缓存」那一行
+指向的东西——**性能缺陷不报错，只是慢**，最容易在重构时被一起改掉。
+
+→ **第 18 章**（缺陷表）／**第 31 章**（并发模型）
+
+## 第 19 章
+
+### B-19-1 把名字匹配和优先级对调，哪个测试会红？
+
+`nameMatchOutranksPriority` 会红。样本 `ShadowHolder` 的字段名是 `germanTranslator`，
+两个候选 `frenchTranslator`（`@Order(1)`）与 `germanTranslator`（`@Order(2)`）。
+按真实顺序选名字对得上的 `germanTranslator`；顺序对调后优先级先跑，选 `frenchTranslator`，
+断言失败：
+
+```
+expected: "Hallo"
+ but was: "Bonjour"
+```
+
+如果 `germanTranslator` 上没有 `@Order`，`orderOf` 返回 `null`，优先级那一步只在
+**所有候选都没有顺序**时才放弃，于是 `best == null`，仍会落到名字匹配——结果碰巧一样。
+所以这个测试必须让两个候选**都有** `@Order`，才能把顺序差异暴露出来。
+
+### B-19-2 `orderOf` 返回 `null` 而不是 `LOWEST_PRECEDENCE`，救回了什么？
+
+救回 `fieldNameIsTheLastResort`。该样本 `AmbiguousHolder` 有两个候选：`userRepository` 与
+`orderRepository`，都没标 `@Order`，字段名是 `orderRepository`。
+
+- 若「没标」视作 `LOWEST_PRECEDENCE`：两个都等于 `2147483647`，`tied.size() == 2`，
+  `highestPriority` 直接抛 `NoUniqueBeanDefinitionException`，名字匹配永远没机会跑。
+- 返回 `null` 时两个都跳过，`best == null`，函数返回 `null`，决策链继续走到名字匹配，正确注入。
+
+关键区别是语义：「没有优先级」和「优先级并列最低」不是同一件事。用同一个值表示两者，
+会把「未声明」误判成「冲突」。
+
+### B-19-3 为什么 `List<Greeter>` 注入全部候选，空集合该报错吗？
+
+因为集合注入绕过了决策链——调用方要的是「所有能配上的」，不存在「选一个」的问题。
+真实 Spring 在 `doResolveDependency` 里第一件事就是调 `resolveMultipleBeans`（:1726），
+消歧还没开始。
+
+**零候选时真实 Spring 会报错**，而且细节反直觉：
+
+```java
+// resolveMultipleBeanCollection
+Map<String, Object> matchingBeans = findAutowireCandidates(...);
+if (matchingBeans.isEmpty()) {
+    return null;                       // 注意：不是返回空集合
+}
+```
+
+返回 `null` 意味着「集合注入这条路没给出结果」，控制权回到 `doResolveDependency`，
+最终走到 `raiseNoMatchingBeanFound`：
+
+```
+No qualifying bean of type 'com.acme.Greeter' available:
+expected at least 1 bean which qualifies as autowire candidate.
+```
+
+也就是说 `@Autowired List<Greeter>` 在容器里**一个 `Greeter` 都没有时启动就失败**。
+`required=false` 时则返回 `null`，字段保持 `null`（不是空列表）。
+
+这个设计值得理解：`required=true` 的语义是「这个依赖必须被满足」，
+而「空集合」并没有满足依赖——它只是把一个明显的配置错误推迟到运行时空指针。
+本书简化成返回空集合（见第 3.3 节），代价是丢失了这个早期失败。
+
+### B-19-4 `@Qualifier` 写错名字抛哪个异常？
+
+抛 `NoSuchBeanException`，不是 `NoUniqueBeanDefinitionException`。
+
+原因是 `@Qualifier` 不是决策链的一步，而是**候选集合的构造条件**：真实 Spring 在
+`findAutowireCandidates` → `isAutowireCandidate(beanName, descriptor)` → `checkQualifiers`
+阶段就把不匹配的候选排除了，决策链看到的是「零个候选」。
+
+两种错误消息因此不同：
+
+```
+expected at least 1 bean which qualifies as autowire candidate   ← 零个候选
+expected single matching bean but found 2: a, b                  ← 多个候选，消不掉
+```
+
+排障意义极大：看到 `at least 1` 去查名字拼写与注解位置，看到 `single` 去加 `@Primary` 或改字段名。
+**把这两种病混成一个异常，等于把分诊点删掉。**
+
+### B-19-5 「两个 `@Primary`」该宽容还是该严格？
+
+- **宽容更好**的场景：大型多人项目里，某模块把实现类临时标了 `@Primary` 做实验，忘了删，
+  而调用方另有 `@Qualifier` 兜底。严格模式下整个上下文起不来，所有人被一个人阻塞；
+  宽容模式下 `@Qualifier` 能救回来，实验代码在下次 review 时被发现。
+- **严格更好**的场景：库作者发布 SDK，两个实现都标了 `@Primary`。这时用户无从判断哪个是默认，
+  宽容模式会让行为依赖注册顺序——**不可预测比崩溃更坏**。
+
+真实 Spring 选严格，因为它服务于「框架」这个角色：配置错误必须尽早、明确地失败。
+本书选宽容，因为它服务于「教学」这个角色：让读者先看到完整决策链跑完的样子，
+再在 5.3 节理解真实框架为什么不肯放过。
+
+项目里该选哪个，取决于你的代码是**被自己人消费**（宽容 + 日志警告）还是**被外部消费**（严格抛错）。
+
+## 第 20 章
+
+### B-20-1 岔口为什么用「注解给没给值」而不是「字段类型是不是 String」？
+
+两种判断的结果相反的例子有一堆，最直接的一个：**`@Autowired String name`**。
+
+- 按「注解给没给值」判断：`getSuggestedValue()` 是 `null`，走 **Bean 路线**，
+  去找一个 `String` 类型的 Bean（可能是 `@Bean String appName()` 注册的）。
+- 按「字段类型是不是 String」判断：走**值路线**，可 `@Autowired` 根本没给文本，
+  `suggestedValue` 是 `null`，于是要么把一个 `null` 塞进字段，要么在 `resolveValue` 里
+  `Integer.valueOf(null)` 之类的路径上崩掉——而它本该是一个正常的 Bean 注入。
+
+反方向的例子同样成立：**`@Value` 标在 `Object` 或 `List<String>` 字段上**
+（`@Value("#{...}")`、`@Value("${a},${b}")` 之类），按类型判断会把它送进候选链，
+得到 `NoSuchBeanException: No bean of type [java.lang.Object] is registered`——
+配置值被当成「要一个 Bean」。
+
+一句话：**注解是意图的载体，类型是结果的描述**。意图只有一个（要么给我值、要么给我 Bean），
+类型可以有好几层（`String` 既是值也是 Bean 的类型）。判断要跟着意图走。
+
+### B-20-2 `PropertySourcesPlaceholderConfigurer` 装两次会怎样？
+
+**(a) 功能上没区别。** 解析器链变成「宽松 → 严格 → 宽松 → 严格」。
+严格解析器是**幂等**的：第一次跑完，要么所有占位符都替换了（第二次看到的是成品，
+没有 `${` 可替换），要么已经抛异常终止了 refresh。所以第二次装不改变结果。
+
+**(b) 会多绕一圈，而且有真实的坏处。**
+
+1. **性能**：每次 `resolveEmbeddedValue` 要过四条 resolver 而不是两条。`@Value` 很多的容器里，
+   这是启动期可观的重复工作（真实 Spring 的 `resolveEmbeddedValue` 对每个 `@Value` 字段调用一次）。
+2. **泄漏**：`embeddedValueResolvers` 是个只增不减的 `List`，每个配置器**实例**贡献一条。
+   容器里如果因为配置失误注册了 N 个配置器实例，每条链都多 N 条 lambda 持有 `Environment` 引用。
+3. **最阴的一条**：两个配置器若挂**不同的 `Environment`**，先注册的那个严格解析器会先抛——
+   报错里的「解析不了」可能来自一个你以为没生效的属性源。排查时看到的消息与实际生效的配置对不上。
+
+真实 Spring 兜住重复注册的两道措施：`AbstractApplicationContext#prepareBeanFactory` 用
+`if (!beanFactory.hasEmbeddedValueResolver())` 避免重复装默认那条；
+`PropertySourcesPlaceholderConfigurer` 本身作为 `BeanFactoryPostProcessor` 只被
+`PostProcessorRegistrationDelegate` 应用一次。
+
+### B-20-3 为什么「加壳」只能有一个地方？
+
+两处各包一次，会得到这样的消息（我们实测踩到过）：
+
+```
+BeanCreationException: Could not inject field 'port' of bean 'greetingService' (declared in ...GreetingService)
+  caused by BeanCreationException: Could not resolve value '${app.port}' for field 'port' of bean
+             'greetingService' (declared in ...GreetingService)
+  caused by TypeMismatchException: Failed to convert value of type 'java.lang.String' to required
+             type 'int' for property 'port' ...
+```
+
+**字段名出现三次，Bean 名两次，声明类两次。** 具体坏处：
+
+1. **堆栈多一层**：`getCause()` 链长一跳，日志里 `Caused by` 多一节；用户贴日志时经常只贴第一段，
+   于是「根因」被截掉。
+2. **两个格式必然漂移**：`resolveValue` 那层的文案是「值解析失败」，`injectFields` 那层是「字段注入失败」。
+   两个人在两个地方各改一次文案，同一类故障就有两种说法，监控规则一改就漏。
+3. **排查要多轮对话**：用户贴的是哪一层不可控。你问「有字段名吗」，他说有（内层）；
+   你再问「Bean 名呢」，他说有（外层）。来回两轮才发现是同一个异常的两层皮。
+
+一条规则：**异常只在「知道全部上下文」的那一层包一次**。
+`injectFields` 同时知道 `beanName`、`descriptor`（字段名 + 声明类），
+所以它才是那唯一的一层；`resolveValue` 只知道自己手里有个字符串。
+
+### B-20-4 把 `populateBean` 的顺序反过来，哪些测试会红？
+
+**(a) 会红的测试：**
+
+| 测试 | 现在的断言 | 反转后 |
+|---|---|---|
+| `ch20/XmlOverrideTests.xmlPropertyIsAppliedAfterTheAnnotation` | `from-xml`（XML 赢） | `Hi`（注解赢） |
+| `ch05/PropertyPopulationTests`（XML 属性填充） | 属性值生效 | 若同一字段既在 XML 又在注解里，语义反了；纯 XML 的用例仍绿 |
+| `ch08` 的 XML 类型转换用例 | `<property name="port" value="8080"/>` 生效 | 同上的边界情况才会红 |
+
+**关键点**：反转不会让全部测试崩，只会让**「两条通道同时作用于一个字段」**的那一类测试红。
+这正是这类设计错误最危险的地方——单通道测试全绿，只有交叉场景能暴露。
+
+**(b) 真实 Spring 为什么选「注解先、XML 后」？**
+
+因为**XML 是部署期可改的，注解是编译期写死的**。运维要临时把某个 `@Value("${app.greeting}")`
+改成别的值，最方便的手段就是在 XML 里加一行 `<property>`，不改源码、不重新编译。
+让「更晚能被修改的东西」后应用，等于给运维留了一个覆盖口子。
+
+反过来的顺序（注解赢）会让这个口子彻底失效：运维改了 XML、启动成功、行为不变，
+而且**没有任何报错**——排查成本极高。Spring 选择「后跑赢」不是随手定的，
+是按「谁更可能被当作环境适配手段」排的。
+
+### B-20-5 `getSuggestedValue()` 该不该放在 `DependencyDescriptor` 上？
+
+**放在描述符上会出事的场景**：想支持第二种值注解时。
+
+假设第 21 章要加 `@ConfigValue`（或 `@Value` 的元注解变体），或者要给 `@Value` 与自定义注解
+排优先级。因为 `getSuggestedValue()` 里写死了 `field.getAnnotation(Value.class)`，
+你必须**改 `DependencyDescriptor`**——而它是 `beans.factory.config` 包里的通用元数据类，
+被 `resolveDependency`、集合注入、错误消息全都依赖。为一个「读注解的策略」改一个「描述事实的类」，
+等于让所有用到描述符的代码重新编译、重新审一遍。
+
+**放在 resolver 上会麻烦的场景**：resolver 需要 `descriptor.getAnnotations()`——
+「策略」反过来依赖「事实」，所以描述符仍然得把注解数组暴露出来（真实 Spring 的
+`DependencyDescriptor#getAnnotations` 就是干这个的）。另外每个 resolver 实现都要重复
+「遍历注解找 `@Value`」这段代码。
+
+**真实 Spring 为什么愿意接受后者**：因为这段代码**只写一次**
+（`QualifierAnnotationAutowireCandidateResolver#findValue:426`），而策略的可替换性带来的是真实需求——
+Spring Boot 的 `ConfigurationPropertiesBindingPostProcessor`、`@Value` 的 SpEL 变体、
+测试框架的 `@MockBean`，都需要在「值从哪来」这一层插一脚。**一个可替换的策略点，
+换掉了 N 处 if 判断**；而代价只是一个 `getAnnotations()` 的暴露。
+
+判断标准可以记成一句：**「事实」进描述符，「读法」进策略**。同一个字段有 `@Value` 是事实；
+`@Value` 这个注解算不算「值」、要不要先看 `@Qualifier`，是读法。
+
+## 第 21 章
+
+### B-21-1 `static` 的 `@Bean` 方法还需要拦截吗？
+
+不需要，而且**拦不住**。
+
+`static` 方法的调用在字节码里是 `invokestatic`——**静态绑定**，运行时类型是谁都不影响它落到哪个实现上。生成子类覆写不了 static 方法（Java 语言层面也不允许），所以「造一个子类换掉运行时类型」这一招对 static 方法完全无效。
+
+那容器还需要处理 static 的 `@Bean` 方法吗？需要，但事情少一半：图纸照样要注册（factoryBeanName 可以留空，直接在配置类上找 static 方法），只是不需要增强配置类。我们的 `findBeanMethods` 直接把 static 方法跳过了，等于**放弃了支持**——这是一个已知简化，不是设计判断。
+
+**真实 Spring 为什么反而推荐 static**：`@Bean` 方法如果返回 `BeanFactoryPostProcessor`（或 `BeanDefinitionRegistryPostProcessor`），会撞上一个时序死结：
+
+1. 这类后处理器必须在**别的 Bean 创建之前**生效；
+2. 而它自己是一个 `@Bean` 产物，得先创建配置类实例才能调那个方法；
+3. 配置类实例的属性注入（`@Autowired`）又发生在后处理器**之后**。
+
+于是配置类实例被迫提前创建——提前到「还没增强」。真实 Spring 在 `ConfigurationClassPostProcessor#enhanceConfigurationClasses` 里专门拦这个情况（`:512-518`）：
+
+```java
+else if (beanFactory.containsSingleton(beanName)) {
+	logger.warn("Cannot enhance @Configuration bean definition '" + beanName +
+			"' since its singleton instance has been created too early. The typical cause " +
+			"is a non-static @Bean method with a BeanDefinitionRegistryPostProcessor " +
+			"return type: Consider declaring such methods as 'static' and/or marking the " +
+			"containing configuration class as 'proxyBeanMethods=false'.");
+}
+```
+
+一句话记住：**`static` 的 `@Bean` 方法把「造后处理器」和「造配置类实例」解耦了**——static 方法不依赖任何实例，容器可以直接调，不必先把配置类造出来。所以 Spring 的 `@Bean` Javadoc 与这条日志都在劝你：返回后处理器的 `@Bean` 方法，写 `static`。
+
+### B-21-2 让元注解也生效，最少改哪几行？
+
+现在的判据是 `beanClass.getAnnotation(Configuration.class)`——`getAnnotation` **只找直接标注**，所以：
+
+- `@Configuration` 直接标在类上 → 命中（对）；
+- 用户写 `@SpringBootConfiguration`（它自己标了 `@Configuration`）→ 不命中，被当 lite（错）。
+
+最少改法是一条**带防环集合的递归**，七八行：
+
+```java
+private boolean isFullConfigurationClass(Class<?> beanClass) {
+	Configuration configuration = findConfiguration(beanClass, new HashSet<>());
+	return configuration != null && configuration.proxyBeanMethods();
+}
+
+private Configuration findConfiguration(Class<?> type, Set<Class<?>> seen) {
+	if (!seen.add(type)) {
+		return null;
+	}
+	Configuration direct = type.getAnnotation(Configuration.class);
+	if (direct != null) {
+		return direct;
+	}
+	for (Annotation annotation : type.getAnnotations()) {
+		Configuration found = findConfiguration(annotation.annotationType(), seen);
+		if (found != null) {
+			return found;
+		}
+	}
+	return null;
+}
+```
+
+`seen` 不是可有可无的保险：注解之间可以互相标注（`@Documented` 标了自己、`@Retention` 标了自己之类），没有它就是一个栈溢出。
+
+**第 17 章那个工具正好能用**：`ClassPathScanningCandidateComponentProvider#isCandidateComponent` 已经在做同一件事——先用 `ClassMetadata#getAnnotationTypes()` 拿到直接标注，再 `readMetadata(annotationType)` 递归往上找（`ClassPathScanningCandidateComponentProvider.java:90-110`）。它用的是**读 class 文件**的路线（扫描阶段不能加载类，加载会初始化）；而 `ConfigurationClassPostProcessor` 手上已经有 `Class` 对象了（图纸上的类名已经解析过），所以这里用反射更快。**两条路线，同一个递归骨架**——这正是第 17 章那句话的第二次兑现：选 ASM 还是反射，取决于「类有没有被加载」。
+
+顺带说，真实 Spring 用的是 `MergedAnnotations`（`@Configuration` 的判据在 `ConfigurationClassUtils#checkConfigurationClassCandidate`，它读的是 `AnnotationMetadata#isInterface/isAnnotation/@Bean 方法` 等元数据，而不是 `Class#getAnnotation`），这层抽象把「直接标注」「元注解」「`@AliasFor`」全部统一了。
+
+### B-21-3 去掉 `SEQUENCE` 会发生什么？
+
+`IllegalAccessError` 换成 `LinkageError`：
+
+```
+java.lang.LinkageError: duplicate class definition
+  for name: org.springframework.samples.ch21.FullConfiguration$$EnhancedByTinySpring
+```
+
+失败发生在 `MethodHandles.Lookup#defineClass(byte[])` 那一刻——也就是**第二个容器 refresh 的 BFPP 阶段**，不是编译期，也不是第一次调 `@Bean` 方法时。
+
+原因很硬：`ClassLoader` 里「同一个名字的类」只能定义一次。两个容器、同一个配置类、同一个 `ClassLoader`（测试里就是同一个），第二个容器增强时就撞名了。序号解决的正是「同一个原类可以有多个生成类」。
+
+真实 Spring 也一样要区分：CGLIB 生成的类名长这样
+
+```
+com.acme.AppConfig$$EnhancerBySpringCGLIB$$1a2b3c4d
+```
+
+后面那段十六进制是 CGLIB 自己加的随机/哈希后缀，作用与我们的 `SEQUENCE` 完全一样。而且真实 Spring 还要多做一件事：它把增强结果写回图纸之后，日志里会打一行「Replacing [com.acme.AppConfig] with [com.acme.AppConfig$$EnhancerBySpringCGLIB$$...]」（`ConfigurationClassPostProcessor.java:539-545`）——**「换类」这件事必须留下痕迹**，否则用户看到 `getClass()` 返回一个奇怪的名字会怀疑人生。
+
+### B-21-4 怎么用最小成本暴露 `bindTo` 那个 bug？
+
+两个条件缺一不可：
+
+1. **样本方法带状态**（或者有副作用），否则「跑在哪个对象上」看不出来。我们用的是 `private int state; int bump() { return ++this.state; }`。
+2. **同一个生成类的两个实例**，且第二个实例先不调用、让第一个先调两次。断言 `second.bump() == 1`，实际会得到 3。
+
+```java
+Shapes first = (Shapes) enhancedClass.getDeclaredConstructor().newInstance();
+Shapes second = (Shapes) enhancedClass.getDeclaredConstructor().newInstance();
+
+assertThat(first.bump()).isEqualTo(1);
+assertThat(first.bump()).isEqualTo(2);
+assertThat(second.bump()).isEqualTo(1);   // ← bindTo 版本这里是 3
+```
+
+为什么这个测试必须**绕过容器**：容器里配置类 Bean 默认单例，`getBean` 永远给你同一个实例，第二条腿永远迈不出去。这也是「生成器单测」和「容器集成测试」必须分开写的理由——**集成测试跑的是「正常路径」，单测才有机会跑「边缘输入」**。
+
+真实 Spring 不会踩这个坑，因为它的生成代码传的是实例：
+
+```java
+return cglibMethodProxy.invokeSuper(enhancedConfigInstance, beanMethodArgs);   // :400
+```
+
+`invokeSuper(实例, 参数)`——实例是**每次调用**传进去的参数，不是造代理时绑定的。CGLIB 的 `MethodProxy` 本身按「类 + 方法签名」缓存，天然无实例。我们的 `MethodHandle` 只要不 `bindTo`，形状与它完全一致：句柄绑定**类**，调用时给**实例**。
+
+顺带一个值得记住的 JDK 细节：`findSpecial` 返回的句柄类型是 `(接收者, 参数...)返回值`，接收者**就是第一个参数**。这一点从 javadoc 的语义里能推出来（`findVirtual`/`findSpecial` 都「在类型前面插入 refc」），但最可靠的验证方式就是写这个双实例测试。
+
+### B-21-5 「工厂方法返回 `null`」该不该报错？
+
+两种选择，本质是**给 `null` 定义了两种不同的含义**：
+
+- **我们的选择（单例报错）**：`null` = 「这个方法坏了」。因为单例的语义是「容器里恒有这一个对象」，`getBean` 返回 `null` 之后，调用方拿到的东西与「没有这个 Bean」在类型上无法区分——`getBean` 返回 `null` 还是抛异常，是一个 API 契约问题。真实 Spring 在这里抛 `BeanInstantiationException`（「Factory method '...' returned null」），理由相同。
+- **允许返回 `null`（prototype）**：`null` = 「这次没造出来，是合法结果」。prototype 每次调用都是新的一次尝试，调用方明确知道自己在「请求一次创建」，拿到 `null` 可以自己决定怎么处理。
+
+哪种更难写出 NPE？**允许 `null` 的那种**。因为：
+
+1. 单例报错把问题**挪到了创建期**，栈里还带着方法名，定位成本最低；
+2. 允许 `null` 则把问题**推到了使用期**，而且推得很远——`getBean` 的调用点可能离出错点隔着好几层；
+3. 更麻烦的是**注入路径**：允许 `null` 意味着字段注入可以把 `null` 塞进一个非 `@Nullable` 的字段，然后在下一次方法调用时炸，栈里完全没有「这个 Bean 是 `null`」的信息。
+
+所以真实 Spring 的规则是分档的：**单例不允许 `null`（抛 `BeanInstantiationException`），prototype 允许**。这条规则背后是一个更普遍的判断——**「唯一性」越强的位置，`null` 越应该当场变成错误**。同样一条规则在 `@Value` 上重演：`isRequired()` 为 `true` 时值缺失当场报错，为 `false` 时才允许「什么都没有」。
+
+## 第 22 章
+
+### B-22-1 条件为什么必须在图纸阶段判断？
+
+**图纸阶段判断的理由有三条，一条比一条致命。**
+
+第一条是**查询的谎言**。条件在创建阶段才判的话，图纸还在，于是 `getBeanNamesForType(TrackedBean.class)` 会返回那个名字；调用方（人或 `@Autowired` 的候选过滤）会把它算进候选。等到真正创建时才抛异常——抛在工厂方法体里，栈里全是 `ConstructorResolver` / `SimpleInstantiationStrategy`，看起来像「这个方法写错了」，而方法本身是对的。
+
+第二条是**副作用不可撤销**。走到创建阶段意味着构造器已经跑过、`BeanPostProcessor` 已经施加过、`InitializingBean` 已经调过。此时说「不该创建」，只能销毁——而销毁回调本身也可能有副作用（关连接、提交事务）。**判断越晚，代价越大。**
+
+第三条是**信息已经变了**。条件大多要问环境或问图纸（`Environment`、别的配置类、profile）。环境的可变部分（`setActiveProfiles`）在图纸阶段之后还可能被改；图纸表在创建阶段已经被别的 `BeanFactoryPostProcessor` 改过。**同一个条件在两个阶段可以有不同答案**——这正是真实 Spring 要引入 `ConfigurationPhase` 的原因，而不是它没想到「一次判完就好」。
+
+**反例。** `@Conditional` 为假但图纸留着，注入点写成 `@Autowired List<TrackedBean> beans`：容器把假货算进候选，创建时整批失败，栈顶是「第 3 个候选创建失败」，而第 3 个其实压根不该存在。
+
+**能不能在 `getBean` 里再判一次条件来救？** 不能，三个理由：① `preInstantiateSingletons` 遍历图纸时照样会调 `getBean`，除非那里也判——那就变成「两处都要判」，条件写两遍；② 「名字存在」这个谎言已经散播给所有查询者（按类型查、`@Qualifier` 匹配、`getBeanNamesForType`），`getBean` 里再判只是把这批调用方逐个打回去；③ 条件可能有状态（我们的 `ConditionEvaluator` 每次新建实例就是防这个），判两次得到两个答案时，你没有任何依据说哪个对。
+
+结论：**「存不存在」是一个图纸阶段的事实，只能在图纸阶段确定。**
+
+### B-22-2 遍历中删图纸、加图纸会怎样？`:435` 解决了什么、没解决什么？
+
+**删图纸是安全的。** 遍历用的是快照（真实 Spring `ConfigurationClassPostProcessor:365` 先 `String[] candidateNames = registry.getBeanDefinitionNames()`，我们的循环同理），删掉一个还没轮到的图纸，下一轮 `getBeanDefinition(beanName)` 会抛 `NoSuchBeanDefinitionException`——真实 Spring 在这里用 `ConfigurationClassUtils.checkConfigurationClassCandidate` 再过滤一次，我们靠 `processed` 集合加 `containsBeanDefinition` 判空。这是我们和真实 Spring 的一个实现差异：它们「先筛候选再处理」，我们「处理时再筛」。
+
+**加图纸在本轮看不见。** 快照决定了新图纸要等下一轮。单独一份配置类通常够用（`@Import` 的展开是递归的，走的是同一个 `processed` 集合，不依赖主循环），但如果某个 `BeanFactoryPostProcessor` 在**我们的** `postProcessBeanFactory` 之后再登记图纸，那些图纸永远不会被解析。
+
+真实 Spring 用「再扫一遍」解决（`:435-451`）：
+
+```java
+if (registry.getBeanDefinitionCount() > candidateNames.length) {
+	Set<String> oldCandidateNames = Set.of(candidateNames);
+	Set<String> newCandidateNames = ...
+	candidateNames = newCandidateNames;   // 回到循环开头，只处理差集
+}
+```
+
+它解决的是**收敛问题**：只要还有新增的配置类候选，就再来一轮，直到不增。
+
+它**没有**解决的是**顺序不确定性**。假设配置类 `A` 的条件里问「容器里有没有 `dataSource`」，而 `dataSource` 由配置类 `B` 的 `@Bean` 方法登记——如果 `A` 先被处理，答案是「没有」，`A` 被跳过；`B` 先被处理则相反。两个配置类的字母序决定了结果，这是真实存在的一类 bug。
+
+真实 Spring 的对策就是两阶段：`PARSE_CONFIGURATION` 阶段不问「有没有 Bean」（因为那时还没有），`REGISTER_BEAN` 阶段才问（那时全部图纸都齐了）。条件自己声明想在哪个阶段被判，两难被拆成了两次判断。
+
+### B-22-3 「与」语义的 `Condition`
+
+`@Profile({"dev","test"})` 是「或」。要做「与」，必须**自己造注解**——不能复用 `@Profile`，因为它自带 `@Conditional(ProfileCondition.class)`，「或」的行为会同时生效：
+
+```java
+@Target({ ElementType.TYPE, ElementType.METHOD })
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Conditional(AllProfilesCondition.class)
+public @interface AllProfiles {
+
+	String[] value();
+
+}
+```
+
+```java
+public class AllProfilesCondition implements Condition {
+
+	@Override
+	public boolean matches(ConditionContext context, AnnotatedElement element) {
+		Set<String> active = Set.of(context.getEnvironment().getActiveProfiles());
+		for (String required : ((AllProfiles) element.getAnnotation(AllProfiles.class)).value()) {
+			if (!active.contains(required)) {
+				return false;          // 任何一个不在，立即 false——「与」的短路方向与「或」相反
+			}
+		}
+		return true;
+	}
+
+}
+```
+
+注意两处细节：`value()` 为空时返回 `true`（空条件不该否掉任何东西），以及**读注解必须从元素上直接取**——如果写成组合注解（在 `@AllProfiles` 上再套一层），`element.getAnnotation(AllProfiles.class)` 取不到，得走本章的 `AnnotationSupport.findAnnotations`。这就是「元注解能力」为什么是必需品：只要用户开始组合注解，直接 `getAnnotation` 就全废了。
+
+**真实 Spring 为什么不做「与」？** 因为 profile 的绝大多数用法是「这几个环境里都要」：`@Profile({"dev","test"})` 表示「本地和 CI 都启用这个内存版数据源」。把它理解成「与」会让这条最常见的声明变成「永远不生效」（一个进程只能有一个 `activeProfiles` 里的 dev，不可能同时是 dev 又是 test），而且是**静默**不生效——最难查的那种。
+
+真实 Spring 的 profile 匹配只做两件事：精确匹配与 `!` 取反。它故意不提供前缀匹配（`dev-*`）或表达式（`a & b`），理由是那会鼓励「把配置分层做成命名约定」——一旦有了命名约定，就没有人知道某个 profile 到底启用了什么。
+
+### B-22-4 重载的 `@Bean` 方法，和上一章那条缺陷是同因吗？
+
+**同因。** 根因只有一句：**我们拿「方法名」当方法的身份。**
+
+上一章 `findBeanMethods` 用的是 `Map<String, Method>`，并且 `putIfAbsent(method.getName(), method)`——两个重载的同名方法，第二个被静默丢掉（缺陷表里那条「同名 `@Bean` 方法（重载）只取第一个」）。
+
+这一章红二之后，同一个数据结构又长出第二个症状：`beanNamesByMethod` 也是 `Map<String, String>`，拦截器按 `methodName` 找 Bean 名。生成类是按**签名**覆写的（`int anInt(int)` 与 `int anInt(long)` 会生成两个不同的覆写方法），但两者在拦截器里都落到同一个 `methodName` 字符串上——**签名信息在跨过生成类边界时被丢掉了**。
+
+所以两个症状的共同前提是「`methodName` 足以标识一个方法」。它不成立，有两个后果：重载被静默吞掉（上一章）、拦截器无法区分重载（这一章）。
+
+修法要让信息一路带到底，三步：
+
+1. `findBeanMethods` 改成 `Map<Method, String>`（`Method` 本身带签名，`hashCode`/`equals` 就按签名比）。
+2. 拦截器签名从 `doInvoke(enhanced, methodName, args)` 改成 `doInvoke(enhanced, descriptor, args)`，或者继续传名字但**同时**传参数类型列表。
+3. 生成器里那句 `invokestatic ConfigMethodInterceptor.invoke` 要能表达「哪个重载」——最省的办法是传方法描述符字符串（`anInt(I)I`），让它自己去查一张 `descriptor → Bean 名` 的表。
+
+这也解释了我们为什么把这条缺陷留了两章没修：它不是「忘了」，而是修它会牵动生成器的常量池与调用约定。**一个数据结构选错的代价，往往要到下一次跨边界时才结算。**
+
+### B-22-5 要在哪插钩子才能实现 `DeferredImportSelector`？
+
+钩子必须挂在**「所有初始配置类都处理完」之后**——也就是 `postProcessBeanFactory` 主循环之外。真实 Spring 的位置就在 `parser.parse(...)` 的最后一行：`this.deferredImportSelectorHandler.process()`（`ConfigurationClassParser:198`）。
+
+为什么不能挂在递归里？因为递归每一层都可能在新增图纸，只有主循环结束才保证「用户写的配置全部解析过」。`DeferredImportSelector` 的全部意义就是「等别人都说完我再说」——Spring Boot 的 `@EnableAutoConfiguration` 靠它判断「用户有没有自己定义 `DataSource`」，这个判断只有在用户配置全部就位后才有意义。
+
+最小实现四步：
+
+```java
+// 1. 收集：importClasses 里遇到 DeferredImportSelector 不执行，先存起来
+private final List<DeferredImportSelectorHolder> deferredSelectors = new ArrayList<>();
+
+// 2. 主循环结束后统一排序（真实 Spring 用 AnnotationAwareOrderComparator）
+deferredSelectors.sort(comparing(holder -> holder.selector(), AnnotationAwareOrderComparator.INSTANCE));
+
+// 3. 逐个执行，把返回的类名当普通 @Import 处理
+for (DeferredImportSelectorHolder holder : deferredSelectors) {
+	for (String className : holder.selector().selectImports(holder.metadata())) {
+		registerImportedClass(Class.forName(className), processed);
+	}
+}
+
+// 4. 执行完再补一轮 processConfigurationClass（导入进来的可能是配置类）
+```
+
+第 4 步容易被漏：`DeferredImportSelector` 返回的类**自己可能是个配置类**，它里面的 `@Bean` 方法还得走一遍「收集图纸 + 条件判断 + 增强」。而这次不能靠主循环——主循环已经结束了。所以要么递归调用 `processConfigurationClass`（我们现在的实现方式，`@Import` 已经这么做），要么在 `postProcessBeanFactory` 末尾再套一层「有新增就再来一轮」（真实 Spring 的 `:435` 干的就是这件事）。
+
+两个方案的分界是：**递归负责「深度」，再扫一遍负责「广度」。** 我们的实现只有深度（`@Import` 递归），所以一旦引入「延迟执行」这种广度需求，就得补上外层循环。
+
+## 第 23 章
+
+### B-23-1：`canConvert(String.class, Object.class)` 为什么该是 `true`？
+
+因为调用方问 `canConvert` 时，真正想知道的是**「这个依赖我能不能满足」**，而不是「有没有一条转换规则」。`String` 要变成 `Object` 什么都不用做，答案是「当然能满足」。
+
+在语义上，「不需要转换」是「能转换」的一个特例 —— 恒等转换。把它排除在外，会让 `@Autowired Object anything` 这种（合法的）依赖被判成「无法满足」，而这完全不是配置错误。
+
+合并之后，「怎么区分没有转换器」成了新问题。关键是不能让「恒等」和「没有」共用同一个返回值。本书的写法是让 `findConverter` 返回三个状态：
+
+- `NoOpConverter.INSTANCE`：找到了，而且什么都不用做；
+- 某个真实转换器：找到了，要转；
+- `null`：没找到。
+
+`canConvert` 于是就是 `findConverter(...) != null`。真实 Spring 用同样的思路（`NO_OP` 转换器常量），只是它还从目标类型那边判一次 `targetType.isAssignableFrom(sourceType)`，因为它的 `TypeDescriptor` 能表达数组与泛型，「装得下」的判断比 `Class` 复杂。
+
+### B-23-2：为什么先判一对一、再问工厂？
+
+因为**工厂的声明面天然比一对一宽**。`NumberToNumberConverterFactory` 声明源类型是 `Number`，它一注册就和所有数字类型的转换撞上；`Object → String` 声明源类型是 `Object`，它和**一切**转换都撞上。
+
+先问工厂的具体后果：`Integer → String` 请求进来，`NumberToNumberConverterFactory` 先被问到「你能吐 `String` 吗」，它会返回 `null`（`String` 不是 `Number`），于是继续往下走 —— 这一次侥幸没事。但换个例子就出事：用户注册了 `Converter<Integer, String>`（精确），同时 `Object → String` 也存在。两个都在一对一集合里，靠 `distance` 分胜负（0 步 vs 1 步），精确的那个赢。可如果 `Object → String` 是个**工厂**，它就会在「先问工厂」的顺序里抢在精确转换器前面生效 —— 用户注册的规则被框架的兜底规则盖掉，而且没有任何报错。
+
+更实质的问题是：分成两个集合之后，**距离排序无法跨集合比较**。用户无法通过「登记一个更精确的转换器」来覆盖内建工厂的行为，只能改引擎。真实 Spring 不这么做 —— 它的 `converters` 映射里同时放 `GenericConverter` 与适配后的工厂，靠 `getClassHierarchy` 压平继承链、从列表头往后找第一个匹配，优先级完全由「离实际类型几步」统一决定，不存在跨集合的盲区。本书分成两个 `LinkedHashMap` 是为了让查找算法短到能在一节里讲完，代价写在缺陷表第 4 条。
+
+### B-23-3：`distance` 返回 `Integer.MAX_VALUE` 时，为什么不会误选？
+
+因为它根本不会被返回到 `findConverter` 的比较里。`findConverter` 的过滤条件是：
+
+```java
+pair.sourceType.isAssignableFrom(source) && target.isAssignableFrom(pair.targetType)
+```
+
+第一个条件保证了「实际源类型是声明源类型的子类」，也就是它一定落在父类链或接口链上；第二个条件保证了「声明产物能被当成目标」。两条都过的候选，`distance` 必然找得到路径。
+
+真正会出事的是「两个候选都算成 `MAX_VALUE`」：
+
+```java
+if (distance < bestDistance) {   // bestDistance 初值就是 MAX_VALUE
+```
+
+`MAX_VALUE < MAX_VALUE` 是 `false`，于是第一个候选**一个都选不上**，`best` 保持 `null`，接着回落到工厂、再抛「没有转换器」。结果是：明明登记了转换器，`canConvert` 却说 `false`。这种错误最难查，因为症状（缺转换器）和病因（距离算法写坏）完全不像。
+
+一个具体诱因：把 `distance` 里的 `if (current == declared)` 手滑写成 `if (current.isAssignableFrom(declared))`。方向反了之后，`String → Object` 那种正常关系也可能算不出路径，`MAX_VALUE` 就会真的出现。所以哨兵值和「严格小于」的比较是一对必须同时正确的写法 —— 或者干脆用 `OptionalInt` 把「没有距离」变成类型系统管的事。
+
+### B-23-4：`setConversionService` 换掉服务后，已经创建好的 Bean 会怎样？
+
+不会有任何变化，起因是**转换发生的时刻**：
+
+- 构造器参数解析、`@Value` 字段注入、属性填充：全部在**创建期**（`createBean` 内部），值已经被转成对象写进字段。换服务不会回头改它们。
+- 之后才会发生的转换：新建 Bean（prototype、`@Lazy` 代理首次解引用）的注入、运行期 `getTypeConverter()` 的相关转换（比如按名字 + 类型 `getBean` 时的转换）、以及用户自己调 `ConversionService`。
+
+所以「换服务」不是热更新规则，它只在 `refresh()` 之前的装配窗口内有效。这也解释了真实 Spring 为什么把 `conversionService` 放在 `ConfigurableBeanFactory` 上、并在 `prepareBeanFactory` 阶段就固定下来 —— 它是**装配期配置**，不是运行期配置项。
+
+顺带一个真实的坑：如果有人在 `refresh()` 之后 `setConversionService`，行为是「一半新一半旧」—— 已建 Bean 用旧规则，后来者用新规则。这种不一致比「完全不生效」难查得多，因为大部分测试仍然绿。
+
+### B-23-5：两种异常继承选择各自解释了什么？
+
+本书的选择（`ConversionFailedException extends IllegalArgumentException`）说的是**语义分类**：入参本身不合法。`ConversionFailedException extend ConversionException extend NestedRuntimeException` 这条说的是**分层分类**：转换这个动作失败了，它下面还挂着「找不到转换器」这个兄弟。
+
+本书选 `IllegalArgumentException` 的直接好处是：第 20 章 `SimpleTypeConverter` 里原本就有的：
+
+```java
+catch (IllegalArgumentException ex) {
+	throw new TypeMismatchException(name, value, requiredType, beanClass);
+}
+```
+
+不用改动一行就继续工作 —— 因为 `NumberFormatException` 和本章的两个新异常都在这条链上。`catch` 块可以短到只有一个父类型。
+
+但**我们没有这么写**，最终是：
+
+```java
+catch (ConversionFailedException | ConverterNotFoundException ex) {
+```
+
+原因正是「语义分类」的副作用：`IllegalArgumentException` 这个名字太宽，`setPropertyValue` 里任何一处抛出的参数错误都会被当成「转换失败」包成 `TypeMismatchException`，把真正的原因埋进 cause 里。真实 Spring 之所以要单独造一层 `ConversionException`，就是为了拿到一个**只覆盖转换这一族**的父类型 —— 宽，但不至于宽到误捕。
+
+这就是两种分类的取舍：语义分类（入参不合法）读起来自然，但借用了别人也在用的类型；分层分类（转换失败）多一个抽象类，换来一个专属的 catch 边界。真实 Spring 选了后者，本书因为「已经有一条现成的 `IllegalArgumentException` 链」而选了前者 —— 代价写进了缺陷表第 11 条。

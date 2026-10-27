@@ -82,6 +82,13 @@
 		<module>step-14-scope-factorybean</module>
 		<module>step-15-events</module>
 		<module>step-16-ordered</module>
+		<module>step-17-classpath-scanning</module>
+		<module>step-18-resource-pattern</module>
+		<module>step-19-autowire-candidates</module>
+		<module>step-20-value-descriptor</module>
+		<module>step-21-configuration</module>
+		<module>step-22-assembly-control</module>
+		<module>step-23-conversion-service</module>
 	</modules>
 
 	<dependencyManagement>

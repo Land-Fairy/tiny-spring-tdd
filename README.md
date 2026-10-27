@@ -79,13 +79,13 @@
 
 | 章 | 主题 | 你会得到 |
 |---|---|---|
-| 17 | 包扫描：ASM 元数据 vs 反射 | `@ComponentScan` 底层在扫什么 |
-| 18 | `PathMatchingResourcePatternResolver` | 包扫描的底层是 ant 路径匹配 |
-| 19 | `@Autowired` / `@Qualifier` / 类型匹配决策链 | 90% 的 `NoUniqueBeanDefinitionException` 死在这里 |
-| 20 | `@Value` 与 `DependencyDescriptor` | 字段注入的元数据长什么样 |
-| 21 | `@Configuration` + `@Bean`：full vs lite | 配置类方法互相调用为什么返回同一实例 |
-| 22 | `@Import` / `@Conditional` / `@Profile` / `@Lazy` | 条件装配思想（不讲 Boot，只讲机制） |
-| 23 | ConversionService 与类型转换 | `"8080"` 怎么变成 `int` |
+| [17](docs/chapters/17-classpath-scanning.md) | 包扫描：ASM 元数据 vs 反射 | `@ComponentScan` 底层在扫什么 |
+| [18](docs/chapters/18-resource-pattern.md) | `PathMatchingResourcePatternResolver` | 包扫描的底层是 ant 路径匹配 |
+| [19](docs/chapters/19-autowire-candidates.md) | `@Autowired` / `@Qualifier` / 类型匹配决策链 | 90% 的 `NoUniqueBeanDefinitionException` 死在这里 |
+| [20](docs/chapters/20-value-descriptor.md) | `@Value` 与 `DependencyDescriptor` | 字段注入的元数据长什么样 |
+| [21](docs/chapters/21-configuration.md) | `@Configuration` + `@Bean`：full vs lite | 配置类方法互相调用为什么返回同一实例 |
+| [22](docs/chapters/22-assembly-control.md) | `@Import` / `@Conditional` / `@Profile` / `@Lazy` | 条件装配思想（不讲 Boot，只讲机制） |
+| [23](docs/chapters/23-conversion-service.md) | `ConversionService` / `Converter` / `ConverterFactory` | `"8080"` 怎么变成 `int`：把规则变成可查询的集合 |
 
 ### 第 4 部 · AOP　`milestone: v0.4`
 
@@ -111,7 +111,7 @@
 
 ### 附录
 
-- **A** 类型转换补遗
+- **A** [类型转换补遗](docs/appendix/A-conversion-supplement.md) —— 集合/数组转换、转换器查找优先级、与 `Formatter` 的关系
 - **B** 思考题答案（**别提前看**）
 - **C** 真实 Spring 类 ↔ 本书类 对照总表
 - **D** 面试题映射表

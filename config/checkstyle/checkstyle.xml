@@ -121,7 +121,15 @@
 		<module name="IllegalCatch">
 			<property name="illegalClassNames" value="java.lang.Throwable, java.lang.Error"/>
 		</module>
-		<module name="IllegalThrows"/>
+		<!--
+			允许 throws Throwable（继续禁 Error）。理由：这一条禁的是「乱声明 throws Throwable」，
+			但 JDK 自己就规定了两个必须这么写的位置——java.lang.reflect.InvocationHandler#invoke
+			与 java.lang.invoke.MethodHandle#invoke。第 21 章的拦截器要原样透出用户方法体抛出的任何东西，
+			签名只能跟它们一样。真实 Spring 的 CGLIB 回调 MethodInterceptor#intercept 也是 throws Throwable。
+		-->
+		<module name="IllegalThrows">
+			<property name="illegalClassNames" value="java.lang.Error"/>
+		</module>
 		<module name="DeclarationOrder"/>
 		<module name="OverloadMethodsDeclarationOrder"/>
 
