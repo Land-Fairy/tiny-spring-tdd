@@ -93,6 +93,7 @@
 		<module>step-25-advisor</module>
 		<module>step-26-autoproxy</module>
 		<module>step-27-proxy-population</module>
+		<module>step-28-expose-proxy</module>
 	</modules>
 
 	<dependencyManagement>

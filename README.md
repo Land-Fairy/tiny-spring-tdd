@@ -95,7 +95,7 @@
 | [25](docs/chapters/25-advisor.md) | Pointcut / Advice / Advisor | Spring AOP 的基本单元是 Advisor，不是"切面类" |
 | [26](docs/chapters/26-autoproxy.md) | 织入生命周期：AutoProxyCreator | 代理在哪一步产生 |
 | [27](docs/chapters/27-proxy-population.md) | 代理对象的属性填充 | 注入的到底是代理还是目标？ |
-| 28 | 自调用失效、`exposeProxy`、`AopContext` | 为什么 `this.method()` 不走切面 |
+| [28](docs/chapters/28-self-invocation.md) | 自调用失效、`exposeProxy`、`AopContext` | 为什么 `this.method()` 不走切面 |
 | 29 | AOP 失效场景合集 | final / private / 自调用 / 循环依赖中的代理 |
 
 ### 第 5 部 · 深水区与收官　`milestone: v1.0`
