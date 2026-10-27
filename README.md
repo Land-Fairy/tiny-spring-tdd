@@ -57,7 +57,7 @@
 | [02](docs/chapters/02-bean-definition.md) | BeanDefinition：容器的元数据模型 | 容器存的不是对象，是"造对象的图纸" |
 | [03](docs/chapters/03-singleton-registry.md) | 注册表与单例池（含线程安全） | `BeanDefinitionRegistry` + `SingletonBeanRegistry` |
 | [04](docs/chapters/04-constructor-injection.md) | 反射实例化：构造器参数名匹配 | 不用 CGLIB 也能做构造器注入（[ADR-0002](docs/adr/0002-no-cglib.md)） |
-| 05 | 属性填充与依赖注入 | `PropertyValue` → `populateBean` |
+| [05](docs/chapters/05-property-injection.md) | 属性填充与依赖注入 | `PropertyValue` → `populateBean`，内省找 setter |
 | 06 | BeanFactory 的接口分层 | 为什么 `Listable` / `Hierarchical` / `AutowireCapable` 要拆开 |
 | 07 | Resource 抽象 | 一个接口统一 classpath / file / URL / 字节数组 |
 | 08 | XML 解析与 BeanDefinitionReader | 从配置文件读出图纸 |

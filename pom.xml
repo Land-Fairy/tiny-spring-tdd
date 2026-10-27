@@ -70,6 +70,7 @@
 		<module>step-02-bean-definition</module>
 		<module>step-03-singleton-registry</module>
 		<module>step-04-constructor-injection</module>
+		<module>step-05-property-injection</module>
 	</modules>
 
 	<dependencyManagement>

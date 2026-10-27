@@ -541,3 +541,146 @@ return getSingleton(beanName, () -> createBean(beanName, beanDefinition));
 **默认静默，需要时能看到全过程**。
 
 → **第 33 章**（异常体系与排错：为什么 Spring 的异常消息长成这样）。
+
+---
+
+## 第 05 章
+
+### B-05-1　`MutablePropertyValues` 用 `List` 而不是 `Map`，如果必须用 `Map` 你怎么补回那两个保证？
+
+**答**：两个保证要分别补，因为它们的性质不同。
+
+**顺序保证**：换成 `LinkedHashMap` 就能保住「按插入顺序迭代」。这不算作弊——
+`LinkedHashMap` 本质就是「Map 的查询 + 链表的顺序」，JDK 早就提供了。但代价是
+**重新赋值不会改变位置**：`put("timeout", 30)` 覆盖已有 key 时，`timeout` 仍留在原来的位置。
+所以「父子图纸合并」这种场景下，你得到的是「第一次出现的位置 + 最后一次的值」，
+这既不是 List 语义也不是 Map 语义，是第三种东西——**你已经在发明新语义了**，
+那还不如当初就用 List，把语义写在合并代码里。
+
+**重复保证**：`LinkedHashMap` 补不回来。`put` 会覆盖，历史消失。
+真要保留历史只能用 `Map<String, List<PropertyValue>>`，也就是「索引 + 列表」——
+那你已经手写了一个带索引的 List。
+
+一句话：**用 Map 你就得同时用 LinkedHashMap 和 Map<String,List<...>>，
+最后得到的是 List 加一份多余的索引。** 这就是真实 Spring 选 List 的原因。
+
+→ **第 02 章**（图纸只描述，不做决定）、**本章 3.2 节**。
+
+### B-05-2　`checkType` 对引用类型填 `null` 直接 `return`，算漏检查吗？`List<String>` 属性填 `"hello"` 呢？
+
+**答**：不算漏，因为**没有可做的检查**。`null` 对引用类型是一个合法取值，
+`setPrefix(null)` 是调用者明确表达「我要设成没有」；能不能接受是 setter 自己的事
+（业务校验写在那里，不在容器里）。
+
+`List<String>` 填 `"hello"` 的情况，本章的检查会**放过去**，而且这是对的：
+
+```java
+System.out.println(List.class.isAssignableFrom(String.class));  // false
+```
+
+等一下——`false`？那 `ClassUtils.isAssignable(List, String)` 应该抛 `TypeMismatchException` 才对。
+
+是的，本章会抛。**但真实 Spring 不会**，它会尝试转换。转换链上有个 `StringToCollectionConverter`
+和 `CollectionToCollectionConverter`，而 `"hello"` 转 `List<String>` 的结果是
+**一个元素的 List**（按逗号切分）。也就是说真实 Spring 得到 `["hello"]`，
+而本书报错——本章 4.2 节那张表里最后两行说的就是这个差异。
+
+所以这道题真正的答案是：**「类型不匹配」不代表「值不能用」**。
+容器只知道「图纸给的类型」和「setter 要的类型」，两者之间是否存在一条转换路径，
+是 `ConversionService` 的知识（第 23 章）。本章故意不做转换，是为了让「类型检查」
+这一步单独暴露出来——先把边界画清楚，再往里填转换。
+
+→ **第 23 章**（`ConversionService`：`"42"` → `int`、`"a,b"` → `List<String>` 都在这里）。
+
+### B-05-3　`propertyValues.isEmpty()` 早退，除了省一次内省，还避开了什么更严重的问题？
+
+**答**：避开了「**给不该碰的对象填属性**」。
+
+`new BeanWrapperImpl(bean)` 会对 `bean.getClass()` 做完整内省，拿到所有
+`PropertyDescriptor`。这一步本身无害，但它是 `Introspector`——会影响 JVM 的
+`Introspector` 缓存与 `ThreadLocal` 状态，也会**触发类的反射元数据初始化**。
+对于 `java.*` 里的某些类、或者带静态初始化块的类，这个副作用不小。
+
+更关键的是第二个：**没有属性配置时，容器根本不该认为「这个 Bean 需要被填充」**。
+早退让这条路径变成纯粹的「读图纸 → 什么都不做」，语义干净。
+
+真实 Spring 在 `populateBean` 里对两种情况都做了早退（`bw == null` 与 `isRecord()`），
+并且 `applyPropertyValues`（:1673）开头第一句就是：
+
+```java
+		if (pvs.isEmpty()) {
+			return;
+		}
+```
+
+也就是说真实 Spring **早退了两层**。为什么？因为 `populateBean` 中间会被
+`InstantiationAwareBeanPostProcessor` 插进来（第 11 章），`postProcessProperties`
+有可能返回一个非空的 `pvs`——所以「进来时是空」不等于「出去时还是空」，
+两层检查各自守自己的边界。
+
+> 顺便回答「省一次 `Introspector` 调用」值不值：值。真实 Spring 为此专门写了
+> `CachedIntrospectionResults`——用一个 `ConcurrentHashMap<Class<?>, CachedIntrospectionResults>`
+> 缓存每个类的内省结果，就是嫌重复内省太慢。
+
+→ **第 11 章**（`BeanPostProcessor` 为什么能改变属性集合）、**第 33 章**。
+
+### B-05-4　容器改成循环调 `setPropertyValue` 而不是 `setPropertyValues`，行为会怎么变？
+
+**答**：三个变化，前两个是好是坏取决于场景，第三个纯亏。
+
+**变化一：错误报告的粒度。** 循环调 `setPropertyValue` 会在**第一个**失败处停下，
+后面的属性不再尝试。真实 Spring 的 `setPropertyValues(..., ignoreUnknown, ignoreInvalid)`
+（`AbstractPropertyAccessor:88`）会收集所有 `PropertyAccessException` 最后抛
+**`PropertyBatchUpdateException`**：
+
+```
+PropertyBatchUpdateException: 3 properties failed:
+  repeat  → Failed to convert ... "abc" to int
+  prefix  → Invalid property 'prefix' ...
+  timeout → ...
+```
+
+调一次改三个错，而不是改一个跑一次改三次。本章的 `setPropertyValues` 也是循环，
+所以本书**也**是「第一个就停」——这是本章砍掉 `PropertyBatchUpdateException` 的代价
+（见 5.4 节表）。
+
+**变化二：部分成功。** 循环版本在失败时，前面已经填好的属性**留在对象上**。
+而对象此时已经被放进……等等，没有——`createBean` 失败会抛异常，单例池里没有它
+（第 03 章的 `getSingleton(beanName, ObjectFactory)` 在 `ObjectFactory` 抛异常时
+不会 `addSingleton`）。所以「半填好的对象」不会被别人拿到，这一点是容器兜住的。
+
+**变化三（纯亏）：`setPropertyValues` 是一个可以被子类覆写的扩展点。**
+真实 Spring 里 `AbstractPropertyAccessor#setPropertyValues` 就是被
+`DataBinder`、`WebDataBinder` 覆写的核心方法。容器只调接口上的批量方法，
+才能让这些子类插进来。改成逐个调用，等于把这个扩展点焊死。
+
+→ **第 11 章**（扩展点为什么总是在「批量」这一层）、**第 33 章**（`PropertyBatchUpdateException`）。
+
+### B-05-5　`catch (Exception)` 被 checkstyle 拦下，团队规定「不许改规则、不许改代码」，第三条路？
+
+**答**：**把 catch 收窄成调用点的真实契约。**
+
+`afterPropertiesSet()` 声明 `throws Exception`，但**容器不需要捕 Exception**——
+它需要的是「捕住回调可能抛的一切，然后翻译」。这两句话不同。第三条路有几种实现：
+
+**路线 A：`throws Throwable` + 上层接。** 把 `invokeInitMethods` 声明成 `throws Throwable`
+（真实 Spring 就是这么写的：`:1863` 的签名末尾就是 `throws Throwable`），
+catch 上移到 `initializeBean` 的 `:1821`（那里 `catch (Throwable ex)`）。
+这样「捕宽」的位置从「每个回调点」变成「唯一的边界」，但**规则照样会拦 `Throwable`**——所以这条只解决了结构问题，没解决闸门问题。
+
+**路线 B：给规则一个名字更准确的理由。** `IllegalCatch` 的意图是「不要用一个过宽的
+catch 掩盖真正的错误类型」，而不是「Exception 永远不许出现」。如果团队不许改规则，
+可以在**这一处**用 checkstyle 的 `// SUPPRESS CHECKSTYLE IllegalCatch` 注释
+（需要 `SuppressWithNearbyCommentFilter`）或 `@SuppressWarnings("checkstyle:IllegalCatch")`
+——注释就是「第三条路」：**规则不动，代码不动，把例外写在原地**。
+
+**路线 C（本书实际选的）：改规则的参数，不改规则的存废。**
+把 `illegalClassNames` 从 `java.lang.Exception, java.lang.Throwable, java.lang.RuntimeException`
+收窄成 `java.lang.Throwable, java.lang.Error`。这不算「改规则」——
+规则还在，禁的还是最危险的两个。
+
+三条路的共同点：**都不要让「闸门的形状」去扭曲「代码的形状」**。
+闸门是为了让代码可读，不是为了通过闸门本身。当两者冲突时，先问「这条规则原本想防什么」，
+再决定是缩小范围、原地标注、还是调整结构。
+
+→ **本章 4.5 节**、`docs/CODE-STANDARDS.md` 闸门 3。
