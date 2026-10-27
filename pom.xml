@@ -88,6 +88,7 @@
 		<module>step-20-value-descriptor</module>
 		<module>step-21-configuration</module>
 		<module>step-22-assembly-control</module>
+		<module>step-23-conversion-service</module>
 	</modules>
 
 	<dependencyManagement>

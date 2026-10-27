@@ -85,7 +85,7 @@
 | [20](docs/chapters/20-value-descriptor.md) | `@Value` 与 `DependencyDescriptor` | 字段注入的元数据长什么样 |
 | [21](docs/chapters/21-configuration.md) | `@Configuration` + `@Bean`：full vs lite | 配置类方法互相调用为什么返回同一实例 |
 | [22](docs/chapters/22-assembly-control.md) | `@Import` / `@Conditional` / `@Profile` / `@Lazy` | 条件装配思想（不讲 Boot，只讲机制） |
-| 23 | ConversionService 与类型转换 | `"8080"` 怎么变成 `int` |
+| [23](docs/chapters/23-conversion-service.md) | `ConversionService` / `Converter` / `ConverterFactory` | `"8080"` 怎么变成 `int`：把规则变成可查询的集合 |
 
 ### 第 4 部 · AOP　`milestone: v0.4`
 

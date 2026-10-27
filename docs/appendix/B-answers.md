@@ -2547,3 +2547,82 @@ for (DeferredImportSelectorHolder holder : deferredSelectors) {
 第 4 步容易被漏：`DeferredImportSelector` 返回的类**自己可能是个配置类**，它里面的 `@Bean` 方法还得走一遍「收集图纸 + 条件判断 + 增强」。而这次不能靠主循环——主循环已经结束了。所以要么递归调用 `processConfigurationClass`（我们现在的实现方式，`@Import` 已经这么做），要么在 `postProcessBeanFactory` 末尾再套一层「有新增就再来一轮」（真实 Spring 的 `:435` 干的就是这件事）。
 
 两个方案的分界是：**递归负责「深度」，再扫一遍负责「广度」。** 我们的实现只有深度（`@Import` 递归），所以一旦引入「延迟执行」这种广度需求，就得补上外层循环。
+
+## 第 23 章
+
+### B-23-1：`canConvert(String.class, Object.class)` 为什么该是 `true`？
+
+因为调用方问 `canConvert` 时，真正想知道的是**「这个依赖我能不能满足」**，而不是「有没有一条转换规则」。`String` 要变成 `Object` 什么都不用做，答案是「当然能满足」。
+
+在语义上，「不需要转换」是「能转换」的一个特例 —— 恒等转换。把它排除在外，会让 `@Autowired Object anything` 这种（合法的）依赖被判成「无法满足」，而这完全不是配置错误。
+
+合并之后，「怎么区分没有转换器」成了新问题。关键是不能让「恒等」和「没有」共用同一个返回值。本书的写法是让 `findConverter` 返回三个状态：
+
+- `NoOpConverter.INSTANCE`：找到了，而且什么都不用做；
+- 某个真实转换器：找到了，要转；
+- `null`：没找到。
+
+`canConvert` 于是就是 `findConverter(...) != null`。真实 Spring 用同样的思路（`NO_OP` 转换器常量），只是它还从目标类型那边判一次 `targetType.isAssignableFrom(sourceType)`，因为它的 `TypeDescriptor` 能表达数组与泛型，「装得下」的判断比 `Class` 复杂。
+
+### B-23-2：为什么先判一对一、再问工厂？
+
+因为**工厂的声明面天然比一对一宽**。`NumberToNumberConverterFactory` 声明源类型是 `Number`，它一注册就和所有数字类型的转换撞上；`Object → String` 声明源类型是 `Object`，它和**一切**转换都撞上。
+
+先问工厂的具体后果：`Integer → String` 请求进来，`NumberToNumberConverterFactory` 先被问到「你能吐 `String` 吗」，它会返回 `null`（`String` 不是 `Number`），于是继续往下走 —— 这一次侥幸没事。但换个例子就出事：用户注册了 `Converter<Integer, String>`（精确），同时 `Object → String` 也存在。两个都在一对一集合里，靠 `distance` 分胜负（0 步 vs 1 步），精确的那个赢。可如果 `Object → String` 是个**工厂**，它就会在「先问工厂」的顺序里抢在精确转换器前面生效 —— 用户注册的规则被框架的兜底规则盖掉，而且没有任何报错。
+
+更实质的问题是：分成两个集合之后，**距离排序无法跨集合比较**。用户无法通过「登记一个更精确的转换器」来覆盖内建工厂的行为，只能改引擎。真实 Spring 不这么做 —— 它的 `converters` 映射里同时放 `GenericConverter` 与适配后的工厂，靠 `getClassHierarchy` 压平继承链、从列表头往后找第一个匹配，优先级完全由「离实际类型几步」统一决定，不存在跨集合的盲区。本书分成两个 `LinkedHashMap` 是为了让查找算法短到能在一节里讲完，代价写在缺陷表第 4 条。
+
+### B-23-3：`distance` 返回 `Integer.MAX_VALUE` 时，为什么不会误选？
+
+因为它根本不会被返回到 `findConverter` 的比较里。`findConverter` 的过滤条件是：
+
+```java
+pair.sourceType.isAssignableFrom(source) && target.isAssignableFrom(pair.targetType)
+```
+
+第一个条件保证了「实际源类型是声明源类型的子类」，也就是它一定落在父类链或接口链上；第二个条件保证了「声明产物能被当成目标」。两条都过的候选，`distance` 必然找得到路径。
+
+真正会出事的是「两个候选都算成 `MAX_VALUE`」：
+
+```java
+if (distance < bestDistance) {   // bestDistance 初值就是 MAX_VALUE
+```
+
+`MAX_VALUE < MAX_VALUE` 是 `false`，于是第一个候选**一个都选不上**，`best` 保持 `null`，接着回落到工厂、再抛「没有转换器」。结果是：明明登记了转换器，`canConvert` 却说 `false`。这种错误最难查，因为症状（缺转换器）和病因（距离算法写坏）完全不像。
+
+一个具体诱因：把 `distance` 里的 `if (current == declared)` 手滑写成 `if (current.isAssignableFrom(declared))`。方向反了之后，`String → Object` 那种正常关系也可能算不出路径，`MAX_VALUE` 就会真的出现。所以哨兵值和「严格小于」的比较是一对必须同时正确的写法 —— 或者干脆用 `OptionalInt` 把「没有距离」变成类型系统管的事。
+
+### B-23-4：`setConversionService` 换掉服务后，已经创建好的 Bean 会怎样？
+
+不会有任何变化，起因是**转换发生的时刻**：
+
+- 构造器参数解析、`@Value` 字段注入、属性填充：全部在**创建期**（`createBean` 内部），值已经被转成对象写进字段。换服务不会回头改它们。
+- 之后才会发生的转换：新建 Bean（prototype、`@Lazy` 代理首次解引用）的注入、运行期 `getTypeConverter()` 的相关转换（比如按名字 + 类型 `getBean` 时的转换）、以及用户自己调 `ConversionService`。
+
+所以「换服务」不是热更新规则，它只在 `refresh()` 之前的装配窗口内有效。这也解释了真实 Spring 为什么把 `conversionService` 放在 `ConfigurableBeanFactory` 上、并在 `prepareBeanFactory` 阶段就固定下来 —— 它是**装配期配置**，不是运行期配置项。
+
+顺带一个真实的坑：如果有人在 `refresh()` 之后 `setConversionService`，行为是「一半新一半旧」—— 已建 Bean 用旧规则，后来者用新规则。这种不一致比「完全不生效」难查得多，因为大部分测试仍然绿。
+
+### B-23-5：两种异常继承选择各自解释了什么？
+
+本书的选择（`ConversionFailedException extends IllegalArgumentException`）说的是**语义分类**：入参本身不合法。`ConversionFailedException extend ConversionException extend NestedRuntimeException` 这条说的是**分层分类**：转换这个动作失败了，它下面还挂着「找不到转换器」这个兄弟。
+
+本书选 `IllegalArgumentException` 的直接好处是：第 20 章 `SimpleTypeConverter` 里原本就有的：
+
+```java
+catch (IllegalArgumentException ex) {
+	throw new TypeMismatchException(name, value, requiredType, beanClass);
+}
+```
+
+不用改动一行就继续工作 —— 因为 `NumberFormatException` 和本章的两个新异常都在这条链上。`catch` 块可以短到只有一个父类型。
+
+但**我们没有这么写**，最终是：
+
+```java
+catch (ConversionFailedException | ConverterNotFoundException ex) {
+```
+
+原因正是「语义分类」的副作用：`IllegalArgumentException` 这个名字太宽，`setPropertyValue` 里任何一处抛出的参数错误都会被当成「转换失败」包成 `TypeMismatchException`，把真正的原因埋进 cause 里。真实 Spring 之所以要单独造一层 `ConversionException`，就是为了拿到一个**只覆盖转换这一族**的父类型 —— 宽，但不至于宽到误捕。
+
+这就是两种分类的取舍：语义分类（入参不合法）读起来自然，但借用了别人也在用的类型；分层分类（转换失败）多一个抽象类，换来一个专属的 catch 边界。真实 Spring 选了后者，本书因为「已经有一条现成的 `IllegalArgumentException` 链」而选了前者 —— 代价写进了缺陷表第 11 条。
