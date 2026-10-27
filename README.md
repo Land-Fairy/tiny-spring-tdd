@@ -111,7 +111,7 @@
 
 ### 附录
 
-- **A** 类型转换补遗
+- **A** [类型转换补遗](docs/appendix/A-conversion-supplement.md) —— 集合/数组转换、转换器查找优先级、与 `Formatter` 的关系
 - **B** 思考题答案（**别提前看**）
 - **C** 真实 Spring 类 ↔ 本书类 对照总表
 - **D** 面试题映射表
