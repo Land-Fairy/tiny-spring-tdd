@@ -1713,3 +1713,146 @@ return actual;
 如果把「名字 → 监听器对象」缓存起来，反而会造成更糟的语义冲突：原型 Bean 变成了事实上的单例，而图纸上写着 `prototype`。所以两个实现的选择是一样的：**不要在 `prototype` 作用域下声明监听器**。真实 Spring 里 `@EventListener` 生成的适配器是单例，也是这个道理。
 
 → **第 15 章** 4.5／**第 14 章**（作用域）
+
+---
+
+## 第 16 章
+
+### B-16-1
+
+**答**：因为「组身份」和「数值」是**两个互相独立的维度**，用一个 int 表达不了两个维度。
+
+三条理由，第三条是致命的：
+
+1. **`Integer.MIN_VALUE` 只有一个**。两个组件都想要「在所有人之前」，就只能有一个拿到它。谁拿到取决于注册顺序——语义被降级成竞态。
+2. **`PriorityOrdered` 之间仍然需要排序**。同一组里也要分先后，这需要保留数值维度；如果把组身份编码成数值，就没地方放组内顺序了。
+3. **真实 Spring 自己就证明了两者是正交的**。`ConfigurationClassPostProcessor` 是 `PriorityOrdered`，但 `getOrder()` 返回 `Ordered.LOWEST_PRECEDENCE`（`Integer.MAX_VALUE`），源码里还专门写了注释 `// within PriorityOrdered`：
+
+```java
+// spring-context/.../ConfigurationClassPostProcessor.java:190
+@Override
+public int getOrder() {
+    return Ordered.LOWEST_PRECEDENCE;   // within PriorityOrdered
+}
+```
+
+**数值最大**却排在所有 `Ordered` 之前——因为 `OrderComparator#doCompare` 先比组、后比数。如果用 int 编码组身份，这个组件根本写不出来。
+
+→ **第 16 章** 3.1 与 5.2（`Ordered.java:66` 的 Javadoc 原文）
+
+### B-16-2
+
+**答**：**不保证**。
+
+依据是 `Ordered#getOrder()` 的 Javadoc（`spring-core/src/main/java/org/springframework/core/Ordered.java:66-69`）：
+
+> Same order values will result in **arbitrary sort positions** for the affected objects.
+
+为什么「不保证」在设计上可接受：
+
+1. **契约只承诺「你在这一档」，不承诺「你在这档里的第几位」**。排序的目的是表达优先级层级，不是确定全序。
+2. **保证同值顺序会诱发脆弱依赖**。一旦承诺「同值按注册顺序」，就会有人写 `@Order(0)` 靠 XML 位置定序——把配置顺序重新变成隐含契约，正是本章要消灭的东西。
+3. **实现会变**。我们的 `List#sort` 是稳定排序，所以**看起来**保留了登记顺序；真实 Spring 在不同路径上用的排序策略不同（`sortPostProcessors` 用 `OrderComparator`，监听器用 `AnnotationAwareOrderComparator`），一旦依赖它，换实现就炸。
+
+**要保证同值顺序，唯一正确做法是给不同数值。**
+
+→ **第 16 章** 5.2、4.4
+
+### B-16-3
+
+**答**：**读不到**。`@Order` 标在工厂方法上时，注解留在 `Method` 对象上，而产品对象的 `getClass()` 是产品类——那里没有注解。
+
+真实 Spring 的解法是 `OrderComparator.OrderSourceProvider`：把一个**产品实例**映射回它的「排序来源」。看 `DefaultListableBeanFactory:2726` 的内部类：
+
+```java
+private class FactoryAwareOrderSourceProvider implements OrderComparator.OrderSourceProvider {
+
+    @Override
+    public Object getOrderSource(Object obj) {
+        String beanName = this.instancesToBeanNames.get(obj);        // 产品 → bean 名
+        // ...
+        BeanDefinition beanDefinition = getMergedBeanDefinition(beanName);
+        Object orderAttribute = beanDefinition.getAttribute(AbstractBeanDefinition.ORDER_ATTRIBUTE);
+        if (orderAttribute instanceof Integer order) {
+            sources.add((Ordered) () -> order);                      // 来源一：<bean order="...">
+        }
+        if (beanDefinition instanceof RootBeanDefinition rootBeanDefinition) {
+            Method factoryMethod = rootBeanDefinition.getResolvedFactoryMethod();
+            if (factoryMethod != null) {
+                sources.add(factoryMethod);                          // 来源二：工厂方法
+            }
+            Class<?> targetType = rootBeanDefinition.getTargetType();
+            if (targetType != null && targetType != obj.getClass()) {
+                sources.add(targetType);                             // 来源三：声明的目标类型
+            }
+        }
+        return sources.toArray();
+    }
+}
+```
+
+三个来源按先后尝试。第二条 `sources.add(factoryMethod)` 就是答案：`AnnotationAwareOrderComparator` 拿到 `Method` 这个 `AnnotatedElement` 后，能从它身上读到 `@Order`。
+
+本书没有实现这一层（缺陷表最后一行），因为我们的容器不区分「声明类型」与「实际类型」——第 14 章的 `FactoryBean` 也只是「产品由工厂造」，没有把「工厂的声明」留在图纸上。
+
+→ **第 16 章** 5.3、7 缺陷表；**第 14 章**（`FactoryBean`）
+
+### B-16-4
+
+**答**：参考答案的骨架——把 3.4 节的三批逻辑照搬到第五步，但**多一个前提**：`BeanDefinitionRegistryPostProcessor` 必须先全部跑完，因为它们是「**会注册新图纸**的后处理器」，包括 `ConfigurationClassPostProcessor` 这种把 `@Configuration` 展开成几十个 Bean 定义的组件。
+
+```java
+protected void invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory beanFactory) {
+    // 0. 外部 addBeanFactoryPostProcessor 注册进来的（保持登记顺序）
+    for (BeanFactoryPostProcessor postProcessor : this.beanFactoryPostProcessors) {
+        postProcessor.postProcessBeanFactory(beanFactory);
+    }
+
+    // 1. RegistryPostProcessor 批：它们会往容器里加图纸
+    List<BeanFactoryPostProcessor> registry = new ArrayList<>();
+    List<BeanFactoryPostProcessor> priorityOrdered = new ArrayList<>();
+    List<BeanFactoryPostProcessor> ordered = new ArrayList<>();
+    List<BeanFactoryPostProcessor> noOrder = new ArrayList<>();
+    // 注意：候选名单要在 registry 批跑完之后重新取一次（它们可能刚注册了新 BFPP）
+    for (String beanName : beanFactory.getBeanNamesForType(BeanFactoryPostProcessor.class)) {
+        BeanFactoryPostProcessor postProcessor = beanFactory.getBean(beanName, BeanFactoryPostProcessor.class);
+        if (postProcessor instanceof BeanDefinitionRegistryPostProcessor) {
+            registry.add(postProcessor);
+        }
+        else if (postProcessor instanceof PriorityOrdered) {
+            priorityOrdered.add(postProcessor);
+        }
+        else if (postProcessor instanceof Ordered) {
+            ordered.add(postProcessor);
+        }
+        else {
+            noOrder.add(postProcessor);
+        }
+    }
+    AnnotationAwareOrderComparator.sort(registry);
+    AnnotationAwareOrderComparator.sort(priorityOrdered);
+    AnnotationAwareOrderComparator.sort(ordered);
+    // 2. 按 registry → priorityOrdered → ordered → noOrder 四批调用
+}
+```
+
+测试写法：两个 BFPP 各往静态列表里记一笔，`getOrder()` 分别返回 1 与 0 且**后者是 `PriorityOrdered`**（数值更大却先跑），断言列表顺序。第 10 章的 `PlaceholderResolvingTests` 里的 `PropertySourcesPlaceholderConfigurer` 与测试内注册的 BFPP 都可以直接复用。
+
+> 注：本书没有 `BeanDefinitionRegistryPostProcessor` 这个接口（它属于「会注册图纸的 BFPP」，第 10 章刻意没引入），所以我们的实现可以省掉第 0、1 批，只排 `priorityOrdered → ordered → noOrder` 三批。上面写全，是为了让你在真实代码里认得出它。
+
+**这道题真正的考点**是那句注释：**「候选名单要在 registry 批跑完之后重新取一次」**。真实 Spring 为此写了两轮完整的 `getBeanNamesForType` 调用（`PostProcessorRegistrationDelegate:169` 和 `:188`）——因为 registry 批可以注册出新的 BFPP，而新来的也必须被排进后面几批。
+
+→ **第 16 章** 3.6、5.4；**第 10 章**（BFPP）
+
+### B-16-5
+
+**答**：答案是 `AbstractAutoProxyCreator`，回答的关键是它的**收尾动作在哪个后处理阶段**。
+
+要点按面试官的期待顺序说：
+
+1. **代理是在 `postProcessAfterInitialization` 里产生的**，不是 before。所以它一定发生在 `@PostConstruct` / `afterPropertiesSet` / `init-method` **之后**——这也是本章 3.4/3.5 反复出现的「after 阶段」。
+2. **谁来保证先后**：`AbstractApplicationContext#registerBeanPostProcessors` → `PostProcessorRegistrationDelegate#registerBeanPostProcessors`（`spring-context/.../PostProcessorRegistrationDelegate.java:211`）把后处理器分成三批，`AnnotationAwareOrderComparator` / `OrderComparator` 决定顺序。
+3. **事务注解为什么一定在被代理的目标上生效**：因为「找到 `@Transactional` 并把 advice 织进去」是 `BeanFactoryTransactionAttributeSourceAdvisor` 那侧的事，而代理对象在 `postProcessAfterInitialization` 里对**原始 Bean** 做的封装——顺序错了拿到的是代理再被代理（第 27 章会展开）。
+4. **一句话总结**：不是「注解生效后才创建代理」，而是「**代理创建时去读注解**」。所谓「顺序」，指的是「谁包谁」。
+
+→ **第 16 章** 3.4、4.3、5.4；**第 26 章**（自动代理创建器）、**第 27 章**（代理对象的属性填充）
