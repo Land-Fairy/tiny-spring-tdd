@@ -984,3 +984,136 @@ if (!this.beanFactory.isSingleton("greeter")) {
 所以解析必须是**纯函数**：读图纸、返回新值、图纸不动。真实 Spring 在 `applyPropertyValues` 里用 `new MutablePropertyValues(deepCopy)` 也是同一个理由——而且它连集合、数组都深拷贝了，因为浅拷贝留下的可变集合同样会被写坏。
 
 → **第 08 章**（3.6 节）／**第 30 章**（循环依赖时图纸复用）
+
+---
+
+## 第 09 章
+
+### B-09-1
+
+**问**：为什么 `prepareRefresh()`、`obtainFreshBeanFactory()`、`prepareBeanFactory()` 三步放在 `try` **外面**，而后面九步放在 `try` 里面？
+
+**答**：因为 `catch` 块里要调用 `destroyBeans()`，而它本身就要用 `getBeanFactory()`。
+
+`refresh()` 的 `catch` 体是：
+
+```java
+destroyBeans();     // = getBeanFactory().destroySingletons()
+cancelRefresh(ex);
+throw ex;
+```
+
+如果第 2 步 `obtainFreshBeanFactory()` 就失败了，`getBeanFactory()` 返回 null（或抛异常），那么「处理失败」的代码会自己再抛一个 `NullPointerException`，把原始异常盖掉——排查的人看到的是一条毫无信息量的 NPE，而真正的错误（比如 XML 路径写错）被埋了。
+
+所以分界线划在「工厂是否已经可用」：
+
+- **工厂可用之前**（第 1-3 步）：失败即终止，无可回滚。放在 `try` 外，异常直接向上抛。
+- **工厂可用之后**（第 4-12 步）：失败必须回滚，否则已经造好的单例泄漏。
+
+这条规则可以推广成一句通用原则：**`catch` 块自己能安全执行，是把它放在 `try` 里的前提。** 真实 Spring 的 `AbstractApplicationContext.refresh()` 完全相同的结构（`:588-660`）：`prepareRefresh` / `obtainFreshBeanFactory` / `prepareBeanFactory` 在 `try` 外，其余九步在内。
+
+→ **第 09 章**（4.1 节）
+
+### B-09-2
+
+**问**：把第 6 步 `registerBeanPostProcessors` 挪到第 11 步之后，会有什么症状？为什么这个 bug 在单元测试里容易漏掉？
+
+**答**：症状是**所有 BeanPostProcessor 全部失效，但程序不报错**：
+
+- `Aware` 接口不会被注入（第 12 章）→ `applicationContext` 字段为 `null`，用在业务代码深处才 NPE
+- 代理不会织上（第 26 章）→ `@Transactional`、`@Async`、`@Cacheable` 全部**静默不生效**
+- 初始化前后回调不执行（第 13 章）→ `@PostConstruct` 里的预热逻辑没跑
+
+关键在于**第 11 步造出来的那批单例，是在「处理器还没注册」的状态下造的**：`initializeBean()` 里的 `applyBeanPostProcessorsBeforeInitialization` 遍历的是一个空列表，循环 0 次，然后若无其事地继续。
+
+为什么单测容易漏？三个原因：
+
+1. **没有断言「处理器被调用过」**。多数测试只断言「结果对不对」——`@Transactional` 失效的 Bean 依然能正常读数据，只是不回滚。
+2. **懒加载 Bean 会「看起来正常」**：它在第一次 `getBean` 时才创建，那时处理器已经注册好了。于是**同一个类，被预实例化的那个失效、后来才取的那个生效**——这种不一致几乎不可能靠肉眼发现。
+3. **顺序错误不产生异常**。它只改变「哪些对象没被处理」，而对象本身完全合法。
+
+本书的 `RefreshStepOrderTests` 就是为此存在的：它不做业务断言，只记录十二步的**调用顺序**，然后用 `containsExactly`（有序）钉住。这是「用结构测试守住无法用行为测试覆盖的契约」的典型手法。
+
+→ **第 09 章**（1.3 节、2.3 节）／**第 11 章**
+
+### B-09-3
+
+**问**：如果两个线程同时 `getBean` 一个尚未创建的单例，会发生什么？
+
+**答**：只会创建一个，另一个线程等它造完再拿同一个对象。
+
+路径在第 03 章的 `DefaultSingletonBeanRegistry#getSingleton(String, ObjectFactory)`：
+
+```java
+Object singletonObject = this.singletonObjects.get(beanName);   // ① 快路径，锁外读
+if (singletonObject == null) {
+    this.singletonLock.lock();                                  // ② 抢锁
+    try {
+        singletonObject = this.singletonObjects.get(beanName);   // ③ 双重检查
+        if (singletonObject == null) {
+            singletonObject = singletonFactory.getObject();      // ④ 只有这里造
+            addSingleton(beanName, singletonObject);             // ⑤
+        }
+    }
+    finally {
+        this.singletonLock.unlock();
+    }
+}
+return singletonObject;
+```
+
+两个线程同时到达 ① 都读到 `null`，都去 ② 抢锁；只有一个拿到锁，另一个在 ② 阻塞。拿到锁的那个在 ③ 再查一次（还是 `null`，因为没人填过），于是执行 ④ 造对象、⑤ 写池，然后放锁。第二个线程被唤醒后走到 ③——**这次查到了**，直接返回，不造第二遍。
+
+三个要点：
+
+- **① 是性能设计**：绝大多数调用都命中缓存，不应该抢锁。这就是「快路径 / 慢路径」。
+- **③ 是正确性设计**：没有它，两个线程会各造一个，就是第 03 章并发测试里 `expected: 1 but was: 4` 那个 bug。
+- **锁的粒度是「整个单例池」**，不是「每个 beanName 一把锁」。所以造一个慢 Bean 会阻塞其他 Bean 的创建——真实 Spring 6.2 引入 strict/lenient 两套策略来缓解（第 00 章追过的 gh-34902，第 31 章展开）。
+
+补充：如果两个线程一个 `getBean`、另一个在 `refresh()`，本章的实现**并不安全**——我们没有 `startupShutdownLock`。这是第 31 章的内容。
+
+→ **第 03 章**／**第 09 章**（思考题 9-3）／**第 31 章**
+
+### B-09-4
+
+**问**：为什么 `registerBeanDefinition` 在**覆盖**时不改变 `beanDefinitionNames` 里名字的位置？如果改变，会破坏什么？
+
+**答**：会破坏「启动过程的可复现性」，而这个东西一旦破坏，排查成本会指数上升。
+
+具体破坏三样：
+
+1. **启动顺序随一次配置覆盖而改变**。比如父容器与子容器都注册了 `dataSource`，子容器覆盖父容器。如果覆盖时把名字挪到列表末尾，那么 `dataSource` 的初始化顺序就从「第 1 个」变成「最后一个」。而这个顺序可能恰好决定了某个依赖它的 Bean 拿到的数据源是新的还是旧的。
+2. **启动日志的比对失效**。运维排查「昨天能启动、今天不能」时，靠的是启动顺序是否一致。顺序漂移会让 diff 一片红，真正的那一行变化淹没在里面。
+3. **失败现场不可复现**。启动失败时「报的是哪个 Bean 的错」取决于顺序。顺序不稳定，就意味着同一个配置在两台机器上报不同的错——这正是第 09 章 2.4 节那个 bug 的成因（`ConcurrentHashMap` 的哈希序）。
+
+所以规则是：**名字的位置由「第一次注册」决定，之后永不改变**。真实 Spring 的 `registerBeanDefinition` 也正是这么做的——覆盖分支里只有 `this.beanDefinitionMap.put(beanName, beanDefinition)`，**没有一个字碰 `beanDefinitionNames`**：
+
+```java
+BeanDefinition existingDefinition = this.beanDefinitionMap.get(beanName);
+if (existingDefinition != null) {
+    ...
+    this.beanDefinitionMap.put(beanName, beanDefinition);   // 只换图纸，不动顺序
+}
+```
+
+只有「新增」分支才会 `this.beanDefinitionNames.add(beanName)`。
+
+→ **第 09 章**（3.5 节）
+
+### B-09-5
+
+**问**：同一句 `context.refresh()` 在 `GenericApplicationContext` 与真实 Spring 的 `AbstractRefreshableApplicationContext` 下承诺不同——如何识别这种「同名不同承诺」？
+
+**答**：先接受一个事实：**接口只承诺签名，不承诺语义**。`ConfigurableApplicationContext#refresh()` 的 Javadoc 只说「启动」，没说什么叫「重复启动」。语义藏在实现类的文档与代码里，必须逐个读。
+
+我的检查清单是五步：
+
+1. **读接口 Javadoc 的 `@throws`**。`refresh()` 声明 `throws IllegalStateException`——这个受检异常的存在本身就是提示：「有些状态下不能调」。它没有声明 `throws` 什么条件下抛，那就是留给实现的。
+2. **读实现类 Javadoc 的第一段**。`GenericApplicationContext` 明说「一次性启动」，`AbstractRefreshableApplicationContext` 明说「支持刷新」。**第一段话是作者最想让你知道的事**，比方法注释重要。
+3. **找「守卫」代码**。搜 `throw new IllegalStateException` 与 `compareAndSet`。`GenericApplicationContext` 里是 `if (!this.refreshed.compareAndSet(false, true)) throw ...`——读到这行就知道它不允许重来。
+4. **看字段的生命周期**。字段是 `final` 还是可变？`GenericApplicationContext` 的 `beanFactory` 是 `final`（一旦创建不能换），`AbstractRefreshableApplicationContext` 的 `beanFactory` 是 `volatile` 且可置 null（每次 `refresh` 重建）。**字段的可变性直接暴露了承诺的强弱**，这是最快的一招。
+5. **交叉验证测试与文档**。真实仓库里有 `GenericApplicationContextTests` 之类，搜 `refresh` 两次的用例，看它断言抛异常还是断言成功。
+
+再补一条经验：**同名不同承诺最容易在「同名类」上出现**。Spring 里 `refresh()`（上下文）、`refreshBeanFactory()`（可覆写钩子）、`onRefresh()`（子类钩子）三个名字里都有「refresh」，但一个都不能互相替代——本章把它们分成了三个不同的方法，就是为了让你看清这一点。
+
+→ **第 09 章**（5.4 节）

@@ -66,7 +66,7 @@
 
 | 章 | 主题 | 你会得到 |
 |---|---|---|
-| 09 | ApplicationContext 与 `refresh()` | 容器的完整一生，12 步全景 |
+| [09](docs/chapters/09-application-context.md) | ApplicationContext 与 `refresh()` | 容器的完整一生，12 步全景 |
 | 10 | BeanFactoryPostProcessor + Environment | 占位符 `${db.url}` 是谁替换的 |
 | 11 | **BeanPostProcessor 专章** | **"注解为什么生效"的最终答案** |
 | 12 | Aware 感知容器 | 让 Bean 拿到容器自己 |
