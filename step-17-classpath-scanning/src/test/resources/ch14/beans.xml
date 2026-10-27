@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+	<bean id="greeterFactory" class="org.springframework.samples.ch14.GreeterFactory">
+		<property name="prefix" value="Hi, "/>
+	</bean>
+
+	<bean id="worker" class="org.springframework.samples.ch14.Worker" scope="thread"/>
+
+</beans>

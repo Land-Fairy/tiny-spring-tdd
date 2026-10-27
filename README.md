@@ -79,7 +79,7 @@
 
 | 章 | 主题 | 你会得到 |
 |---|---|---|
-| 17 | 包扫描：ASM 元数据 vs 反射 | `@ComponentScan` 底层在扫什么 |
+| [17](docs/chapters/17-classpath-scanning.md) | 包扫描：ASM 元数据 vs 反射 | `@ComponentScan` 底层在扫什么 |
 | 18 | `PathMatchingResourcePatternResolver` | 包扫描的底层是 ant 路径匹配 |
 | 19 | `@Autowired` / `@Qualifier` / 类型匹配决策链 | 90% 的 `NoUniqueBeanDefinitionException` 死在这里 |
 | 20 | `@Value` 与 `DependencyDescriptor` | 字段注入的元数据长什么样 |

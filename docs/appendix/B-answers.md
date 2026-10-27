@@ -1856,3 +1856,101 @@ protected void invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory b
 4. **一句话总结**：不是「注解生效后才创建代理」，而是「**代理创建时去读注解**」。所谓「顺序」，指的是「谁包谁」。
 
 → **第 16 章** 3.4、4.3、5.4；**第 26 章**（自动代理创建器）、**第 27 章**（代理对象的属性填充）
+
+---
+
+## 第 17 章
+
+### B-17-1 `@Retention(CLASS)` 的注解读得到吗？读不到是 bug 吗？
+
+**答**：读不到——本书的解析器只认 `RuntimeVisibleAnnotations` 一个属性名，而 `@Retention(CLASS)`
+的注解进的是 `RuntimeInvisibleAnnotations`，`else` 分支把它连同长度一起 `skipNBytes` 跳过了。
+
+**这不是 bug，是如实实现了承诺**：`ClassMetadata` 的 Javadoc 说的是「注解可见范围 = 运行时可见」，
+和 `java.lang.reflect` 的边界完全一致。如果你真想读到 CLASS 级注解，得再加一个
+`if ("RuntimeInvisibleAnnotations".equals(attributeName))` 分支复用同一段解析逻辑——技术上
+只是多一个字符串比较。
+
+真正的重点是：**为什么要两套属性？** 因为「编译期工具想看的注解」和「运行期想看的注解」不是同一批。
+Lombok 的 `@Data`、`@NonNull` 是 `SOURCE` 级，压根不在字节码里；`@Nullable`（JSpecify）常是 `CLASS` 级，
+让编译器插件和静态分析工具看，但运行期不留痕迹——这样不增加运行时元数据体积。
+
+→ **第 17 章**（3.2 节「注解在最后的属性表里」）
+
+### B-17-2 把 `visited` 改成 static 会出什么事？
+
+**答**：第一次扫描能把元注解走通，**第二次扫同一个包就全丢了**。因为 `visited` 记的是
+「这次递归里已经走过的注解类型」；改成 static 之后它跨调用存活，第二次遇到 `@Service` 时
+`visited.add("org...Service")` 返回 `false`（已存在），函数立刻 `return false`——于是
+`@Service`、`@Repository` 的类全被判成「不是组件」，`registersComponentsAndDerivedAnnotations`
+第二次运行就会从 6 变成 3。
+
+更麻烦的是它的表现形式：**同一个测试单独跑是绿的，全量跑是红的**（或者反过来），取决于哪个
+`@BeforeEach` 先建工厂。这就是「不可复现的测试」的典型成因——共享可变状态。
+
+真实 Spring 不做这种「已访问集合」缓存，它缓存的是**推导结果**（某个注解类型的 meta-annotation
+集合），缓存条目是纯函数结果，重复使用无副作用。要缓存就缓存结果，不要缓存「过程状态」。
+
+→ **第 17 章**（3.7 节「`visited` 不是可选的」+ 5.4 节对照表）
+
+### B-17-3 为什么图纸里写类名，不写 `Class` 对象？
+
+**答**：四条理由，第一条最硬：
+
+1. **扫描阶段不能加载类**（本章的整个论点）。`Class.forName` 会触发加载 → 链接 → 初始化，
+   静态块就跑了。写类名让「读字节码」与「造对象」彻底解耦。
+2. **延迟创建**。`lazy-init="true"` 的 Bean 在整个启动期都不该被创建；如果图纸里已经是 `Class`，
+   说明类已经被加载了——那就不叫延迟了。
+3. **prototype 作用域**需要「每次取都造一个新的」，图纸必须可复用、可重复消费；`Class` 对象虽然
+   也能重复 `newInstance`，但类名还能配合 `ClassLoader` 换实现（真实 Spring 的 `setBeanClassLoader`、
+   `resolveBeanClass` 就是干这个的）。
+4. **序列化与跨 ClassLoader**。真实 Spring 里 `BeanDefinition` 会被 `SerializedBeanFactoryReference`
+   之类的东西带着走；`Class` 对象跨 ClassLoader 是不可移植的，而字符串是。
+
+顺带一个反差：`AbstractBeanDefinition` 里的字段是 `private volatile Object beanClass`——
+**类型是 `Object`**，因为它要么装类名字符串、要么装已经解析好的 `Class`。第 02 章的思考题
+B-02-3 讲过这个设计。
+
+→ **第 17 章**（3.8 节「扫描阶段全程不加载，创建阶段才加载」）
+
+### B-17-4 类里有 `static { System.exit(1); }`，扫描会炸吗？
+
+**答**：**不会**。本书的扫描器读的是 `.class` 文件的字节，`System.exit` 是方法体里的字节码，
+而 `skipNBytes` 按长度把方法区整段跳过了——它连「这里有一句 `System.exit`」都不会知道。
+真实 Spring 用 ASM 时也一样，而且 `PARSING_OPTIONS` 里的 `SKIP_CODE` 明确表示「方法体一概不看」，
+连解析都不解析。
+
+这正是第 17.2 节「答案一：反射遍历」会炸的原因：`Class.forName("...LegacyBridge")` 的默认行为是
+`initialize = true`，静态块立刻执行，`System.exit(1)` 直接终止 JVM——你只是想数一下注解，
+进程没了。而且这个失败**没有堆栈、没有日志**，`exit code` 就是 1。
+
+顺便把「不初始化」的三种写法分清：
+
+| 写法 | 会初始化吗 |
+|---|---|
+| `Class.forName(name)` | 会（第二个参数默认 `true`） |
+| `Class.forName(name, false, loader)` | 不会，但**已经链接**，而且占了元数据空间 |
+| 读 `.class` 字节（ASM / 本书） | 完全不碰 JVM 的类元数据 |
+
+→ **第 17 章**（1 节「三种随手能想到的答案」+ 5.5 节「ASM 的收益不是速度」）
+
+### B-17-5 markerInterface 能扫到吗？要读哪个字段？
+
+**答**：本书扫不到，因为 `skipMembers(in, interfaceCount)` 把 `interfaces` 段整段跳过了，
+`ClassMetadata` 上也没有「我实现了哪些接口」这个方法。
+
+要做的话需要两步：
+
+1. 解析 `interfaces` 段：`u2 interfaces_count` 后面跟 `interfaces_count` 个 `u2` 常量池下标，
+   每个指向一个 `CONSTANT_Class`，再查一层拿到 UTF8 描述符（`com/acme/Marker`），转成全限定名。
+   这和 `this_class` 的处理完全一样（本书的 `className(...)` 方法已经写了这段转换）。
+2. 在 `ClassMetadata` 上加 `Set<String> getInterfaceNames()`，然后扫描器的判断从
+   「注解里有 includeAnnotationType」扩展成「或者接口里有 markerInterface」。
+
+真实 Spring 的做法是 `AssignableTypeFilter`（配 `AbstractTypeHierarchyTraversingFilter`），
+它比「查接口名单」更麻烦：要沿**父类链**递归查（`Foo extends Bar`，`Bar implements Marker`，
+`Foo` 也算匹配），而且要考虑 `considerInterfaces` 开关。`SimpleClassMetadata`（真实 104 行）
+提供 `getInterfaceNames()`，`ClassMetadata`（122 行）提供 `getSuperClassName()`——两个都是本书
+跳过的段。
+
+→ **第 17 章**（3.4 节 `skipMembers` + 5.1 节体量对照表）

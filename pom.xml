@@ -82,6 +82,7 @@
 		<module>step-14-scope-factorybean</module>
 		<module>step-15-events</module>
 		<module>step-16-ordered</module>
+		<module>step-17-classpath-scanning</module>
 	</modules>
 
 	<dependencyManagement>
