@@ -2969,3 +2969,96 @@ target → BPP-A 包装成 proxyA → BPP-B 包装成 proxyB(里面握着 proxyA
    `AopUtils.isAopProxy(bean)`（`:284`/`:298`）。
 2. **让「返回新对象」的后处理器只允许一个**。要么把它们合并成一个（本章说的「创建器的位置必须固定」），
    要么在文档层面约定：after 阶段的包装器只有代理创建器一家，其他后处理器只能返回同一个对象。
+
+## 第 27 章
+
+### B-27-1 `releaseTarget` 为什么必须在 `finally` 里
+
+因为「取/还」是**成对协议**，而方法的退出路径不止一条：正常返回、抛出受检异常、抛出运行时异常、
+抛出 `Error`。`finally` 是唯一对四条路径都生效的位置。把它写在 `return` 之前，只覆盖第一条。
+
+漏还的后果取决于目标源。`CommonsPool2TargetSource` 的 `releaseTarget` 就是把对象
+`pool.returnObject(target)` 还回去；少还一次，池里的可用对象就少一个。业务上表现为：
+
+- 单次调用完全正常，日志里看不出任何异常；
+- 池子被用空之后，下一次 `getTarget()` 变成「等空闲对象」，等不到就抛
+  `NoSuchElementException`（commons-pool2 的典型消息是 `Timeout waiting for idle object`）；
+- 报错位置**离出错位置很远**，栈里全是「借不到对象」，与「某次调用曾抛异常」毫无关联。
+
+这正是我们把 `finally` 写进正文的原因：它不是防御式编程的花招，而是成对协议的正确形状。
+顺带一句：真实 Spring 在 `finally` 里还多一个短路条件 `!targetSource.isStatic()`（
+`JdkDynamicAopProxy:247`），语义上等价于「静态目标源不需要归还」。
+
+### B-27-2 `getTarget()` 返回 `T`、`releaseTarget` 收 `Object`
+
+如果两个都写成 `T`，`JdkDynamicAopProxy#invoke` 里会遇到**通配符捕获**：
+
+```java
+TargetSource<?> targetSource = this.advised.getTargetSource();
+Object target = targetSource.getTarget();     // 类型是 capture#1 of ?
+targetSource.releaseTarget(target);           // 形参是 capture#1 of ? —— 编译器无法证明两者同一
+```
+
+`?` 是一个「未知的确定类型」，`getTarget()` 产出的 `capture#1 of ?` 和 `releaseTarget(T)` 期望的
+`capture#2 of ?` 在编译器眼里是两个不同的未知类型，没有赋值兼容性。要让它编译通过，得把方法改成
+泛型签名 `<T> void releaseTarget(T target)` 并把调用点也参数化，写法立刻变得比问题本身还复杂。
+
+所以这是**调用点的缺陷，不是泛型的缺陷**。泛型表达的是「同一个类型参数贯穿」，而这里的语义本来就是
+「你给我一个我刚给你的东西」，不要求编译期知道它是什么类型 —— 用 `Object` 恰好精确。真实 Spring 的
+`TargetSource#releaseTarget(Object target)`（`:77`）就是同一个取舍，而且它还把方法写成了 `default`
+空实现，让单例目标源不必写空方法。
+
+### B-27-3 包成 `IllegalStateException` 与直接抛，各自的代价
+
+真实 `JdkDynamicAopProxy#invoke` 声明了 `throws Throwable`，因为反射调用本来就会抛
+`InvocationTargetException`，它必须把受检异常透传出去。于是 `targetSource.getTarget()` 的异常可以
+**原样**抛给调用方，零成本。
+
+我们的 `AdvisedSupport#getTarget()` 没有这个自由：它被 `BeanWrapperImpl`、`JdkDynamicAopProxy`
+和测试直接调用，签名里没有 `throws`。两害相权，只能包一层 `IllegalStateException`。代价是：
+
+- **类型信息丢失**。调用方无法只捕获「取目标失败」，只能捕获 `IllegalStateException`（它太宽了），
+  或者去翻 `getCause()`；
+- **与业务异常混淆**。业务方法抛的 `IllegalStateException` 和「取目标失败」的 `IllegalStateException`
+  在类型上不可区分 —— 所以消息里必须带上 `targetSource` 的名字，让栈能说话。
+
+真实 Spring 的直抛方案也不是免费的：调用方（比如 `BeanWrapper`、AOP 上层）必须一路声明
+`throws Throwable`，所以你会看到整个框架大量方法带 `throws Throwable` —— 它用「到处都是受检异常」
+换「异常保真」。
+
+### B-27-4 目标源每次返回不同对象，按 Bean 名的缓存会怎样
+
+会**算错代理的形状**。第 26 章的 `proxyTypes` 缓存键是 Bean 名、值是「这个 Bean 的代理要实现的接口列表」，
+而接口列表来自 `TargetSource#getTargetClass()`。如果第一次取到的目标是 `LibraryImpl`（实现 `Library`），
+缓存就记下「只有 `Library`」；之后目标换成 `AdminLibraryImpl`（额外实现 `AdminLibrary`），
+代理仍然只实现 `Library` —— 调用 `adminLibrary.purge()` 时 `Method` 在代理上不存在，
+结果是 `IllegalArgumentException` 或者一次静默的 `ClassCastException`。
+
+所以 `getTargetClass()` 的契约是**静态**的：它承诺「这个目标源的所有目标都具备这一组类型」。
+真实 Spring 的 `HotSwappableTargetSource#getTargetClass()` 返回的是**当前** `target.getClass()`，
+框架层的缓存因此要求使用者的两个目标实现同一接口集合 —— 这条要求没有写在接口 Javadoc 的显眼处，
+属于「框架的隐含假设」。`isStatic()` / `isImmutable()` 这两个方法的存在，正是为了让「目标会不会变」
+这件事变成可询问的契约。
+
+### B-27-5 `LOWEST_PRECEDENCE` 与「meaning non-ordered」
+
+先看机制。`registerBeanPostProcessors()` 把后处理器分成三批：
+
+1. `PriorityOrdered` —— 批内按 `getOrder()` 排序；
+2. `Ordered` —— 批内按 `getOrder()` 排序；
+3. **没有实现任何顺序接口的** —— 按 Bean 定义顺序注册。
+
+三批是**串行**的：第 2 批整体在第 3 批之前。`AbstractAutoProxyCreator` 实现了 `Ordered` 且返回
+`LOWEST_PRECEDENCE`（`Integer.MAX_VALUE`），于是它落在**第 2 批的末尾** —— 在全部有顺序的后处理器
+之后，但在全部无顺序的后处理器**之前**。
+
+所以「优先级最低」与「没有优先级」在机制上**并不等价**：前者仍在第 2 批，后者在第 3 批。
+`ProxyProcessorSupport:57` 那句注释（`meaning non-ordered`）说的是**意图**——「我不想参与排序，
+所以用这个默认值」，而不是「机制上等同」。这个差别正是红三的来源：我们的创建器原先没有实现
+`Ordered`，于是落进第 3 批，与用户的后处理器一起按定义顺序跑。
+
+反过来说，如果真实 Spring 改成「一批、全部排序」，这条注释就**不成立**了。因为
+`OrderComparator` 会把「没有实现 `Ordered`」的对象当作 `LOWEST_PRECEDENCE` 参与排序，
+于是创建器和无顺序的后处理器变成**同值**，先后退化为「稳定排序保留定义顺序」——
+红三会立刻回来。这也解释了为什么真实 Spring 保留三批而不是「一批全排」：
+**「有没有声明顺序」本身是有意义的信息，不能用一个默认值抹平**。
