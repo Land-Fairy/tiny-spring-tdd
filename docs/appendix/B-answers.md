@@ -421,3 +421,123 @@ return getSingleton(beanName, () -> createBean(beanName, beanDefinition));
 普通运行期仍然是本章那套最保守的硬等。
 
 → **第 31 章**（并发模型：锁、延迟、ObjectFactory）。
+
+---
+
+## 第 04 章
+
+### B-04-1　不检查 `isNamePresent()` 会怎样？如果容器里恰好真有个 Bean 叫 `arg0` 呢？
+
+**答**：两种情况，一坏一更坏。
+
+**情况一：容器里没有叫 `arg0` 的 Bean。** 容器会认真地去查一个叫 `arg0` 的 Bean，查不到，
+报 `No bean named 'arg0' available; required type [...]`。这条消息**技术上完全正确、逻辑上完全无用**：
+它把你引向「少注册了一个 Bean」，而真正的问题是「编译时没加 `-parameters`」。
+排错方向上的一步错，代价常常是以小时计的。
+
+**情况二：容器里真的有个 Bean 叫 `arg0`。** 这才是真正的灾难——**它会装配成功**。
+假设有人写了个 `@Bean(name = "arg0")`，类型又恰好匹配，容器就会把那个对象塞进 `repository` 的位置。
+程序不报错、日志不告警，只是行为诡异。这类 bug 的定位成本远高于崩溃：崩溃有栈，静默错误只有症状。
+
+这正是 `StandardReflectionParameterNameDiscoverer` 那段代码的全部价值：**宁可返回 `null` 让上层报一句
+「名字不可用」，也绝不把 `arg0` 当名字交出去**。在真实 Spring 里，这个假名字会流进
+`DependencyDescriptor#getDependencyName()`（`:359-361`），被 `AutowireCandidateResolver` 当消歧线索用——
+同样会「错误地选成功」。
+
+→ **第 33 章**（异常体系与排错：为什么「消息里写解法」比「消息写得准确」更重要）。
+
+### B-04-2　如果按参数个数「从少到多」排序，`MultiConstructor` 会怎样失败？为什么更难查？
+
+**答**：容器会永远选中单参数构造器，然后**成功**返回一个 `repository == null` 的半成品。
+
+以本章的测试为例，两个依赖都注册了，期望 `hasRepository()` 为 `true`；从少到多排序后
+它会拿到 `false`——测试能红，但请注意红的方式：不是异常，是一个断言不符。
+更糟的是如果 `repository` 恰好只在 `greet()` 里被用到（本章就是这么设计的），那么
+**只要你不调 `greet()`，一切看起来都正常**。
+
+为什么比崩溃更难查：
+
+1. **没有栈**。你手上只有「某个字段是 null」，而赋值发生在别人的构造器里。
+2. **依赖越少越优先听起来合理**。它符合直觉（「尽量用简单的构造器」），所以没人会怀疑这里。
+3. **症状与原因距离远**。构造发生在启动期，症状可能出现在几小时后的一个定时任务里。
+
+真实 Spring 不用「参数个数」做排序依据，而用 `getTypeDifferenceWeight` / `getAssignabilityWeight`
+算「这组参数和声明的类型差多远」（`ConstructorResolver.java:259-262` 那段 `typeDiffWeight`）。
+「能全满足」只是及格线，真正的选择标准是**最接近匹配**。
+
+→ **第 19 章**（`@Autowired` 类型匹配决策链：多候选时到底选谁）。
+
+### B-04-3　两个线程互相依赖（A 要 B、B 要 A）会怎样？`ReentrantLock` 在这里是什么角色？
+
+**答**：会**双向死锁**，而且容器自己不会报错。
+
+推演（假设两个线程同时 `getBean`，且 A、B 互相当构造器参数）：
+
+| 步骤 | 线程 1 | 线程 2 | `singletonLock` 持有者 |
+| --- | --- | --- | --- |
+| 1 | 造 A，拿到锁 | —— | 线程 1 |
+| 2 | 递归 `getBean("b")`，要同一把锁 | 造 B，阻塞在拿锁上 | 线程 1 |
+| 3 | 同线程重入成功，造 B | —— | 线程 1（重入计数 2） |
+| 4 | B 要 A → A 正在创建中但还没入池 → 继续要锁 | —— | 线程 1（重入计数 3） |
+| 5 | 无限递归，`StackOverflowError` | 仍然阻塞 | 线程 1 |
+
+若换成「线程 1 造 A、线程 2 造 B，各自先持有锁」的时序，就是经典交叉等待：两边都卡在
+`lock()` 上，永不返回，进程挂死且没有任何异常输出。
+
+`ReentrantLock` 在这里的角色是**双面的**：
+
+- **好的一面**：同线程重入让「构造器注入递归」这件事能工作。如果是不可重入的锁，
+  `getBean("service")` → `getBean("repository")` 就会自己把自己锁死——第 04 章整章都跑不起来。
+- **坏的一面**：它把「递归不收敛」的后果从「立刻报错」变成了「挂住或栈溢出」。
+
+真实 Spring 靠两样东西救场：`singletonsCurrentlyInCreation` 集合（每个 Bean 创建前登记、创建后注销）
+用来**检测**「我这一轮已经在造它了」，抛出 `BeanCurrentlyInCreationException`；
+三级缓存（`singletonFactories` / `earlySingletonObjects`）用来把「半成品」提前暴露出去，
+让循环能被断开。
+
+→ **第 30 章**（三级缓存与循环依赖）、**第 31 章**（并发模型）。
+
+### B-04-4　`Integer` 的 Bean 能注入给 `int` 参数吗？
+
+**答**：**这条路上根本走不到「能不能注入」，因为那个 `Integer` Bean 造不出来。**
+
+`java.lang.Integer` 在 JDK 21 里只有一个公开构造器 `Integer(int)`，**没有无参构造器**。
+所以 `Class.forName("java.lang.Integer").getDeclaredConstructor()` 直接抛
+`NoSuchMethodException: java.lang.Integer.<init>()`（实测输出），容器在第一步就失败了。
+
+换句话说，前半段推理是对的、后半段路是断的：
+
+- 对：`Constructor#newInstance` 确实会对基本类型自动拆箱。实测
+  `NeedsInt.class.getDeclaredConstructors()[0].newInstance(Integer.valueOf(42))` 返回 `42`，
+  而 `int.class.isInstance(Integer.valueOf(42))` 是 `false` —— 所以我们那段类型检查必须跳过 `primitive`，
+  否则会把合法调用误判成类型错误。
+- 断：容器只能造「有无参构造器的类」，`Integer`、`Long`、`Boolean` 全都不满足（`String` 满足，
+  所以第 03 章那个 `NeedsArguments(String name)` 的测试能够通过）。
+
+真实 Spring 不在这个框里：它把 `int` 参数当作**待转换的值**处理，用 `ConversionService` 把
+`"42"` 转成 `42`，压根不需要一个「Integer Bean」存在。这是两种模型的根本差别——
+**本书的容器只认识对象，真实容器还认识「值的表达式」**。
+
+→ **第 23 章**（`ConversionService`）、**第 20 章**（`@Value` 与 `DependencyDescriptor`）。
+
+### B-04-5　一个类有 20 个构造器且全部失败，消息要多长？Spring 为什么还是全拼上？
+
+**答**：大约 20 × 120 ≈ 2400 字符，屏幕上能滚三屏。**依然应该全拼。**
+
+理由是「改一次跑一次」的成本远高于「读一次长消息」的成本：
+
+- 只报第一个 → 你改掉它，重跑，报第二个 → 再改，再跑……20 轮。每轮都要重新启动应用、
+  重新复现、重新读栈。而这条消息是在**启动期**产生的，往往还伴随一个几十秒的上下文初始化。
+- 全拼 → 你一眼看到「原来这 20 个候选里，缺的是同样那三个 Bean」，一次把所有缺失补上。
+
+更重要的一个心理原因：构造器解析失败时，用户**不知道自己「被选中了哪个构造器」**。
+只报一个会让人误以为「容器就只试了那一个」，从而去改那个构造器；实际上容器把 20 个都试过了。
+全拼出来的列表本身就是一条信息：**「你的这个类，容器一个构造器都用不了」**——
+这句话会引导人往「少注册了依赖」的方向想，而不是「这个构造器写错了」。
+
+真实 Spring 的收集方式是 `ArrayDeque<UnsatisfiedDependencyException> causes`，每条都带上
+`InjectionPoint`（哪个方法第几个参数），最后通过一个带 `causes` 的异常一次性抛出；
+中间的每一次尝试在 `trace` 级别记一条日志（`Ignoring constructor [...] of bean '...'`）——
+**默认静默，需要时能看到全过程**。
+
+→ **第 33 章**（异常体系与排错：为什么 Spring 的异常消息长成这样）。

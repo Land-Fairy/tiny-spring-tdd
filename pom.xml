@@ -69,6 +69,7 @@
 		<module>step-01-map-container</module>
 		<module>step-02-bean-definition</module>
 		<module>step-03-singleton-registry</module>
+		<module>step-04-constructor-injection</module>
 	</modules>
 
 	<dependencyManagement>
