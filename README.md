@@ -139,6 +139,20 @@ mvn verify
 
 ---
 
+## 修了旧章节的 bug，怎么同步到后面 30 个副本
+
+每一章都是一个**完整可运行的副本**（`step-NN-*`），后面章节的代码是从前面复制前进的。所以在第 05 章修一个 bug，同样的代码还躺在 06…35 里。
+
+```bash
+# 看一眼要动哪些模块（不写盘）
+./scripts/propagate.sh --from step-05-property-injection --commit <sha> --dry-run
+
+# 真传播：从第 05 章起逐章 apply，冲突即停
+./scripts/propagate.sh --from step-05-property-injection --commit <sha> --verify
+```
+
+规则写在 [`docs/CODE-STANDARDS.md`](docs/CODE-STANDARDS.md#向后传播scriptspropagatesh) 里，核心一条：**冲突停在现场，不许脚本猜**。
+
 ## 每一章长什么样
 
 固定七段结构，让你形成肌肉记忆：

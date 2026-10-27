@@ -35,6 +35,7 @@ PATHS=""
 UNTIL=""
 DRY_RUN=0
 VERIFY=0
+FORCE=0
 
 die() {
 	echo "[propagate] 错误：$*" >&2
@@ -57,6 +58,7 @@ while [[ $# -gt 0 ]]; do
 		--until=*) UNTIL="${1#*=}"; shift ;;
 		--dry-run) DRY_RUN=1; shift ;;
 		--verify) VERIFY=1; shift ;;
+		--force) FORCE=1; shift ;;
 		-h|--help) usage; exit 0 ;;
 		*) die "未知参数 '$1'（试 --help）" ;;
 	esac
@@ -104,6 +106,15 @@ fi
 
 IFS=',' read -r -a PATH_LIST <<< "${PATHS}"
 
+if (( ! FORCE )); then
+	dirty=$(git status --porcelain -- "${TARGETS[@]}" 2>/dev/null)
+	if [[ -n "${dirty}" ]]; then
+		echo "[propagate] 目标模块里有未提交的改动：" >&2
+		echo "${dirty}" | sed 's/^/    /' >&2
+		die "先提交或还原它们（或加 --force 强行继续）"
+	fi
+fi
+
 echo "[propagate] 起点   ${FROM}"
 echo "[propagate] 提交   $(git rev-parse --short "${COMMIT}")  $(git log -1 --format=%s "${COMMIT}")"
 echo "[propagate] 目标   ${TARGETS[*]}"
@@ -135,14 +146,31 @@ for module in "${TARGETS[@]}"; do
 		[[ -s "${patch}" ]] || die "生成补丁为空：${FROM}/${path}"
 
 		# -p2 去掉 a/ 与 <起始模块>/ 两段；--directory 再把目标模块名补回去。
-		# 先 --check 是为了「冲突即停」时不留下半个改动。
-		if ! err=$(git apply --check --3way -p2 --directory="${module}" "${patch}" 2>&1); then
+		# 注意：不能用 `git apply --check --3way` 预检 —— 它在「三方合并会冲突」时
+		# 依然返回成功（实测），只有真正 apply 之后才能从索引里看出冲突。
+		git apply --3way -p2 --directory="${module}" "${patch}" 2>/dev/null
+		apply_rc=$?
+		unmerged=$(git diff --name-only --diff-filter=U -- "${module}")
+		if (( apply_rc != 0 )) || [[ -n "${unmerged}" ]]; then
+			# 冲突位置：冲突标记所在行号 + 补丁自己说的失败位置。
+			positions=""
+			while IFS= read -r bad; do
+				[[ -n "${bad}" ]] || continue
+				lines=$(grep -n '^<<<<<<<' "${bad}" 2>/dev/null | cut -d: -f1 | paste -sd, -)
+				positions="${positions}    ${bad}  冲突标记在行 ${lines:-（未知）}
+"
+			done <<< "${unmerged}"
+			# 把这次尝试的痕迹擦掉，保证「冲突即停」不留半个改动。
+			if [[ -n "${unmerged}" ]]; then
+				while IFS= read -r bad; do
+					[[ -n "${bad}" ]] && git reset -q HEAD -- "${bad}" && git checkout -q -- "${bad}"
+				done <<< "${unmerged}"
+			fi
 			conflict="${path}
-${err}"
+${positions:-    （补丁无法应用，git 未给出冲突文件）
+}    git apply 输出：$(git apply --check -p2 --directory="${module}" "${patch}" 2>&1 | head -3)"
 			break
 		fi
-		git apply --3way -p2 --directory="${module}" "${patch}" \
-			|| die "apply 失败（--check 却通过了，环境有问题）：${module}/${path}"
 		touched+=("${path}")
 	done
 
