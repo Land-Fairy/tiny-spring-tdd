@@ -2288,3 +2288,136 @@ Spring Boot 的 `ConfigurationPropertiesBindingPostProcessor`、`@Value` 的 SpE
 
 判断标准可以记成一句：**「事实」进描述符，「读法」进策略**。同一个字段有 `@Value` 是事实；
 `@Value` 这个注解算不算「值」、要不要先看 `@Qualifier`，是读法。
+
+## 第 21 章
+
+### B-21-1 `static` 的 `@Bean` 方法还需要拦截吗？
+
+不需要，而且**拦不住**。
+
+`static` 方法的调用在字节码里是 `invokestatic`——**静态绑定**，运行时类型是谁都不影响它落到哪个实现上。生成子类覆写不了 static 方法（Java 语言层面也不允许），所以「造一个子类换掉运行时类型」这一招对 static 方法完全无效。
+
+那容器还需要处理 static 的 `@Bean` 方法吗？需要，但事情少一半：图纸照样要注册（factoryBeanName 可以留空，直接在配置类上找 static 方法），只是不需要增强配置类。我们的 `findBeanMethods` 直接把 static 方法跳过了，等于**放弃了支持**——这是一个已知简化，不是设计判断。
+
+**真实 Spring 为什么反而推荐 static**：`@Bean` 方法如果返回 `BeanFactoryPostProcessor`（或 `BeanDefinitionRegistryPostProcessor`），会撞上一个时序死结：
+
+1. 这类后处理器必须在**别的 Bean 创建之前**生效；
+2. 而它自己是一个 `@Bean` 产物，得先创建配置类实例才能调那个方法；
+3. 配置类实例的属性注入（`@Autowired`）又发生在后处理器**之后**。
+
+于是配置类实例被迫提前创建——提前到「还没增强」。真实 Spring 在 `ConfigurationClassPostProcessor#enhanceConfigurationClasses` 里专门拦这个情况（`:512-518`）：
+
+```java
+else if (beanFactory.containsSingleton(beanName)) {
+	logger.warn("Cannot enhance @Configuration bean definition '" + beanName +
+			"' since its singleton instance has been created too early. The typical cause " +
+			"is a non-static @Bean method with a BeanDefinitionRegistryPostProcessor " +
+			"return type: Consider declaring such methods as 'static' and/or marking the " +
+			"containing configuration class as 'proxyBeanMethods=false'.");
+}
+```
+
+一句话记住：**`static` 的 `@Bean` 方法把「造后处理器」和「造配置类实例」解耦了**——static 方法不依赖任何实例，容器可以直接调，不必先把配置类造出来。所以 Spring 的 `@Bean` Javadoc 与这条日志都在劝你：返回后处理器的 `@Bean` 方法，写 `static`。
+
+### B-21-2 让元注解也生效，最少改哪几行？
+
+现在的判据是 `beanClass.getAnnotation(Configuration.class)`——`getAnnotation` **只找直接标注**，所以：
+
+- `@Configuration` 直接标在类上 → 命中（对）；
+- 用户写 `@SpringBootConfiguration`（它自己标了 `@Configuration`）→ 不命中，被当 lite（错）。
+
+最少改法是一条**带防环集合的递归**，七八行：
+
+```java
+private boolean isFullConfigurationClass(Class<?> beanClass) {
+	Configuration configuration = findConfiguration(beanClass, new HashSet<>());
+	return configuration != null && configuration.proxyBeanMethods();
+}
+
+private Configuration findConfiguration(Class<?> type, Set<Class<?>> seen) {
+	if (!seen.add(type)) {
+		return null;
+	}
+	Configuration direct = type.getAnnotation(Configuration.class);
+	if (direct != null) {
+		return direct;
+	}
+	for (Annotation annotation : type.getAnnotations()) {
+		Configuration found = findConfiguration(annotation.annotationType(), seen);
+		if (found != null) {
+			return found;
+		}
+	}
+	return null;
+}
+```
+
+`seen` 不是可有可无的保险：注解之间可以互相标注（`@Documented` 标了自己、`@Retention` 标了自己之类），没有它就是一个栈溢出。
+
+**第 17 章那个工具正好能用**：`ClassPathScanningCandidateComponentProvider#isCandidateComponent` 已经在做同一件事——先用 `ClassMetadata#getAnnotationTypes()` 拿到直接标注，再 `readMetadata(annotationType)` 递归往上找（`ClassPathScanningCandidateComponentProvider.java:90-110`）。它用的是**读 class 文件**的路线（扫描阶段不能加载类，加载会初始化）；而 `ConfigurationClassPostProcessor` 手上已经有 `Class` 对象了（图纸上的类名已经解析过），所以这里用反射更快。**两条路线，同一个递归骨架**——这正是第 17 章那句话的第二次兑现：选 ASM 还是反射，取决于「类有没有被加载」。
+
+顺带说，真实 Spring 用的是 `MergedAnnotations`（`@Configuration` 的判据在 `ConfigurationClassUtils#checkConfigurationClassCandidate`，它读的是 `AnnotationMetadata#isInterface/isAnnotation/@Bean 方法` 等元数据，而不是 `Class#getAnnotation`），这层抽象把「直接标注」「元注解」「`@AliasFor`」全部统一了。
+
+### B-21-3 去掉 `SEQUENCE` 会发生什么？
+
+`IllegalAccessError` 换成 `LinkageError`：
+
+```
+java.lang.LinkageError: duplicate class definition
+  for name: org.springframework.samples.ch21.FullConfiguration$$EnhancedByTinySpring
+```
+
+失败发生在 `MethodHandles.Lookup#defineClass(byte[])` 那一刻——也就是**第二个容器 refresh 的 BFPP 阶段**，不是编译期，也不是第一次调 `@Bean` 方法时。
+
+原因很硬：`ClassLoader` 里「同一个名字的类」只能定义一次。两个容器、同一个配置类、同一个 `ClassLoader`（测试里就是同一个），第二个容器增强时就撞名了。序号解决的正是「同一个原类可以有多个生成类」。
+
+真实 Spring 也一样要区分：CGLIB 生成的类名长这样
+
+```
+com.acme.AppConfig$$EnhancerBySpringCGLIB$$1a2b3c4d
+```
+
+后面那段十六进制是 CGLIB 自己加的随机/哈希后缀，作用与我们的 `SEQUENCE` 完全一样。而且真实 Spring 还要多做一件事：它把增强结果写回图纸之后，日志里会打一行「Replacing [com.acme.AppConfig] with [com.acme.AppConfig$$EnhancerBySpringCGLIB$$...]」（`ConfigurationClassPostProcessor.java:539-545`）——**「换类」这件事必须留下痕迹**，否则用户看到 `getClass()` 返回一个奇怪的名字会怀疑人生。
+
+### B-21-4 怎么用最小成本暴露 `bindTo` 那个 bug？
+
+两个条件缺一不可：
+
+1. **样本方法带状态**（或者有副作用），否则「跑在哪个对象上」看不出来。我们用的是 `private int state; int bump() { return ++this.state; }`。
+2. **同一个生成类的两个实例**，且第二个实例先不调用、让第一个先调两次。断言 `second.bump() == 1`，实际会得到 3。
+
+```java
+Shapes first = (Shapes) enhancedClass.getDeclaredConstructor().newInstance();
+Shapes second = (Shapes) enhancedClass.getDeclaredConstructor().newInstance();
+
+assertThat(first.bump()).isEqualTo(1);
+assertThat(first.bump()).isEqualTo(2);
+assertThat(second.bump()).isEqualTo(1);   // ← bindTo 版本这里是 3
+```
+
+为什么这个测试必须**绕过容器**：容器里配置类 Bean 默认单例，`getBean` 永远给你同一个实例，第二条腿永远迈不出去。这也是「生成器单测」和「容器集成测试」必须分开写的理由——**集成测试跑的是「正常路径」，单测才有机会跑「边缘输入」**。
+
+真实 Spring 不会踩这个坑，因为它的生成代码传的是实例：
+
+```java
+return cglibMethodProxy.invokeSuper(enhancedConfigInstance, beanMethodArgs);   // :400
+```
+
+`invokeSuper(实例, 参数)`——实例是**每次调用**传进去的参数，不是造代理时绑定的。CGLIB 的 `MethodProxy` 本身按「类 + 方法签名」缓存，天然无实例。我们的 `MethodHandle` 只要不 `bindTo`，形状与它完全一致：句柄绑定**类**，调用时给**实例**。
+
+顺带一个值得记住的 JDK 细节：`findSpecial` 返回的句柄类型是 `(接收者, 参数...)返回值`，接收者**就是第一个参数**。这一点从 javadoc 的语义里能推出来（`findVirtual`/`findSpecial` 都「在类型前面插入 refc」），但最可靠的验证方式就是写这个双实例测试。
+
+### B-21-5 「工厂方法返回 `null`」该不该报错？
+
+两种选择，本质是**给 `null` 定义了两种不同的含义**：
+
+- **我们的选择（单例报错）**：`null` = 「这个方法坏了」。因为单例的语义是「容器里恒有这一个对象」，`getBean` 返回 `null` 之后，调用方拿到的东西与「没有这个 Bean」在类型上无法区分——`getBean` 返回 `null` 还是抛异常，是一个 API 契约问题。真实 Spring 在这里抛 `BeanInstantiationException`（「Factory method '...' returned null」），理由相同。
+- **允许返回 `null`（prototype）**：`null` = 「这次没造出来，是合法结果」。prototype 每次调用都是新的一次尝试，调用方明确知道自己在「请求一次创建」，拿到 `null` 可以自己决定怎么处理。
+
+哪种更难写出 NPE？**允许 `null` 的那种**。因为：
+
+1. 单例报错把问题**挪到了创建期**，栈里还带着方法名，定位成本最低；
+2. 允许 `null` 则把问题**推到了使用期**，而且推得很远——`getBean` 的调用点可能离出错点隔着好几层；
+3. 更麻烦的是**注入路径**：允许 `null` 意味着字段注入可以把 `null` 塞进一个非 `@Nullable` 的字段，然后在下一次方法调用时炸，栈里完全没有「这个 Bean 是 `null`」的信息。
+
+所以真实 Spring 的规则是分档的：**单例不允许 `null`（抛 `BeanInstantiationException`），prototype 允许**。这条规则背后是一个更普遍的判断——**「唯一性」越强的位置，`null` 越应该当场变成错误**。同样一条规则在 `@Value` 上重演：`isRequired()` 为 `true` 时值缺失当场报错，为 `false` 时才允许「什么都没有」。

@@ -86,6 +86,7 @@
 		<module>step-18-resource-pattern</module>
 		<module>step-19-autowire-candidates</module>
 		<module>step-20-value-descriptor</module>
+		<module>step-21-configuration</module>
 	</modules>
 
 	<dependencyManagement>

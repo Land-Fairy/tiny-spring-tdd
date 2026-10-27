@@ -83,7 +83,7 @@
 | [18](docs/chapters/18-resource-pattern.md) | `PathMatchingResourcePatternResolver` | 包扫描的底层是 ant 路径匹配 |
 | [19](docs/chapters/19-autowire-candidates.md) | `@Autowired` / `@Qualifier` / 类型匹配决策链 | 90% 的 `NoUniqueBeanDefinitionException` 死在这里 |
 | [20](docs/chapters/20-value-descriptor.md) | `@Value` 与 `DependencyDescriptor` | 字段注入的元数据长什么样 |
-| 21 | `@Configuration` + `@Bean`：full vs lite | 配置类方法互相调用为什么返回同一实例 |
+| [21](docs/chapters/21-configuration.md) | `@Configuration` + `@Bean`：full vs lite | 配置类方法互相调用为什么返回同一实例 |
 | 22 | `@Import` / `@Conditional` / `@Profile` / `@Lazy` | 条件装配思想（不讲 Boot，只讲机制） |
 | 23 | ConversionService 与类型转换 | `"8080"` 怎么变成 `int` |
 
