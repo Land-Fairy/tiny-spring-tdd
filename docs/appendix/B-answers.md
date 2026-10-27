@@ -2867,3 +2867,105 @@ if (this.methodCache != null) {
 
 换句话说：**Advisor 之所以是「一个切点 + 一个增强」，不是因为实现偷懒，而是因为它是缓存与排序的最小单位。**
 想要「组合」，正确的位置是往 `Advised` 里多加几个 Advisor，而不是把多个增强塞进一个 Advisor。
+
+## 第 26 章
+
+### B-26-1 为什么必须是 `postProcessAfterInitialization`，以及「初始化里取自己」
+
+`postProcessBeforeInitialization` 的调用时机在 `invokeInitMethods()` **之前**。如果代理在那一步产生，
+容器就会拿着代理去调 `afterPropertiesSet()` —— 这次调用会走代理的方法入口，于是**初始化回调本身进了
+拦截链**。后果是双向的：
+
+- 增强会在一个「还没初始化的对象」上跑。`@Transactional` 的增强要在目标上开连接，而目标此时可能
+  还没建好自己的连接池、还没读配置；
+- 初始化回调里的任何一次自我方法调用（`afterPropertiesSet` 里调 `this.validate()`）都会变成
+  「通过代理的调用」，把本不属于初始化阶段的开销与语义拖进来。
+
+放到 `after` 之后，顺序就是稳定的三步：**填属性（在目标上）→ 跑初始化（在目标上）→ 套壳**。
+壳只出现在「对象已经可用」之后，这正是一个包装器的合格时机。
+
+第二个问题更有意思：`afterPropertiesSet()` 里执行 `context.getBean(getBeanName())` 拿到什么？
+答案是**拿不到**——此时这个 Bean 还在创建中，单例池里没有它。真实 Spring 会走到
+`beforeSingletonCreation` 的「正在创建」判断上抛 `BeanCurrentlyInCreationException`；唯一能放行的是
+「提前暴露的早期引用」那条路（`getEarlyBeanReference`，第 30 章）。也就是说：**在初始化回调里，
+「我自己」这个 Bean 在容器眼中还不存在**。理解了这一点，就看懂了为什么 Spring 要在 `after` 阶段
+才把代理放进池子：池子里放的必须是成品。
+
+### B-26-2 「没有匹配就不造代理」为什么是正确性问题
+
+因为**代理会改变对象的类型**。它是「正确性」问题的最小证据有两条：
+
+1. **按类注入直接失效**。JDK 代理只实现接口，`getBean(LibraryImpl.class)` 找不到它 ——
+   `instanceof LibraryImpl` 为 `false`。如果容器给一个「明明没被任何切面命中」的 Bean 套了壳，
+   那么这个 Bean 从此不能被按具体类注入，也不能被 `instanceof` 判断，甚至不能被反射读出原有字段
+   （本章第 2 节那个「字段注入静默消失」的取证测试说的就是这件事）。
+2. **`final` 类/方法、包私有方法全部暴露成事故**。JDK 代理对「非接口方法」无能为力，一旦套壳，
+   调用方看到的可调用集合就缩小到了接口。真实 Spring 用 CGLIB 兜底，代价是「子类代理也会改变类型，
+   只是改变的方向相反（多了个父类）」。
+
+所以「匹配才代理」不是省性能，而是**保证没被切面动过的 Bean 保持原样**。真实 Spring 在
+`wrapIfNecessary` 里的判断顺序也说明了这一点：先算 `specificInterceptors`，为空就直接
+`return bean`（不套壳），连 `proxyTypes` 缓存都不查。
+
+### B-26-3 Advisor 依赖业务 Bean、业务 Bean 又被自己切点命中的后果
+
+用我们的 `findCandidateAdvisors()`（`getBeansOfType(Advisor.class)`）会**栈溢出**。链条是：
+
+```
+创建 library → 创建器问「有哪些 Advisor」 → getBeansOfType 触发创建 auditAdvisor
+  → 创建 auditAdvisor 需要注入 library → getBean(library) → 发现 library 正在创建……
+  → 但 library 的创建还没走完，于是重入创建流程 → 再问「有哪些 Advisor」 → …
+```
+
+第 25 章红一（`StackOverflowError`，探针实测深到 1024 层）就是这条链的雏形，本章的探针把它复现成了
+完整闭环。真实 Spring 用两个手段把「递归」变成「跳过」：
+
+1. **只取名字、不创建**。`BeanFactoryAdvisorRetrievalHelper.findAdvisorBeans()`（`:60-120`）调的是
+   `beanNamesForTypeIncludingAncestors(..., includeNonSingletons = true, allowEagerInit = false)`，
+   名字缓存在 `cachedAdvisorBeanNames` 里，第一轮之后不再扫类型。原注释写得很直白：
+   「Do not initialize FactoryBeans here: We need to leave all regular beans uninitialized to let the
+   auto-proxy creator apply to them!」
+2. **跳过正在创建的那个**。取到名字后逐个 `getBean`，但先判 `isCurrentlyInCreation(beanName)`
+   （`:84`），是就跳过；同时 `catch (BeanCreationException ex)`，若 `rootCause` 是
+   `BeanCurrentlyInCreationException` 就 `continue`（注释：「We don't want to consider advisors
+   of the bean we're trying to advise」）。
+
+一句话：**「问有哪些 Advisor」这件事本身不能创建 Bean**，否则它就和「创建 Bean」互相等待。
+
+### B-26-4 不属于四类、但代理了会出事的例子
+
+最典型的是 `BeanFactoryPostProcessor`（尤其 `BeanDefinitionRegistryPostProcessor`）。
+
+`PropertySourcesPlaceholderConfigurer`（一个 `BeanFactoryPostProcessor`）要在
+`invokeBeanFactoryPostProcessors()` 阶段被调用，那时 `BeanPostProcessor` 还没注册、代理创建器还没生效。
+它一旦被代理，会出现两个具体问题：
+
+- **调用方的 `instanceof` 判断失效**。容器在收后处理器时用 `instanceof BeanDefinitionRegistryPostProcessor`
+  分流，JDK 代理确实能过（它实现了接口），但 `instanceof PropertySourcesPlaceholderConfigurer`
+  这类**具体类**判断会失败，于是它自己的特殊逻辑被跳过。
+- **「被提前创建」的连带损失**。凡是让 `BFPP` 阶段提前 `getBean` 的 Bean，都会错过后面注册的后处理器，
+  真实 Spring 会打警告「Bean 'x' was not eligible for getting processed by all BeanPostProcessors」。
+  给这种 Bean 套一层代理，等于把一个「必须裸身参与容器启动」的组件变成了「需要容器已启动」的组件。
+
+真实 Spring 的答案不是继续列举类型，而是一个**标记接口** `AopInfrastructureBean`：任何框架自己的基础设施
+实现它，就自动不被代理。`ProxyProcessorSupport` 自己就 `implements Ordered, AopInfrastructureBean`
+（`:40`）—— **代理创建器自己也声明了「别代理我」**。这个设计比列举类型好，因为「基础设施」是一个
+会不断增加的集合，而标记接口让新增者自己声明身份。
+
+### B-26-5 两个 BPP 都在 after 阶段返回新对象，池里是什么
+
+放进去的是**最后一个返回的对象**：`applyBeanPostProcessorsAfterInitialization` 把结果依次往下传。
+所以「代理套代理」是可能的：
+
+```
+target → BPP-A 包装成 proxyA → BPP-B 包装成 proxyB(里面握着 proxyA) → 池里是 proxyB
+```
+
+此时一次调用会穿过 `proxyB` 的链，再进 `proxyA` 的链，最后到目标 —— 增强被执行两遍。
+两个避免办法：
+
+1. **每个 Bean 只处理一次**。真实 Spring 的 `AbstractAutoProxyCreator` 靠「同一 Bean 的 `after` 阶段
+   只走一次」这一事实，并配 `proxyTypes` 缓存（`:252`/`:296`）避免重复计算；判断「已经是代理」用
+   `AopUtils.isAopProxy(bean)`（`:284`/`:298`）。
+2. **让「返回新对象」的后处理器只允许一个**。要么把它们合并成一个（本章说的「创建器的位置必须固定」），
+   要么在文档层面约定：after 阶段的包装器只有代理创建器一家，其他后处理器只能返回同一个对象。
