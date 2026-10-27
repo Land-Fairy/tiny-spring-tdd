@@ -70,7 +70,7 @@
 | [10](docs/chapters/10-bean-factory-post-processor.md) | BeanFactoryPostProcessor + Environment | 占位符 `${db.url}` 是谁替换的 |
 | [11](docs/chapters/11-bean-post-processor.md) | BeanPostProcessor 专章 | 「注解为什么生效」的最终答案 |
 | [12](docs/chapters/12-aware.md) | Aware 感知容器 | 让 Bean 拿到容器自己 |
-| 13 | 初始化与销毁：`@PostConstruct` / ShutdownHook | 生命周期回调的三条通道 |
+| [13](docs/chapters/13-lifecycle.md) | 初始化与销毁：`@PostConstruct` / ShutdownHook | 生命周期回调的三条通道 |
 | 14 | 作用域与 FactoryBean | `&` 前缀才是精髓 |
 | 15 | 容器事件与监听器 | 观察者模式在框架里的落地 |
 | 16 | 扩展点排序：`Ordered` / `PriorityOrdered` | 谁先谁后，以及为什么顺序会踩坑 |

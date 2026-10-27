@@ -1461,3 +1461,92 @@ public class Another implements ApplicationContextAware {
 选型建议：**只在初始化阶段需要、且一定要有 → 用 `Aware`；需要用构造器握在手里、或测试里要替换 → 用注入。**
 
 → **第 12 章**（1.2 节「设施与协作对象」，4.3 节第 ③ 组）
+
+---
+
+## 第 13 章
+
+### B-13-1 `beanDefinition == null` 那个判断
+
+因为 `invokeInitMethods` 有两条来源：一条是 `doCreateBean`（有图纸），一条是 `createBean(Class)`（无图纸——第 06 章的 `AutowireCapableBeanFactory` 能力，直接给一个类就造对象，不注册、不落图纸）。
+
+删掉判断后，第一行 `beanDefinition.getInitMethodName()` 就抛 `NullPointerException`。会红的是 `AutowireCapableBeanFactoryTests#createBeanDoesNotRegister` 这类测试。
+
+**为什么是 NPE 而不是编译错误**：`beanDefinition` 的类型是 `BeanDefinition`，Java 的类型系统只保证「要么是 `BeanDefinition` 实例，要么是 `null`」，不保证非空。null 是运行时信息，编译器无从判断——这正是「可空性」要靠 `@Nullable` 注解或 Optional 表达的原因，也是第 33 章异常体系要处理的第一类问题（NPE 是唯一没有消息的异常）。
+
+→ **第 13 章**（3.2 节）与 **第 06 章**（`createBean(Class)`）。
+
+### B-13-2 三条通道顺序反过来会破坏什么
+
+最直接的破坏是**双调**：XML 写 `init-method="afterPropertiesSet"` 而 Bean 又实现了 `InitializingBean` 时，方法通道先跑一次、接口通道再跑一次。第 13 章那行 `if (isInitializingBean && "afterPropertiesSet".equals(initMethodName)) return;` 就是防这个的——顺序一换，这个判断就防不住了（它只跳过「接口通道之后的方法通道」）。
+
+更实质的破坏在语义上。看这个真实场景：
+
+```java
+public class OrderRepository implements InitializingBean {
+
+    private DataSource dataSource;      // XML 注入
+    private JdbcTemplate template;      // 准备在 @PostConstruct 里建好
+
+    @PostConstruct
+    void buildTemplate() {
+        this.template = new JdbcTemplate(this.dataSource);
+    }
+
+    @Override
+    public void afterPropertiesSet() {
+        this.template.query("select 1");   // 假设 template 已就绪
+    }
+}
+```
+
+`afterPropertiesSet` 假设「所有准备工作都做完了」——这个假设能成立，全靠 `@PostConstruct` 跑在它前面。顺序一反过来，`template` 还是 null，报 NPE。
+
+**规则化地说**：`@PostConstruct` 的语义是「对象层面的准备」，接口回调的语义是「类型契约层面的校验」，`init-method` 的语义是「外部配置层面的收尾」。越贴近对象的越先做，越贴近外部配置的越后做。真实 Spring 的 `:1863-1885` 就是这个次序。
+
+→ **第 13 章**（3.2、3.3 节）。
+
+### B-13-3 跨对象逆序 vs 单对象同向，为什么不矛盾
+
+因为「逆序」的依据是**依赖边**，而同一个 Bean 的三条通道之间**没有依赖边**。
+
+- 跨对象：`A` 依赖 `B` → 创建时 `B` 先就绪、`A` 后用 → 销毁时若 `A` 先死，`A.destroy()` 里用到 `B` 就炸 → 所以必须按注册顺序的逆序（`DefaultSingletonBeanRegistry:706-708` 那个倒着数的 for）。
+- 单对象：三条通道是同一个对象上的三个回调，它们共享同一份字段，谁先谁后不产生「依赖倒挂」，只会产生「看到的状态不同」。这里的选择标准不是逆序，而是**能让每个回调看到它期望的状态**。
+
+还有一个技术原因：注解通道的执行者是 `DestructionAwareBeanPostProcessor#postProcessBeforeDestruction`，字面意思就是「销毁**动作之前**」——它天然必须在最前面，因为它要去操作一个仍然完整的对象。而「完整」这个状态，是初始化最后一步之后才形成的。
+
+**一句话**：逆序解决的是「谁还依赖谁」，同向解决的是「谁该看到什么状态」。两个问题不同，答案自然可以不同。
+
+→ **第 13 章**（3.4、3.5 节）。
+
+### B-13-4 为什么要吞掉 `removeShutdownHook` 的 `IllegalStateException`
+
+`Runtime.removeShutdownHook` 的契约是：如果 JVM **已经在执行关闭流程**，抛 `IllegalStateException: Shutdown in progress`。
+
+这条路径会在什么时候走到？恰恰是最常见的场景——用户按 Ctrl+C 或 `docker stop` 发 `SIGTERM`，JVM 开始跑我们注册的钩子，钩子调 `close()`，`close()` 里又想摘钩子。此时「摘不掉」是**完全正常**的，不是错误。
+
+如果改成 `throw ex`：
+
+1. 用户按 Ctrl+C 会看到 `Exception in thread "TinySpringContextShutdownHook" java.lang.IllegalStateException: Shutdown in progress`——一条没人看得懂、也不代表任何问题真实发生的堆栈。
+2. 更糟的是：异常从这个钩子线程里抛出，会**终止该线程**。`doClose()` 虽然在前面已经跑完，但如果 `close()` 之后还有别的清理（钩子里 `close()` 后面还有一行代码），那些就不会执行了。
+
+**判断标准**：异常是否代表「有值得处理的问题」。这里不代表，所以吞掉；`catch (IllegalStateException ignored)` 里那个 `ignored` 变量名是刻意的——PMD 的 `EmptyCatchBlock` 规则默认放行叫 `ignored`/`expected` 的变量名，等于用命名声明「我知道我在吞，这是有意的」。
+
+→ **第 13 章**（3.6 节）。
+
+### B-13-5 原型 Bean 也要销毁，怎么改、代价是什么
+
+技术上要改两处：
+
+1. **登记**：把 `if (beanDefinition.isSingleton())` 那个条件去掉，原型也 `registerDisposableBeanIfNecessary`。
+2. **持有**：`disposableBeans` 的 key 不能只用 `beanName`——同名原型会有多个实例。得改成 `Map<String, List<DisposableBean>>` 或者给每个实例生成唯一 key（真实 Spring 用 `beanName + "#" + counter`）。
+
+代价有三条，一条比一条严重：
+
+- **内存只增不减**。容器为了「将来能销毁」，必须攥着每一个原型实例。原型的意义恰恰是「用完就丢」，现在容器替你攥着，等于把所有原型变成事实上的长寿命对象。一个每秒创建 100 个原型的系统，十分钟后就攥着六万个对象。
+- **语义矛盾**。原型 Bean 的「原型性」就体现在「容器不管理它的生命周期」；一旦登记销毁，它就不再是原型，而是「延迟释放的单例」。
+- **销毁时机仍然不清**。单例的销毁时机明确（容器关闭），原型的呢？关容器时才销毁？那和「用完就释放」差得远。
+
+**真实 Spring 的解法**：不自动登记，而是提供一个显式 API 让调用方交回对象——`AutowireCapableBeanFactory#destroyBean(Object existingBean)`（`:335`）。调用方负责生命周期，容器只负责「帮我把该跑的销毁回调跑完」。这是责任划分，不是能力缺失。
+
+→ **第 13 章**（3.4 节）与 **第 14 章**（作用域的真面目）。

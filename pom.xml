@@ -78,6 +78,7 @@
 		<module>step-10-bean-factory-post-processor</module>
 		<module>step-11-bean-post-processor</module>
 		<module>step-12-aware</module>
+		<module>step-13-lifecycle</module>
 	</modules>
 
 	<dependencyManagement>
