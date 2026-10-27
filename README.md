@@ -1,6 +1,6 @@
 # tiny-spring-tdd 🌱
 
-> 从 0 手写一个 Spring：**TDD 驱动 · 35 章渐进 · 零运行时依赖 · 每一章都能跑**
+> 从 0 手写一个 Spring：**TDD 驱动 · 36 章渐进 · 零运行时依赖 · 每一章都能跑**
 
 一个面向上进新手的 Spring 源码教学项目。读者画像：**会 Java，稍微用过 Spring，
 但没读过框架源码，想真正搞懂它是怎么转的**。
@@ -22,7 +22,7 @@
 这些问题看八股文背不下来，看真实源码又太庞大——`spring-framework` 有几十万行，
 断点打下去程序在十几个包之间来回跳。
 
-**本书的做法是：把 Spring 拆成 35 个小步骤，每一步我们亲手把它造出来。**
+**本书的做法是：把 Spring 拆成 36 个小步骤，每一步我们亲手把它造出来。**
 造到第 12 章，你会自己发现"哦，原来 `@Autowired` 就是一个 `BeanPostProcessor`"。
 那一刻的知识是长在身上的，不是背下来的。
 
@@ -181,7 +181,7 @@ mvn verify
 
 - [ADR-0001 包名沿用 `org.springframework.*`](docs/adr/0001-package-naming.md)
 - [ADR-0002 完全不使用 CGLIB](docs/adr/0002-no-cglib.md)
-- [ADR-0003 35 个平铺模块作为历史快照](docs/adr/0003-flat-chapter-modules.md)
+- [ADR-0003 36 个平铺模块作为历史快照](docs/adr/0003-flat-chapter-modules.md)
 - [ADR-0004 真实 Spring 对照基线钉在 6.2.x](docs/adr/0004-spring-reference-baseline.md)
 
 ---
