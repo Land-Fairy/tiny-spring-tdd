@@ -1366,3 +1366,98 @@ XML 里 Bean 的 ${db.url} 被正确替换了，
 这也解释了为什么 `@Autowired` 的构造器路径不需要 `postProcessProperties`：
 依赖在对象出生那一刻就已经是构造器参数了。
 → **第 04 章**（构造器解析）、**第 19 章**（依赖决策链）
+
+---
+
+## 第 12 章
+
+### B-12-1
+
+**问**：如果 `invokeAwareMethods` 挪到 `applyBeanPostProcessorsBeforeInitialization` 之后，本章哪个测试会红？会造成什么真实后果？
+
+**答**：红的是两条**顺序**断言——`AwareCallbackOrderTests#awareCallbacksRunAfterPropertyPopulationAndBeforeInit`（工厂级）和 `ApplicationContextAwareTests#applicationContextCallbackComesAfterTheFactoryCallbacks`（上下文级）。它们都会看到 `setApplicationContext` 跑到 `setBeanName` / `setBeanFactory` 前面。
+
+真实后果有三层，一层比一层隐蔽：
+
+1. **`setBeanName` 里读到的东西可能还是 `null`。** 有些实现在 `setApplicationContext` 里就把自己注册进某个注册表，key 用 `getBeanName()`；顺序反了，key 就是 `null`，而 `null` 作为 key 在 `HashMap` 里是合法的——于是**不报错，只是查不到**。
+2. **`setApplicationContext` 里的 `getBean(...)` 可能提前触发创建。** 如果某个实现想在拿到上下文后立刻取一个协作对象，而这时 `invokeAwareMethods` 还没跑，那个协作对象若依赖「名字」就会算错。
+3. **最糟的一种：`ApplicationContextAwareProcessor` 是后处理器，它的位置由注册顺序决定，而 `invokeAwareMethods` 的位置是写死的。** 把写死的挪到后面，等于把「确定性」换成了「取决于后处理器注册顺序」——这正是第 11 章反复强调的东西。
+
+→ **第 12 章**（3.3 节「顺序是写死的」，3.4 节「为什么 `invokeAwareMethods` 在 BPP before 链之前」）
+
+### B-12-2
+
+**问**：`ApplicationContextAwareProcessor` 是包私有的，且在 `prepareBeanFactory` 里用 `new` 造出来。如果改成 public 并允许用户自己 `addBeanPostProcessor(new ApplicationContextAwareProcessor(myContext))`，会出什么问题？
+
+**答**：核心问题只有一个：**`this` 是谁由谁决定。** 现在是容器决定（`new ApplicationContextAwareProcessor(this)`，`this` 就是正在启动的那个上下文），改成用户可造，`this` 就变成「用户手上碰巧拿到的那个对象」。具体会踩三种：
+
+1. **递出去的上下文可能不是当前容器。** 用户可能从别的上下文、从父上下文、甚至从一个已经 `close()` 的上下文里拿引用。Bean 于是拿到一个「死」的上下文——`getBean` 抛 `IllegalStateException: BeanFactory not initialized or already closed`，而这个错误发生在**很久之后**。
+2. **可能被装两次，回调执行两次。** `setApplicationContext` 没有任何幂等约定，实现里通常会顺手 `context.addApplicationListener(this)` 之类；重复回调就重复注册。而我们的 `addBeanPostProcessor` 不去重。
+3. **顺序失控。** 用户装的处理器在 `registerBeanPostProcessors` 里的位置由 `PriorityOrdered` / `Ordered` 决定（第 16 章），可能排到用户自己那些依赖「上下文已就绪」的后处理器后面。
+
+真实 Spring 把它设成包私有，等于用可见性表达一句话：**这条通道的所有权在容器，不在使用者。** 使用者能做的只有「实现接口」，不能「安装机制」。
+
+→ **第 12 章**（3.4 节「它是包私有的」）；相关：第 11 章（后处理器注册顺序）、第 16 章（`Ordered`）
+
+### B-12-3
+
+**问**：`prototype` Bean 拿到 `this`（上下文）后，会不会「记住」容器，从而在容器 `close()` 之后仍然活着？这算内存泄漏吗？
+
+**答**：**递进去的上下文一定是同一个**——容器只有一个，`this` 就是它，无论 Bean 是 singleton 还是 prototype。所以问题不在「是不是同一个」，而在「谁持有谁」。
+
+- **singleton**：容器持有 Bean，Bean 持有容器 → 循环引用，但两者生命周期一致，`close()` 时一起没了，没问题。
+- **prototype**：容器**不持有**它（第 14、30 章会讲清楚为什么单例池里没有它的位置）。它是被调用方拿走的。如果调用方把它长期保存，而这个 prototype 又持有上下文引用，那就变成「外部对象 → prototype Bean → 容器」这条链——**容器无法被回收**，即使 `close()` 已经调过、业务上早就不需要它了。
+
+所以：**算泄漏风险，而且是最常见的那种（长生命周期对象持有短生命周期对象）。** 真实项目里更常见的变体是「prototype Bean 注入了 singleton 之外的容器设施后，被放进了缓存」。工程上的三条对策：prototype 不持有设施、只在使用期内存、或者用弱引用/`ObjectProvider`（延迟取，不持有）。
+
+顺带一个反直觉的事实：`close()` 之后容器里的 singleton 被销毁，但你手上那个 prototype 对象**不会被销毁**——它从来没进入销毁管理。
+
+→ **第 12 章**（思考题 3）；详见 **第 14 章**（作用域与 `FactoryBean`）、**第 30 章**（为什么原型不进单例池）
+
+### B-12-4
+
+**问**：真实 Spring 对 7 个 `*Aware` 接口调了 `ignoreDependencyInterface`。如果不调会怎样？构造一个具体场景。
+
+**答**：不调的话，`*Aware` 接口就变成了一个**普通的可注入类型**——按类型找候选时会被当成依赖去解析。场景：
+
+```java
+public class Probe implements ApplicationContextAware { /* ... */ }
+
+public class Another implements ApplicationContextAware {
+
+	@Autowired
+	private ApplicationContextAware sibling;   // 意图：想要「容器」
+}
+```
+
+`@Autowired ApplicationContextAware` 的解析过程是「容器里有没有实现 `ApplicationContextAware` 的 Bean」。容器里有 `probe` 和 `another` 两个 → 结果取决于候选数：
+
+- **恰好一个**（比如只注册了 `probe`）→ 你把**另一个 Bean** 注进了 `sibling` 字段。之后任何对 `sibling` 的调用都在操作别人。
+- **多个** → 抛 `NoUniqueBeanDefinitionException`（我们容器是 `expected single matching bean but found 2: probe, another`）。而这条错误信息会把人引向「加 `@Qualifier`」——完全错误的方向。
+
+更隐蔽的是：真实 Spring 用的是**接口**判断（`ignoreDependencyInterface(ApplicationContextAware.class)` 忽略的是「按此接口类型可注入」），所以它挡的是「解析阶段」，不影响「回调阶段」。两件事互不干扰，这正是这个 API 存在的意义。
+
+我们本书没有这个 API，所以理论上也踩这个坑——只是本书没有「多个 Bean 都实现 `ApplicationContextAware`」的样本，坑没被触发。
+
+→ **第 12 章**（4.3 节第 ② 组）；相关：第 19 章（按类型匹配的完整决策链）
+
+### B-12-5
+
+**问**：`Environment` 属于「设施」还是「协作对象」？真实 Spring 两条路都支持，为什么留两条？
+
+**答**：**它是设施，但长得像协作对象。** 判断依据不是「它是平台还是业务」，而是**「它有没有多个候选、注入它会不会失败」**：`Environment` 在容器里永远只有一个，注入它不涉及歧义，所以它落在设施一侧。但它同时是「可读的属性源」，测试里经常要替换成假的——这就让它需要**注入**的那套能力（可 mock、可 `required=false`、可写进 `@Bean` 方法参数）。
+
+两条路各解决一半问题：
+
+| | `EnvironmentAware`（回调） | `@Autowired Environment`（注入） |
+|---|---|---|
+| 保证 | 一定有，不会失败 | 可能失败（`required=false` 可避免） |
+| 时机 | 属性填充后、初始化回调前，**一定早于** `afterPropertiesSet` | 主代码里也在属性填充阶段，但在 `@Bean` 方法参数上是**构造时** |
+| 可测试性 | 只能靠容器创建，测试里拿不到「只测这个类」的便利 | 可以直接 `new MyService(fakeEnv)` |
+| 适合 | 框架内部组件、一定要环境的 Bean | 业务 Bean、需要可替换的场景 |
+
+**历史原因也占一半**：`Aware` 系列（2003 年起）比 `@Autowired`（2007 年，Spring 2.5）早，`Environment` 抽象（Spring 3.1）出现时两条路都已存在，于是都接上了。真实 Spring 从不删旧路——这是它「向后兼容」的一贯立场（对照第 08 章 `XmlBeanFactory` 用两个大版本才删掉）。
+
+选型建议：**只在初始化阶段需要、且一定要有 → 用 `Aware`；需要用构造器握在手里、或测试里要替换 → 用注入。**
+
+→ **第 12 章**（1.2 节「设施与协作对象」，4.3 节第 ③ 组）
