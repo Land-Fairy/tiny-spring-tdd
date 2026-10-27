@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<ruleset name="tiny-spring-tdd"
+	xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.net/ruleset_2_0_0.xsd">
+	<description>
+		tiny-spring-tdd 优雅度规则集（curated）。
+		只收录能提升"教学代码可读性"的规则，拒绝会制造噪声的默认全集。
+		用意见 docs/CODE-STANDARDS.md。
+	</description>
+
+	<!-- 用 stream / 集合 API 表达意图，而不是手写索引循环 -->
+	<rule ref="category/java/bestpractices.xml/ForLoopCanBeForeach"/>
+	<!-- 参数不可重赋值：减少"这个变量什么时候变的"这类阅读负担 -->
+	<rule ref="category/java/bestpractices.xml/AvoidReassigningParameters"/>
+	<!-- 判空用 isEmpty() 而非 size() == 0 -->
+	<rule ref="category/java/bestpractices.xml/UseCollectionIsEmpty"/>
+	<!-- if (x) return true; else return false; → return x; -->
+	<rule ref="category/java/design.xml/SimplifyBooleanReturns"/>
+	<!-- 可合并的嵌套 if -->
+	<rule ref="category/java/design.xml/CollapsibleIfStatements"/>
+	<!-- 只为 return 服务的临时变量 -->
+	<rule ref="category/java/codestyle.xml/UnnecessaryLocalBeforeReturn"/>
+	<!-- 未使用的私有成员 -->
+	<rule ref="category/java/bestpractices.xml/UnusedPrivateField"/>
+	<rule ref="category/java/bestpractices.xml/UnusedPrivateMethod"/>
+	<rule ref="category/java/bestpractices.xml/UnusedLocalVariable"/>
+	<!-- 空 catch 块会吞掉异常，教学代码里尤其危险 -->
+	<rule ref="category/java/errorprone.xml/EmptyCatchBlock"/>
+</ruleset>
