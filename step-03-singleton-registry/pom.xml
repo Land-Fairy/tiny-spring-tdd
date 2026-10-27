@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-03-singleton-registry</artifactId>
-	<name>step-02-bean-definition</name>
+	<name>step-03-singleton-registry</name>
 	<description>第 03 章 注册表与单例池（含线程安全）</description>
 
 	<dependencies>
