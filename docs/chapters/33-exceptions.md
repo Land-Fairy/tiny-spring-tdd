@@ -1,5 +1,7 @@
 # 第 33 章 异常设计：一个能读的堆栈
 
+> 🌿(ch00–ch32) 🕳️
+
 前 32 章我们一直在给容器加能力，却几乎没有正眼看过它出错时的样子。
 
 这一章不加任何新功能。它做的是另一件事：**把前 32 章散落在各处的 `IllegalStateException`、`RuntimeException`、`IllegalArgumentException` 收拢成一套有形状的异常层次**，让一次失败能同时回答三个问题：

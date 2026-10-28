@@ -1,5 +1,7 @@
 # 第 03 章 注册表与单例池（含线程安全）
 
+> 🌿(ch00–ch02) 🕳️ 🔖(第 13 章) 🔖(第 30 章) 🔖(第 31 章)
+
 > **一句话**：单例不是「只造一次」这个结果，而是「判空 → 创建 → 放回」三步必须原子；而让这三步能原子地待在同一个锁里的前提，是把「创建动作」包装成一个可传递的对象（`ObjectFactory`）。
 
 上一章结束时，我们的容器有了一张图纸表，`getBean` 会按图纸造对象。听起来像是完成了。但请回到「单例」这个词本身的承诺：
@@ -76,7 +78,7 @@ org.opentest4j.AssertionFailedError:
 [同一个单例的构造器执行次数]
 expected: 1
  but was: 4
-	at org.springframework.beans.factory.support.ConcurrentSingletonCreationTests.concurrentGetBeanCreatesTheBeanOnlyOnce(ConcurrentSingletonCreationTests.java:91)
+	at org.springframework.beans.factory.support.ConcurrentSingletonCreationTests.concurrentGetBeanCreatesTheBeanOnlyOnce(ConcurrentSingletonCreationTests.java:73)
 ```
 
 `4` 就是我们起的线程数。四个线程**全部**穿过了 ①，全部执行了 ②。
@@ -234,7 +236,7 @@ org.opentest4j.AssertionFailedError:
 [同一个单例的构造器执行次数]
 expected: 1
  but was: 4
-	at org.springframework.beans.factory.support.ConcurrentSingletonCreationTests.concurrentGetBeanCreatesTheBeanOnlyOnce(ConcurrentSingletonCreationTests.java:91)
+	at org.springframework.beans.factory.support.ConcurrentSingletonCreationTests.concurrentGetBeanCreatesTheBeanOnlyOnce(ConcurrentSingletonCreationTests.java:73)
 ```
 
 第二次红非常重要：**它证明缺陷出在并发控制上，而不是出在「池子这个结构本身」上**。同一个测试，同一个池子，只把「先查后写」改成「加锁 + 双重检查」，就从 `4` 变成 `1`。因果链干净。

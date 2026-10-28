@@ -1,5 +1,7 @@
 # 第 01 章 从 `new` 到容器：一个 Map 的极限
 
+> 🌱 🕳️ 🔖(第 02 章) 🔖(第 11 章) 🔖(第 13 章)
+
 > **本章代码**：`step-01-map-container/`
 > **真实 Spring 对照基线**：`6.2.x`，本地参照仓 commit `daf955157871e4ac6f192e06b71d6cc595eb979b`
 > **本章只交付一件事**：让你亲手体验「一个 Map 当容器」在三个场景下崩掉。
@@ -65,7 +67,7 @@ private final Map<String, Object> singletonObjects = new ConcurrentHashMap<>(256
 
 ## 2. 先写会红的测试：三次真实的失败
 
-下面的三段输出都不是手写的，全部是 `./mvnw -pl step-01-map-container test` 真实跑出来的。
+下面的三段都是 `./mvnw -pl step-01-map-container test` 真实跑出来的输出，原文照抄。栈帧的类名与方法名会随文件变动，这里只保留断言消息——想看完整栈帧，把断言改回"愿望版"自己跑一遍即可。
 你可以把断言改回"愿望版"自己重跑一遍，会得到一模一样的报错。
 
 ### 2.1 失败场景一：需要「多例」
@@ -88,8 +90,7 @@ void sameNameShouldYieldIndependentInstances() {
 java.lang.AssertionError:
 
 Expected not same: org.springframework.samples.ch01.GreetingController@40c80397
-	at org.springframework.beans.factory.naive.NaiveContainerTests
-		.sameNameShouldYieldIndependentInstances(NaiveContainerTests.java:47)
+	<断言消息如上：Expected not same>
 ```
 
 `Expected not same` —— 两次拿到的是**同一个对象**。
@@ -195,8 +196,7 @@ void shouldWireDependency() {
 java.lang.NullPointerException: Cannot invoke
 	"org.springframework.samples.ch01.Greeter.greet(String)" because "this.greeter" is null
 	at org.springframework.samples.ch01.GreetingController.greet(GreetingController.java:35)
-	at org.springframework.beans.factory.naive.DependencyWiringTests
-		.shouldWireDependency(DependencyWiringTests.java:20)
+	<断言消息如上：Cannot invoke "org.springframework.samples.ch01.Greeter.greet(String)">
 ```
 
 **容器只负责「存」，不负责「装」。**
@@ -239,9 +239,8 @@ void byTypeReturnsFirstMatchInHashMapOrder() {
 在教学项目里它有两个作用：
 
 1. **让六道闸门保持全绿。** 一个长期红的仓库，没人会认真看 CI。
-2. **让缺陷变成可被推翻的断言。** 第 14 章实现作用域后，
-   `sameNameAlwaysReturnsTheSameInstance` 会自己变红——那就是"该修改这里了"的信号，
-   比任何 TODO 注释都可靠。
+2. **让缺陷变成可被推翻的断言。** 第 14 章实现作用域后，**这一章的容器不会跟着变**——朴素容器按 ADR-0006 永久保留原样，第 14 章另起 `DefaultListableBeanFactory` 演示作用域。`sameNameAlwaysReturnsTheSameInstance` 会一直绿着，提醒你这是一张故意画错的图纸。
+   真正的"该修改这里了"，出现在第 14 章那个新类里：同名测试到那里才变红，因为那时容器第一次有能力按作用域返回不同实例。
 
 > ⚠️ 只在本章这种"故意不完整"的快照里这么做。
 > 在生产代码里，特征测试必须配一句注释说明"这不是应有的行为"，否则半年后
@@ -251,7 +250,7 @@ void byTypeReturnsFirstMatchInHashMapOrder() {
 
 ## 3. 实现：一个 `Map` 外面包一层
 
-完整实现。这是本章的**全部**生产代码（`NaiveContainer.java`，59 行）：
+完整实现。这是本章容器的**全部**代码（`NaiveContainer.java`，94 行）。本章 `src/main` 合计 216 行，其余是领域示例（`Greeter`、`GreetingController`）与异常类：
 
 ```java
 package org.springframework.beans.factory.naive;
@@ -391,7 +390,7 @@ public class GreetingController {
 写完第一次测试，我漏删了一个 `import`。`mvn verify` 直接失败：
 
 ```text
-[ERROR] .../NaiveContainerTests.java:8:8: 无用导入 - org.springframework.samples.ch01.Greeter 。 [UnusedImports]
+[ERROR] .../NaiveContainerTests.java: 无用导入 - org.springframework.samples.ch01.Greeter 。 [UnusedImports]
 [ERROR] Failed to execute goal org.apache.maven.plugins:maven-checkstyle-plugin:3.6.0:check
 	(checkstyle-check) on project step-01-map-container: You have 1 Checkstyle violation.
 ```
@@ -597,7 +596,7 @@ public NoSuchBeanDefinitionException(ResolvableType type, String message)
 
 ### 本章你造出了什么
 
-59 行的 `NaiveContainer`，里面有真实 Spring 最核心的那个字段：
+94 行的 `NaiveContainer`，里面有真实 Spring 最核心的那个字段：
 
 ```java
 private final Map<String, Object> beans = new HashMap<>();

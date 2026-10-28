@@ -9,9 +9,10 @@ import org.springframework.beans.factory.NoSuchBeanException;
  * 第 01 章的「容器」：{@code Map<String, Object>} 外面包一层。
  *
  * <p>
- * 这不是玩具，这是所有 IoC 容器的起点。真实 Spring 的 {@code DefaultListableBeanFactory} 里也有一个
- * {@code Map<String, Object>} 名叫 {@code singletonObjects}——区别只在于它旁边还挂了 11 个辅助结构。本章的任务就是
- * 让你先亲手体验「只有这一个 Map」会在哪三个地方崩掉，从而明白那 11 个结构不是过度设计。
+ * 这不是玩具，这是所有 IoC 容器的起点。真实 Spring 的 {@code DefaultSingletonBeanRegistry} 里也有一个
+ * {@code Map<String, Object>} 名叫 {@code singletonObjects}——区别在于它旁边还挂着 18 个实例字段：另外 3
+ * 张单例登记表、 4 个「创建中」集合、2 把锁、销毁回调表、3 张依赖关系表。本章的任务就是让你先亲手体验「只有这一个 Map」
+ * 会在哪三个地方崩掉，从而明白那些结构不是过度设计。
  *
  * <p>
  * <b>本章的容器有三个已知的致命缺陷</b>，均在测试里被显式钉住：
@@ -24,6 +25,11 @@ import org.springframework.beans.factory.NoSuchBeanException;
  * <p>
  *
  * @implNote 教学用反面示例：故意保留朴素写法，不要照抄进生产代码（见 docs/adr/0006）。
+ * <p>
+ * 非线程安全：{@code HashMap} 没有同步，{@code register} 与 {@code getBean} 之间也没有 happens-before，
+ * 并发调用会读到半初始化的对象，或者让 {@code getBean(Class)} 的遍历抛
+ * {@code ConcurrentModificationException}。真实 Spring 用 {@code ConcurrentHashMap} 加锁解决，那是第
+ * 03 章的事。
  * @see org.springframework.beans.factory.support.DefaultListableBeanFactory
  */
 public class NaiveContainer {
@@ -58,7 +64,7 @@ public class NaiveContainer {
 	 * 按类型取出对象——朴素实现，返回第一个匹配项。
 	 *
 	 * <p>
-	 * 「第一个」是遍历 {@link HashMap} 得到的顺序，与注册顺序无关。这一点会在 {@code HashMapOrderTests}
+	 * 「第一个」是遍历 {@link HashMap} 得到的顺序，与注册顺序无关。这一点在 {@code GetByTypeTests}
 	 * 里被钉住，它是本章第二个失败场景的根因。
 	 * @param <T> 期望类型
 	 * @param requiredType 期望类型

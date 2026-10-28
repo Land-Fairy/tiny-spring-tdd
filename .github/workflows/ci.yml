@@ -34,10 +34,19 @@ jobs:
       - name: mvn verify（格式 / Checkstyle / PMD / JaCoCo / Enforcer / ArchUnit / 测试）
         run: ./mvnw -B --no-transfer-progress verify
 
+      - name: 脚本自检（--help 可跑，防止改坏参数解析）
+        run: |
+          bash scripts/check-propagation.sh --help > /dev/null
+          bash scripts/propagate.sh --help > /dev/null
+
       # 跨章回归不变式：35 个章节模块是同一份代码的快照，第 K 章的修复必须传到 K+1、K+2。
       # 这一条不属于任何单个模块（要横着比），所以放在 CI 里单独跑，见 scripts/check-propagation.sh。
-      - name: 跨章回归不变式（propagation）
+      - name: 第 7 道闸门 · 跨章回归不变式
         run: bash scripts/check-propagation.sh
+
+      # 文档腐败防线之一：文件改名后链接不跟着改，不会让任何测试变红，只会让读者撞 404。
+      - name: 第 9 道闸门 · 文档相对链接可达性
+        run: bash scripts/check-doc-links.sh
 
       - name: 上传测试与覆盖率报告
         if: always()
@@ -49,3 +58,20 @@ jobs:
             **/target/site/jacoco/**
           retention-days: 7
           if-no-files-found: ignore
+
+  doc-refs:
+    name: 第 8 道闸门 · 文档引用可验证性
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 只为了比对「出处：...java:123」这类上游引用；拿不到就降级：
+      # 脚本会打 INFO 跳过上游引用，本地引用照常检查。
+      - name: 取上游 Spring 6.2.x 源码树
+        continue-on-error: true
+        run: git clone --depth 1 --branch 6.2.x https://github.com/spring-projects/spring-framework.git .spring-ref
+
+      - name: 文档引用可验证性（javadoc 的 {@code X}、正文的 File.java:行、栈帧）
+        env:
+          SPRING_REF: ${{ github.workspace }}/.spring-ref
+        run: bash scripts/check-doc-refs.sh --all

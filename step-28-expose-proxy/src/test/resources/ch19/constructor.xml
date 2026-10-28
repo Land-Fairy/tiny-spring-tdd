@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+	<bean id="orderRepository" class="org.springframework.samples.ch19.OrderRepository"/>
+	<bean id="userRepository" class="org.springframework.samples.ch19.UserRepository"/>
+
+	<bean id="constructorHolder" class="org.springframework.samples.ch19.ConstructorHolder"/>
+	<bean id="annotatedConstructorHolder" class="org.springframework.samples.ch19.AnnotatedConstructorHolder"/>
+	<bean id="plainConstructorHolder" class="org.springframework.samples.ch19.PlainConstructorHolder"/>
+	<bean id="optionalConstructorHolder" class="org.springframework.samples.ch19.OptionalConstructorHolder"/>
+
+	<bean id="autowiredProcessor"
+		  class="org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor"/>
+
+</beans>

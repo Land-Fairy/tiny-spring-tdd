@@ -46,16 +46,20 @@ import org.springframework.beans.factory.config.SingletonBeanRegistry;
  * {@code new ConcurrentHashMap<>(256)}（{@code :85}）。
  *
  * <p>
- * <b>砍掉了什么</b>：{@code singletonFactories} / {@code earlySingletonObjects}（三级缓存， 第 30
- * 章）、{@code singletonsCurrentlyInCreation}（创建中标记，第 30 章）、 {@code disposableBeans}
- * 与依赖关系图（第 13 章）、以及 6.2 新增的 {@code tryLock} + strict/lenient 双模（第 31 章）。
+ * <b>砍掉了什么</b>：6.2 的 {@code singletonCallbacks}（创建回调）、{@code inCreationCheckExclusions}
+ * （创建中检查豁免）、lenient 创建模式（{@code lenientCreationLock} /
+ * {@code singletonsInLenientCreation} / {@code currentCreationThreads}，为兼容老代码而死锁规避用），
+ * 以及依赖关系图三兄弟 {@code containedBeanMap} / {@code dependentBeanMap} /
+ * {@code dependenciesForBeanMap}（真实 Spring {@code :91-:137}）。这几样在本书的场景里都用不到，
+ * 硬塞进来只会让「三级缓存」这条主线变糊。
  *
  * @see DefaultListableBeanFactory
  */
 public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 
 	/**
-	 * 名字 → 成品。这是本章唯一新增的状态。
+	 * 名字 → 成品。它是三级缓存的<b>第一级</b>：成品。第二级（早期引用）与第三级（{@code ObjectFactory}）由<b>第 30
+	 * 章</b>加入，把第三级换成并发容器由<b>第 31 章</b>完成。
 	 *
 	 * <p>
 	 * {@code 256} 是真实 Spring 的初始容量（{@code DefaultSingletonBeanRegistry.java:85}），
@@ -134,6 +138,52 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 * {@code Map<String, Object> disposableBeans = new LinkedHashMap<>()}
 	 * （{@code DefaultSingletonBeanRegistry.java:128}），并在 {@code destroySingletons()}
 	 * 里倒着遍历。
+	 */
+	/**
+	 * <b>并发口径（六只容器一张表，别凭直觉猜）</b>：
+	 * <table border="1">
+	 * <caption>谁被谁保护</caption>
+	 * <tr>
+	 * <th>容器</th>
+	 * <th>保护方式</th>
+	 * <th>为什么不统一</th>
+	 * </tr>
+	 * <tr>
+	 * <td>{@code singletonObjects}</td>
+	 * <td>{@link ConcurrentHashMap}</td>
+	 * <td>热路径：{@code getSingleton} 的第一次读<b>故意不进锁</b>，靠 map 自己的可见性 + 进锁后二次确认</td>
+	 * </tr>
+	 * <tr>
+	 * <td>{@code earlySingletonObjects}</td>
+	 * <td>{@link ConcurrentHashMap}</td>
+	 * <td>同上，且只能并发插入；顺序无意义</td>
+	 * </tr>
+	 * <tr>
+	 * <td>{@code singletonsCurrentlyInCreation}</td>
+	 * <td>{@link ConcurrentHashMap} 的 keySet</td>
+	 * <td>要原子地 {@code add} 失败即代表「已有人在造」——这正是环依赖检测的判据</td>
+	 * </tr>
+	 * <tr>
+	 * <td>{@code singletonFactories}</td>
+	 * <td>第 13 章还没有；第 30 章引入时是纯锁内 {@code HashMap}， 第 31 章早期引用路径移出创建锁后换成
+	 * {@link ConcurrentHashMap}</td>
+	 * <td>保护方式跟着「读写是否都在锁内」走，不是跟着字段名字走</td>
+	 * </tr>
+	 * <tr>
+	 * <td>{@code registeredSingletons}</td>
+	 * <td>{@code Collections.synchronizedSet}</td>
+	 * <td>要<b>保序</b>（{@link LinkedHashSet}），而 JDK 没有并发的保序 Set</td>
+	 * </tr>
+	 * <tr>
+	 * <td>{@code disposableBeans}</td>
+	 * <td>{@code Collections.synchronizedMap}</td>
+	 * <td>要保序，且写者不总在 {@code singletonLock} 里（销毁路径只对 map 自身加锁取快照）</td>
+	 * </tr>
+	 * </table>
+	 * <p>
+	 * 这张表是<b>判定结果</b>而不是风格：每个字段的容器类型都能用「这个访问点是否已在锁内」和「是否需要保序」两问推出来。 反过来说，看到
+	 * {@code Collections.synchronizedXxx} 就想「统一成 ConcurrentHashMap」是错的—— 会同时丢掉保序并让
+	 * {@code destroySingletons()} 的快照失去原子性。
 	 */
 	private final Map<String, DisposableBean> disposableBeans = Collections.synchronizedMap(new LinkedHashMap<>());
 

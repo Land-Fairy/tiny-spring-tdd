@@ -33,7 +33,8 @@ import org.springframework.core.ParameterNameDiscoverer;
  * <p>
  * <b>砍掉了什么</b>：真实 Spring 的 {@code ConstructorResolver} 有 1468 行，本节砍掉的是—— 显式
  * {@code constructor-arg} 参数值（{@code createArgumentArray} 的 {@code resolvedValues} 分支）、
- * 类型转换（第 23 章）、{@code @Autowired} 候选构造器的选择（第 19 章）、 按<b>类型</b>而非名字解析依赖（真实 Spring 走
+ * 类型转换（第 23 章）、{@code @Autowired} 候选构造器的<b>挑选</b>（第 19 章补上了这一条：挑的是注解层， 本类只负责「拿给定候选去造」，见
+ * {@link #instantiate(String, Class, Constructor[])}）、 按<b>类型</b>而非名字解析依赖（真实 Spring 走
  * {@code beanFactory.resolveDependency}， 名字只在多个候选中做消歧，见正文 §5）、构造器参数权重与「最接近匹配」评分、工厂方法与
  * {@code @ConstructorProperties}。本章只留「按名字装配 + 参数多的优先」这一条主干。
  *
@@ -65,17 +66,39 @@ public class ConstructorResolver {
 	}
 
 	/**
-	 * 把 {@code beanClass} 的一个实例造出来。
+	 * 把 {@code beanClass} 的一个实例造出来，构造器<b>自己挑</b>（参数多的优先）。
 	 * @param beanName Bean 的名字，只用于错误消息
 	 * @param beanClass 要造的类
 	 * @return 新对象
 	 */
 	public Object instantiate(String beanName, Class<?> beanClass) {
-		Constructor<?>[] candidates = beanClass.getDeclaredConstructors();
-		Arrays.sort(candidates, Comparator.<Constructor<?>>comparingInt(Constructor::getParameterCount).reversed());
+		return instantiate(beanName, beanClass, null);
+	}
 
+	/**
+	 * 只从<b>给定的候选</b>里挑构造器来造对象——第 19 章的注解路径走这里。
+	 *
+	 * <p>
+	 * 与上面那个方法的差别只有一句：候选<b>不再由本类扫描</b>，而是外面挑好了送进来。挑的人是
+	 * {@code AutowiredAnnotationBeanPostProcessor#determineCandidateConstructors}——因为「哪些构造器带
+	 * {@code @Autowired}」是注解才知道的事，而注解属于注解层，不该让 {@code support} 层去 {@code getAnnotation}。
+	 * 真实 Spring 的分工一模一样：候选由
+	 * {@code AbstractAutowireCapableBeanFactory#determineConstructorsFromBeanPostProcessors}（{@code :1327}）要来，
+	 * 交给 {@code ConstructorResolver#autowireConstructor}（{@code :135}）的
+	 * {@code chosenCtors} 形参。
+	 *
+	 * <p>
+	 * <b>顺序即优先级</b>：这里的数组<b>不排序</b>。调用方把「必需的那一个」排在前面、「退路」排在后面，
+	 * 于是「凑不齐就换下一个」的老逻辑照样成立，只是换的对象从「全部构造器」变成了「别人挑过的几个」。
+	 * @param beanName Bean 的名字，只用于错误消息
+	 * @param beanClass 要造的类
+	 * @param candidates 挑好的候选构造器；{@code null} 表示没人干预，按本章的老规矩扫全部构造器
+	 * @return 新对象
+	 */
+	public Object instantiate(String beanName, Class<?> beanClass, Constructor<?>[] candidates) {
+		Constructor<?>[] actual = (candidates != null) ? candidates : allConstructorsOf(beanClass);
 		List<UnsatisfiedDependencyException> causes = new ArrayList<>();
-		for (Constructor<?> candidate : candidates) {
+		for (Constructor<?> candidate : actual) {
 			if (candidate.isSynthetic()) {
 				continue;
 			}
@@ -89,6 +112,17 @@ public class ConstructorResolver {
 			}
 		}
 		throw buildFailure(beanName, beanClass, causes);
+	}
+
+	/**
+	 * 第 04 章的老规矩：全部构造器，参数多的排前面。
+	 * @param beanClass 要造的类
+	 * @return 排好序的构造器
+	 */
+	private Constructor<?>[] allConstructorsOf(Class<?> beanClass) {
+		Constructor<?>[] candidates = beanClass.getDeclaredConstructors();
+		Arrays.sort(candidates, Comparator.<Constructor<?>>comparingInt(Constructor::getParameterCount).reversed());
+		return candidates;
 	}
 
 	private Object[] resolveArguments(String beanName, Constructor<?> constructor) {

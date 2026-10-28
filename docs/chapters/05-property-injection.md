@@ -1,5 +1,7 @@
 # 第 05 章 属性填充与依赖注入：造好之后还能改
 
+> 🌿(ch00–ch04) 🕳️
+
 > **本章你要带走的一句话**：容器能改一个对象，靠的是 **JavaBeans 的命名约定**（`setPrefix` ↔ `prefix`）加上 **反射调用**；而「改」这件事必须带类型检查，否则错误会延迟到业务代码里才炸。
 >
 > **前提**：第 04 章的容器已经能用构造器把依赖塞进去。但那要求所有依赖都写在构造器签名上——而真实项目里，配置值（`prefix`、`repeat`、`timeout`）从来不是构造器参数。
@@ -290,6 +292,10 @@ Expecting code to raise a throwable.
 ## 3. 实现
 
 ### 3.1 `PropertyValue`：把「要填什么」变成数据
+
+> **顺带一个新手最容易犯的错**：看到 `PropertyValue` 只有三个 `private final` 字段、没有 setter，会想「这不就是 `record` 吗」。
+> 它不是，三条理由写在类注释里（真实 Spring 用的是 `class`；`record` 的相等是结构化相等，而属性合并在意「谁覆盖了谁」的身份；
+> `record` 不可继承）。判据见 `docs/CODE-STANDARDS.md` 的 K2 与「`record` 的适用边界」。
 
 ```java
 public class PropertyValue {
@@ -985,7 +991,7 @@ BeanCreationException: Invocation of afterPropertiesSet of bean 'service' failed
 
 | 本书的类 | 真实 Spring 的全限定名 | 真实行数 | 本书行数 |
 | --- | --- | --- | --- |
-| `PropertyValue` | `org.springframework.beans.PropertyValue` | 208 | 77 |
+| `PropertyValue` | `org.springframework.beans.PropertyValue` | 208 | 90 |
 | `PropertyValues` | `org.springframework.beans.PropertyValues` | 100 | 27 |
 | `MutablePropertyValues` | `org.springframework.beans.MutablePropertyValues` | 387 | 71 |
 | `BeanWrapper` | `org.springframework.beans.BeanWrapper` | 91 | 44 |

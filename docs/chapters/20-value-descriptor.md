@@ -1,5 +1,7 @@
 # 第 20 章 `@Value` 与 `DependencyDescriptor`
 
+> 🌿(ch00–ch19) 🕳️
+
 注入点要的东西**不一定是一个 Bean**。
 
 `application.properties` 里的一行 `app.greeting=Hello`，和一个 `GreetingRepository` 类型的 Bean，

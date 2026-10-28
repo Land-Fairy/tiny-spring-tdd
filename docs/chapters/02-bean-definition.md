@@ -1,5 +1,7 @@
 # 第 02 章 BeanDefinition：容器存的不是对象，是图纸
 
+> 🌿(ch00–ch01) 🕳️ 🔖(第 04 章) 🔖(第 05 章) 🔖(第 08 章)
+
 > **一句话**：把「怎么造」和「已经造好」拆成两件事，容器才可能懒加载、才可能有多例、才可能在造对象之前先回答关于它的问题。
 
 上一章的容器有一个听起来无害的名字：`Map<String, Object>`。它也确实能跑——把 `new` 出来的对象塞进去，按名字取回来，测试全绿。
@@ -158,7 +160,7 @@ public interface BeanMetadataElement {
 
 它也是 `BeanDefinition` 的父接口，这解释了为什么图纸能带出处：`BeanDefinition extends BeanMetadataElement`。
 
-### 3.2 `BeanDefinition`：17 个方法，每一个都在回答一个将来会被问到的问题
+### 3.2 `BeanDefinition`：19 个方法，每一个都在回答一个将来会被问到的问题
 
 我们的版本是这样的（省略 Javadoc）：
 
@@ -205,6 +207,7 @@ public interface BeanDefinition extends BeanMetadataElement {
 | `getBeanClassName()` | 反射造对象时要知道造哪个类 | 本章（无参构造器）、第 04 章（带参构造器） |
 | `getScope()` / `isSingleton()` / `isPrototype()` | 决定造一个还是造多个、要不要放单例池 | 第 03 章（单例池）、第 14 章（作用域） |
 | `isLazyInit()` | 决定 `refresh()` 时要不要提前造 | 第 09 章（refresh）、第 14 章 |
+| `isPrimary()` / `setPrimary()` | 同一类型有多个候选时，标出「首选哪一个」 | 第 19 章（`@Autowired` 的候选决策链） |
 | `getInitMethodName()` | 造完对象后调哪个方法 | 第 13 章（初始化与销毁） |
 | `getDestroyMethodName()` | 容器关闭时调哪个方法 | 第 13 章 |
 | `getRole()` | 区分应用 Bean 与容器内部件 | 第 11 章（BeanPostProcessor 调试）、第 34 章 |
@@ -458,12 +461,12 @@ catch (ClassNotFoundException | InvocationTargetException | InstantiationExcepti
 
 | 真实 `BeanDefinition` 有的 | 本书有吗 | 去哪一章 |
 | --- | --- | --- |
-| 36 个方法 | 17 个 | — |
+| 36 个方法 | 19 个 | — |
 | `ConstructorArgumentValues getConstructorArgumentValues()` | 无 | 第 04 章（构造器参数匹配） |
 | `MutablePropertyValues getPropertyValues()` | 无 | 第 05 章（属性填充） |
 | `setDependsOn(String...)` | 无 | 第 08 章（`depends-on` 与父子定义） |
 | `setParentName` / `getParentName` | 无 | 第 08 章（父子定义继承） |
-| `setAutowireCandidate` / `isPrimary` / `setFallback` | 无 | 第 19 章（`@Autowired` 的候选决策链） |
+| `setAutowireCandidate` / `setFallback` | 无 | 第 19 章（`@Autowired` 的候选决策链） |
 | `setFactoryBeanName` / `setFactoryMethodName` | 无 | 第 14 章（`FactoryBean`） |
 | `ResolvableType getResolvableType()` | 无 | 第 09 章之后（泛型 Bean 类型） |
 | `getResourceDescription()` / `getOriginatingBeanDefinition()` | 无 | 第 33 章（排错） |
@@ -472,12 +475,12 @@ catch (ClassNotFoundException | InvocationTargetException | InstantiationExcepti
 
 | 类 | 本书行数 | 真实行数（6.2.x） |
 | --- | --- | --- |
-| `BeanDefinition` | 155 | 388 |
-| `AbstractBeanDefinition` | 189 | 1405 |
+| `BeanDefinition` | 178 | 388 |
+| `AbstractBeanDefinition` | 201 | 1405 |
 | `GenericBeanDefinition` | 43 | 102 |
 | `DefaultListableBeanFactory` | 144 | 2778 |
 
-`AbstractBeanDefinition` 从 1405 行砍到 189 行，砍掉的 1200 行里大约一半是"属性值 + 构造器参数 + 合并逻辑"，另一半是 `clone()`、`equals()`、`validate()`、各类 `autowireMode` 相关的分支。
+`AbstractBeanDefinition` 从 1405 行砍到 201 行，砍掉的 1200 行里大约一半是"属性值 + 构造器参数 + 合并逻辑"，另一半是 `clone()`、`equals()`、`validate()`、各类 `autowireMode` 相关的分支。
 
 `DefaultListableBeanFactory` 从 2778 行砍到 144 行，是因为我们只留了「按名字取图纸 + 造对象」一条线。真实类里还有：父工厂与层级查找、`getBeanNamesForType`、`allowBeanDefinitionOverriding` 开关、父子定义合并、Bean 后处理器注册、单例池、`preInstantiateSingletons()`……
 

@@ -5,11 +5,11 @@ package org.springframework.beans.factory;
  *
  * <p>
  * 真实 Spring 的对应物是 {@code NoSuchBeanDefinitionException}——注意它多了一个
- * {@code Definition}：它查的是「图纸」而不是「产品」。第 02 章引入 BeanDefinition 之后，
- * 我们也会把名字改回去，因为那时候名字的差异本身就是教学内容。
+ * {@code Definition}：它查的是「图纸」而不是「产品」。本章还没有图纸，容器里直接躺着对象，所以名字短一点才诚实。
  *
  * <p>
- * 本章还没有「图纸」这个概念，容器里直接躺着对象，所以名字短一点才诚实。
+ * 这个短名会一直用到第 35 章，不再改回去：第 32 章引入「按类型找到多个」的场景时，新增的兄弟异常叫
+ * {@code NoUniqueBeanDefinitionException}，两者并列。保留短名是为了让读者始终记得——第 01 章的容器查的是产品。
  *
  * @see org.springframework.beans.factory.NoSuchBeanDefinitionException
  */

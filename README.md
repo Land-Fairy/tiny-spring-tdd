@@ -38,6 +38,16 @@
 
 ---
 
+## 三条阅读路径
+
+每章大标题下有一行标记：`🌱` 只需要会 Java｜`🌿(chXX–chYY)` 需要先读完括号里的章｜`🕳️` 需要同时打开参照仓｜`🔖(第 NN 章)` 此处只给结论、展开在第 NN 章。判据见 [`docs/CODE-STANDARDS.md`](docs/CODE-STANDARDS.md) 的「章节元数据标记」。
+
+| 路径 | 章号 | 适合谁 | 大约耗时 |
+|---|---|---|---|
+| **① 线性通读** | 00 → 35 全读 | 想把「Spring 为什么这样设计」一次弄明白的人 | 40–60 小时（含跟写代码） |
+| **② 只读容器内核** | 00、01、02、03、04、05、09、10、11、12、13、30、32、33 | 只想搞懂 IoC 容器：图纸、单例、属性填充、后处理器、循环依赖、`getBean` 全链路、异常体系 | 20–25 小时 |
+| **③ 面试突击** | 先读 03、05、09、11、13、19、30、32，再照 [`docs/appendix/D-interview-map.md`](docs/appendix/D-interview-map.md) 反查 | 时间紧、要能答出「三级缓存为什么是三级」「`@Autowired` 怎么选」这类问题的人 | 8–12 小时 |
+
 ## 章节地图
 
 > 每章的正文在 `docs/chapters/`，代码在 `step-XX-*/`。
@@ -185,6 +195,16 @@ mvn verify
 | 5 | `JaCoCo`：行 ≥80%，分支 ≥70% | 构建失败 |
 | 6 | `ArchUnit`：分层依赖单向 | 测试失败 |
 
+另外有**两道仓库级检查**（不在单模块 `verify` 里，跑在 CI）：
+
+| # | 检查 | 抓什么 | 违规后果 |
+|---|---|---|---|
+| 7 | `scripts/check-propagation.sh` | 第 K 章的修复没传到第 K+1、K+2 章（「回退」与「静默缺失」两种事故指纹） | CI 红 |
+| 8 | `scripts/check-doc-refs.sh` | 正文里的「出处：`X.java:123`」与真实源码对不上 | CI 红 |
+| 9 | `scripts/check-doc-links.sh` | 文件改名后 markdown 里的相对链接失效 | CI 红 |
+
+`scripts/refs.sh`（真实 Spring 参照仓）**不是闸门**：它只核对，缺仓或版本漂移都只警告不失败——见 `docs/CODE-STANDARDS.md`。
+
 ---
 
 ## 术语
@@ -200,6 +220,39 @@ mvn verify
 - [ADR-0004 真实 Spring 对照基线钉在 6.2.x](docs/adr/0004-spring-reference-baseline.md)
 
 ---
+
+## 上游血统与本书的增量
+
+**血统**：本书**不是** Spring 的分支，也不是任何项目的翻译。它是照 `spring-framework` 6.2.x 的源码
+**重写**的独立实现——每一章先写会失败的测试，再手写实现，然后打开参照仓逐行对照（做法见
+[ADR-0004](docs/adr/0004-spring-reference-baseline.md)）。包名沿用 `org.springframework.*`
+只为并排阅读方便（[ADR-0001](docs/adr/0001-package-naming.md)），且**零代码拷贝**：每个类都是照真实
+实现的形状重写的，行数与职责范围全部摆在 [附录 C](docs/appendix/C-class-map.md) 的对照表里，可逐条核对。
+
+**版本基线**：`spring-framework` 的 `6.2.x` 分支，commit `daf9551`（见
+[ADR-0004](docs/adr/0004-spring-reference-baseline.md)）。**故意不钉具体补丁版本**：6.2 线在小版本之间
+也会挪行号，钉死会让全部「源码行号表」隔夜过期。写作期实测（`curl` 查 Maven Central）：
+
+```bash
+curl -s 'https://search.maven.org/solrsearch/select?q=g:%22org.springframework%22+AND+a:%22spring-core%22&core=gav&rows=8&wt=json'
+# → 6.2 线最新 6.2.8；7.0 线为 7.0.0-M6
+```
+
+**本书相对上游文档与同类项目的三处增量**——这三件事在官方文档和同类教学项目里都没有：
+
+| # | 增量 | 可核对的载体 |
+|---|---|---|
+| 1 | **逐类对照总表**：203 个框架类逐个标注与真实 Spring 的关系（172 同名同包 / 18 同名异包 / 13 无同名），190 对可比类的行数比 **1 : 3.0** | [附录 C](docs/appendix/C-class-map.md)（含重跑脚本） |
+| 2 | **每章的「真红」原始输出**：不是「这里会报错」的转述，而是测试真实失败时的控制台原文，36 章每章 2–4 次 | 各章 §2「先写会红的测试」 |
+| 3 | **跨章传播闸门**：35 个模块是同一份代码的快照，`scripts/check-propagation.sh` 机器检查「第 K 章的修复有没有在 K+1 章丢掉」 | [CODE-STANDARDS](docs/CODE-STANDARDS.md) 闸门 7 |
+| 4 | **文档引用闸门**：注释与正文里的每个类名、每个 `File.java:行`、每个栈帧，都必须落到真实存在的文件与行上——「照着书去找，结果找不到」这类损伤信任的错误由机器拦 | [CODE-STANDARDS](docs/CODE-STANDARDS.md) 闸门 8 |
+
+**与上游的架构差距**：包结构、实现链层次、`refresh()` 纵深、AOP 家族这四张图，
+以及「体量 / 职责切分 / 刻意不做」三类差异总表，见 **[架构差距](docs/architecture-gap.md)**。
+
+**7.0 差异声明**：本书基线是 6.2.x，不跟随 7.0（写作期 7.0 仍是里程碑线 `7.0.0-M6`）。Spring
+Framework 7.0 把 JDK 17 定为基线、引入 JSpecify 空安全标注、升级到 JUnit 6、并移除若干废弃 API；
+**影响本书叙事的那部分差异**列在第 35 章 §5 的四张表里——那是「读本书时该注意什么」，不是 7.0 的迁移指南。
 
 ## 致谢
 

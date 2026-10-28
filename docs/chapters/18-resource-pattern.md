@@ -1,5 +1,7 @@
 # 第 18 章 `PathMatchingResourcePatternResolver`
 
+> 🌿(ch00–ch17) 🕳️
+
 > 第 17 章的扫描器有一个洞：它只能扫目录，扫不进 jar。而真实项目里的类**几乎全在 jar 里**。
 >
 > 补这个洞只需要一条通配路径：`classpath*:com/acme/**/*.class`。

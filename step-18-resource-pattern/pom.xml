@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-18-resource-pattern</artifactId>
-	<name>step-17-classpath-scanning</name>
+	<name>step-18-resource-pattern</name>
 	<description>第 18 章 PathMatchingResourcePatternResolver</description>
 
 	<dependencies>

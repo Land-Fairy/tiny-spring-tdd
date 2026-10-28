@@ -15,7 +15,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  * 里重算一遍。规矩一旦能被机器执行，它就不再是约定，而是事实。
  *
  * <p>
- * <b>两条规矩，两个方向</b>：
+ * <b>四条规矩，都是同一个方向</b>（依赖只能从外往里）：
  * <ul>
  * <li>{@code beans} 不能依赖 {@code context}——依赖只能从外往里。这条规矩在实践中非常容易被破坏： 只要有一个处理器顺手读了一下
  * {@code @Primary}、{@code @Qualifier} 这样的<b>注解类</b>，方向就反了。
@@ -23,11 +23,15 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  * <li>{@code aop} 不能反向依赖 {@code beans} 的<b>实现</b>（{@code beans.factory.support}）。 它可以依赖
  * {@code BeanFactory} 这样的接口，因为代理需要问容器「这个 Bean 现在是什么状态」， 但不能依赖
  * {@code DefaultListableBeanFactory} 这种具体实现——否则增强逻辑就被钉死在某一种容器上。</li>
+ * <li>{@code aop} 也不能依赖 {@code context}：代理面向 {@code BeanFactory}，不面向
+ * {@code ApplicationContext}。</li>
+ * <li>{@code core} 不能依赖任何上层包：它一旦回头依赖 {@code beans}，第 33 章的异常层次立刻变成循环引用。</li>
  * </ul>
  *
  * <p>
- * <b>真实 Spring 对应</b>：真实仓库同样用 ArchUnit 守住包依赖（{@code src/test/java/...archunit}），
- * 它的规约多达几十条，本文只留最能体现「依赖方向」的两条。
+ * <b>真实 Spring 对应</b>：真实仓库里没有 ArchUnit，也没有这组规则测试——它用 Gradle 的模块依赖本身守住方向：
+ * {@code spring-beans} 的构建脚本只声明 {@code api(project(":spring-core"))}，看不见的类根本 import 不到，
+ * 反向依赖在编译期就失败。本书每一章是一个独立 Maven 模块，包与包之间没有构建级边界， 才需要把这四条方向写成可执行的规矩。
  */
 @AnalyzeClasses(packages = "org.springframework", importOptions = ImportOption.DoNotIncludeTests.class)
 class LayeringTests {

@@ -4,6 +4,89 @@
 > 违反即 `mvn verify` 失败、CI 红灯、PR 无法合并。
 > 规范之所以是机器判定的，是因为"高质量"如果只靠自觉，就一定会退化。
 
+## 零、优雅六条
+
+六道闸门管「不许错」，这六条管**「怎么算好」**。闸门是它们的执行手段，章节正文是它们的展示载体——所以六条里每一条都必须有「可执行的判定手段」，不能停在形容词上。
+
+| 编号 | 规则 | 判定手段 | 反例 |
+|---|---|---|---|
+| **K1 机制单一** | 同一件事只允许一种写法（并发容器、工厂、异常路径…）；若必须混用，**每个字段旁一行说明为什么** | 源码契约测试 + 人工复核 | 同一类里四套并发机制，却没有一句话解释为什么 |
+| **K2 不变量可见** | 约束写在类型与构造器里，不写在注释里：与真实 Spring 同形的值对象用 `final class` + 全 `private final` + 构造期校验；本书自创、仅供内部使用的纯数据载体用 `record`；可变对象（`BeanDefinition` 系）全 `private` + 统一风格 setter + 构造期校验 | 反射测试 + 源码契约测试（E5） | 注释写「name 不能为 null」，字段却是可变 `public` |
+| **K3 意志单一** | 一个类只有一个变化理由：方法 ≤30 行、嵌套 ≤3 层、参数 ≤4（只对终态章节生效，见 E3 的快照标注） | 源码契约测试（E5） | 1120 行的 `DefaultListableBeanFactory` |
+| **K4 异常即文档** | 异常消息三段式：**谁 · 为什么 · 怎么办**；自定义异常构造器必须带 `beanName` | 源码契约测试（E5） | `throw new IllegalStateException("error")` |
+| **K5 契约可见** | 新增 `public` 类必须有 `@see org.springframework.…` 与「砍掉了什么」一句话 | 源码契约测试（E5） | 新类没有 `@see`，读者不知道它对应真实 Spring 的谁 |
+| **K6 成对对照** | 每章至少一对「朴素写法 / 优雅写法」，两者都编译、都过**同一组**断言 | 测试文件计数 | 只有正确写法，读者无从比较 |
+
+### K1 机制单一：每个并发容器都要能说出理由
+
+反例（同一类里两套机制，谁在保证正确看不出来）：
+
+```java
+private final Map<String, Object> disposableBeans = Collections.synchronizedMap(new LinkedHashMap<>());
+// 又在方法里：synchronized (this.disposableBeans) { ... }   ← 双保险：到底哪一层在保证正确？
+```
+
+正例（契约唯一且可见，与真实 Spring 逐字对齐）：
+
+```java
+/** 只在 synchronized (this.disposableBeans) 块内访问：裸 LinkedHashMap 就够。真实 Spring :128 同。 */
+private final Map<String, Object> disposableBeans = new LinkedHashMap<>();
+```
+
+**为什么这条对新手重要**：新手最容易「多一层保险总没错」，结果是后来维护的人不敢删任何一层。机制单一的收益不是少写代码，而是**让「哪一层负责什么」变成可读的事实**。
+
+### K2 不变量可见：约束写在类型里
+
+四条可执行的落地规则（E2 已在全仓落完）：
+
+| 编号 | 规则 | 当前状态 |
+|---|---|---|
+| **K2-a** | 与真实 Spring 同形的值对象（`PropertyValue`、`ConstructorArgumentValues.ValueHolder`…）按真实形状实现：`final class` + 全 `private final` + 构造期校验，**不得改成 `record`** | 已对齐，理由写进 `PropertyValue` 类注释 |
+| **K2-b** | 本书自创、仅供内部使用的纯数据载体一律用 `record`（四条判据见下） | 全仓恰好 2 处：`SimpleMetadataReader.ConstantPool`、`ConfigurationClassEnhancer.MethodCode` |
+| **K2-c** | 可变对象（`BeanDefinition` 系）必须「一种写法」：全 `private` 字段 + 统一风格 setter + 构造期校验；`*Value`/`*Metadata`/`*Descriptor` 若有非 final 字段，javadoc 必须显式写「可变/mutable」 | 由 `K2SourceContractTests` 钉住 |
+| **K2-d** | 构造器校验统一走自带消息的断言（`Assert.notNull(x, "beanName")` 这类），禁止裸 `if (x == null) throw new IllegalArgumentException()` 散布各处 | 新增代码遵守；存量见 E3 的快照标注 |
+
+
+反例（约束只活在注释和口头约定里）：
+
+```java
+public class PropertyValue {
+    public String name;   // 不能为 null
+    public Object value;
+}
+```
+
+正例（编译器和构造器替你说）：
+
+```java
+public final class PropertyValue {
+    private final String name;   // 构造器里校验，之后不可能再变
+}
+```
+
+**为什么这条对新手重要**：「不可变」不是风格偏好，它决定了**并发时要不要加锁**。字段一旦 `final`，一半的并发问题在类型层面就不存在了。
+
+**`record` 的适用边界**（K2 最容易被误用的一条）：
+
+- **可以用 `record`**：本书自创、仅内部使用、不进任何公共 API、不需要继承、不需要身份语义的纯数据载体。本仓两处：`SimpleMetadataReader.ConstantPool`（字节码常量池快照）、`ConfigurationClassEnhancer.MethodCode`（一段生成的字节码 + 栈/局部变量上限）。
+- **不可以用 `record`**：与真实 Spring 同形的值对象（`PropertyValue`、`ConstructorArgumentValues.ValueHolder` 等）。三条理由：① 真实 Spring 是 `class`，改名形状会破坏逐行对照；② `record` 的 `equals` 是**结构化相等**，而属性合并在意「谁覆盖了谁」的身份语义；③ `record` 不可继承，而真实体系里有子类用法。详见 `PropertyValue` 的类注释。
+
+### K3 意志单一：一个类只有一个变化理由
+
+判据是硬的：方法 ≤30 行、嵌套 ≤3 层、参数 ≤4。`MethodLength`/`ParameterNumber`/`NestedIfDepth` 由 checkstyle 兜底，K3 管的是**类级**的理由数——一个 1120 行的工厂同时管注册、解析、实例化、依赖、生命周期，就有五个变化理由。
+
+### K4 异常即文档：三段式
+
+见下一节「异常三段式」。
+
+### K5 契约可见：`@see` 与「砍掉了什么」
+
+全书每一处「本书的实现」都必须能回答两个问题：它在真实 Spring 里是谁（`@see`），以及**它砍掉了什么**（一句 javadoc）。缺了前者，读者无法继续读源码；缺了后者，读者会把教学简化当成真实行为。
+
+### K6 成对对照：只给正确答案是不够的
+
+见「测试规范」里的 `NaiveVsElegant` 体例。
+
 ## 为什么这样苛刻
 
 这个仓的代码不是给机器跑的，是**给人读的**——读者是"会 Java、稍微用过 Spring、
@@ -21,7 +104,10 @@
 
 ---
 
-## 六道闸门
+## 闸门一览
+
+代码注释里说的「第 N 道闸门」指的就是下面这张表的编号。1–6 在单个模块的 `mvn verify` 里跑；
+7、8 要看整个仓库才能判断，所以放在 CI 里单独跑。
 
 | # | 闸门 | 工具 | 阶段 | 违规后果 |
 |---|---|---|---|---|
@@ -32,8 +118,11 @@
 | 5 | 覆盖率 | `JaCoCo`（行 ≥80%，分支 ≥70%） | `verify` | 构建失败 |
 | 6 | 架构约束 | `ArchUnit`（`LayeringTests`，每个模块各一份） | `test` | 测试失败 |
 | 7 | 跨章回归不变式 | `scripts/check-propagation.sh`（CI 单独跑） | 仓库级 | 退出码 1 |
+| 8 | 文档引用可验证性 | `scripts/check-doc-refs.sh`（CI 单独跑） | 仓库级 | 退出码 1 |
+| 9 | 文档链接可达 | `scripts/check-doc-links.sh`（CI 单独跑） | 仓库级 | 退出码 1 |
 
-一条命令跑全部：`mvn verify`
+一条命令跑 1–6：`mvn verify`；7–9 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、`bash scripts/check-doc-links.sh`
+（前两条查内容对不对，第三条查文件还在不在——两种不同的文档腐败）。
 
 ### 闸门 1：格式
 
@@ -188,7 +277,69 @@ context  ──▶  beans  ──▶  core
 
 ---
 
+## 异常三段式
+
+一条异常消息只有一行的机会说服读者。三段式把该说的三件事按顺序写进去：
+
+| 段 | 回答的问题 | 写法要求 |
+|---|---|---|
+| **谁** | 哪个 Bean、哪个属性、哪个方法出的问题 | 名字**放在最前面**，用单引号包起来：`Bean with name 'orderService'` |
+| **为什么** | 机制上到底发生了什么 | 一句陈述事实，不猜、不劝、不写「请检查配置」 |
+| **怎么办** | 读者下一步该做什么 | 一个具体动作，或一个指出排查方向的疑问句 |
+
+模板：
+
+```java
+throw new XxxException(beanName,
+		"Bean with name '" + beanName + "' " + 为什么 + ". " + 怎么办);
+```
+
+真实范例（`spring-framework` 6.2.x，`AbstractAutowireCapableBeanFactory.java:631-637`，抄录自
+`allowRawInjectionDespiteWrapping` 的判定处）：
+
+```java
+throw new BeanCurrentlyInCreationException(beanName,
+		"Bean with name '" + beanName + "' has been injected into other beans [" + ...
+		"] in its raw version as part of a circular reference, but has eventually been " +
+		"wrapped. This means that said other beans do not use the final version of the " +
+		"bean. This is often the result of over-eager type matching - consider using " +
+		"'getBeanNamesForType' with the 'allowEagerInit' flag turned off, for example.");
+```
+
+三段逐条对上：**谁** = `Bean with name 'x'`；**为什么** = 注入的是原始版本、最终被代理包装，所以别人拿到的不是最终版；**怎么办** = 用 `allowEagerInit=false` 收窄类型匹配，并说明「这通常是过于急切的类型匹配导致的」。
+
+本书范例（`step-30-circular-dependencies`，`DefaultSingletonBeanRegistry.java:287` 抛出）：
+
+```java
+throw new BeanCurrentlyInCreationException(beanName);   // 消息 = "Requested bean is currently in creation: Is there an unresolvable circular reference?"
+```
+
+它只有**谁 + 为什么**，「怎么办」退化成一个疑问句——这是本书与真实 Spring 一致的**有意取舍**：这一层分不清「能解的环」与「解不了的环」，能做的最好的事就是把范围指出来（详见第 30 章）。
+
+反例（三段全缺）：
+
+```java
+throw new IllegalStateException("error");
+```
+
+提交前对每一条新写的异常消息问三句：**点名了谁吗？说清为什么了吗？读者知道下一步该干什么吗？**
+
 ## 真实 Spring 参照仓（`@see` 的唯一事实来源）
+
+### 参照仓是「提醒」，不是闸门
+
+`mvn verify` **完全不依赖**参照仓。原因很实际：把外部仓库做成构建前置，等于让无网环境和 CI 无法构建，
+而参照仓的作用只是**核对**。所以：
+
+| 命令 | 语义 | 缺参照仓时 |
+|---|---|---|
+| `scripts/refs.sh status` | 打印路径 / 当前 commit / **本书基准 commit** / 历史窗口 | 打印降级提示，退出 0 |
+| `scripts/refs.sh verify` | 校验基准提交 `daf9551` 是否在本地 | 只警告「行号可能漂移」，退出 0 |
+| `scripts/refs.sh fetch [--history]` | 浅克隆 / 加深历史窗口 | 降级提示，退出 0 |
+
+只有**用法错误**（未知命令）才非 0。判断依据：一条命令若能让构建失败，它就必须是本书自己能保证的东西；
+参照仓是别人的仓库，我们只能核对，不能保证。
+
 
 `@see` 和每章「🔍 真实 Spring 里它在哪」段里的全限定名，**不许凭记忆写**。
 本项目钉在 `spring-framework` **6.2.x** 分支（ADR-0004），只读参照仓放在仓库外：
@@ -213,6 +364,18 @@ scripts/refs.sh status   # 路径 / commit hash / 正常还是降级
 ---
 
 ## 向后传播（`scripts/propagate.sh`）
+
+两个脚本的模式与退出码（`--help` 也会打印同样内容）：
+
+| 脚本 | 模式 | 写盘 | 退出码 | 谁在用 |
+|---|---|---|---|---|
+| `propagate.sh` | `--dry-run` | 否（补丁只做 `--check`） | 0 可应用 / 2 冲突即停 | 本地，先看清楚要动哪些文件 |
+| `propagate.sh` | `--verify` | 是，逐章 apply 后跑测试 | 3 某章测试失败 | 本地，传播完自查 |
+| `check-propagation.sh` | 无参数 | 否 | 1 = 有回退或缺失 | **CI 判据** |
+| `check-propagation.sh` | `--dry-run` | 否 | **0（只报告）** | 本地探索、出报告 |
+| `check-propagation.sh` | `--stat` | 否 | 同上 | 只要一行统计 |
+
+`--dry-run` 与 CI 用同一条检测逻辑，唯一差别是「问题是否算失败」——所以本地看干净了，CI 一定干净。
 
 本书的结构决定了它有一个别处没有的维护成本：**每章的代码是前章的副本**。第 05 章修一个 bug，同一份代码还存在于 `step-06`…`step-35`。手工同步三十遍一定会漏，所以用脚本。
 
@@ -270,6 +433,27 @@ git commit -am "fix(step-05): ..."
 
 `git apply --check --3way` **不能**用来预检冲突：三方合并会冲突时它依然返回成功。只有真正 `git apply --3way` 之后，从索引里 `git diff --diff-filter=U` 才能看出冲突。脚本第一版就是被它骗过，把 `<<<<<<<` 留在了工作区。
 
+## 并发口径：六只容器各说各的（K1）
+
+`DefaultSingletonBeanRegistry` 里六个容器用了**六种不同的保护方式**，这不是风格混乱，而是两次判定问句的结果：**这个访问点是否已在锁内？** **是否必须保序？**
+
+| 容器 | 保护方式 | 为什么是这个 |
+|---|---|---|
+| `singletonObjects` | `ConcurrentHashMap` | 热路径第一次读故意不进锁，靠 map 可见性 + 进锁后二次确认 |
+| `earlySingletonObjects` | `ConcurrentHashMap` | 同上；插入无序 |
+| `singletonsCurrentlyInCreation` | `ConcurrentHashMap` 的 keySet | 要「原子地 add 失败即已有人在造」，这正是环依赖检测 |
+| `singletonFactories` | 第 30 章纯锁内 `HashMap`；第 31 章改 `ConcurrentHashMap` | 保护方式跟着「读写是否都在锁内」走，不跟着字段名走 |
+| `registeredSingletons` | `Collections.synchronizedSet(LinkedHashSet)` | 要保序，JDK 没有并发保序 Set |
+| `disposableBeans` | `Collections.synchronizedMap(LinkedHashMap)` | 要保序，且销毁路径只对 map 自身加锁取快照 |
+
+**禁止的「统一风格」**：把后两个换成 `ConcurrentHashMap`。会同时丢掉保序和 `destroySingletons()` 的快照原子性，而所有功能测试仍然全绿。
+
+口径由两处钉住：`DefaultSingletonBeanRegistry` 类注释里那张表，以及 `step-35` 的 `RegistryConcurrencyContractTests`（断言六只容器的实际类型 + 8 线程并发注册不丢 + 名字保序）。
+
+> 记录一次**被驳回的提案**：曾有人（包括代码审阅）建议「`disposableBeans` 用 `synchronizedMap` 属于早期妥协，应统一换成并发容器」。
+> 查证结论是**反向的**：`registerDisposableBean` 的调用点并不总在 `singletonLock` 内，销毁路径需要对这个 map 自身加锁取快照，
+> 所以它必须自带同步；真正该统一的是**判定过程**，不是**结论**。
+
 ## 测试规范
 
 - 框架：**JUnit 5 + AssertJ**。允许 `Mockito`（仅 test scope）。
@@ -289,6 +473,33 @@ git commit -am "fix(step-05): ..."
   不用于伪造数据。数据用真实对象构造。第 9 章会专门讲"什么时候不该用 mock"。
 
 ---
+
+### NaiveVsElegant：每章至少一对
+
+- **位置**：`step-NN-xxx/src/test/java/org/springframework/samples/chNN/naive/`（朴素写法）与 `.../elegant/`（优雅写法）。
+- **测试类**：`XxxNaiveVsElegantTests`。要求用**同一组断言**跑两种写法（`assertThatNaive(...)` 与 `assertThatElegant(...)` 共用同一份断言语义），最后各加一条断言**差别本身**。
+- **命名**：朴素侧类名以 `Naive` 结尾，优雅侧用正常类名——读者第一眼看到的应该是「正常写法」，`Naive` 侧是反例。
+- **差别必须确定性**：用反射断言 `final`/不可变性、构造器拒绝 `null`、异常类型与消息；**不要**靠线程时序碰运气（会 flaky）。
+- **正文引用**：在该章「小结」或对应小节用 3–5 行指出这对对照在哪、想说明什么。
+
+## 章节元数据标记
+
+每章**紧跟大标题的那一行**写标记（blockquote），**顺序固定、位置固定**——固定在一处，`grep '^> 🌱\|^> 🌿'` 才能一次扫全 36 章：
+
+```
+> 🌿(ch00–ch18) 🕳️ 🔖(第 19 章)
+```
+
+顺序固定为「难度 → 参照仓 → 只给结论」，最多 3 个 `🔖`（多于此说明该章该讲的没讲，回去补正文）。
+
+| 标记 | 含义 | 判据（可批量执行） |
+|---|---|---|
+| `🌱` | 只需要会 Java | 本章没有引用前面任何一章的实现，也不要求理解 Bean 的创建/初始化/销毁顺序 |
+| `🌿` | 需要已读 Bean 生命周期 | 本章引用了前面章节的实现，或需要知道 Bean 的创建/初始化/销毁顺序；括号里写依赖章号：`🌿(ch09–ch13)` |
+| `🕳️` | 需要同时打开参照仓 | 本章有「🔍 真实 Spring」小节且给出参照仓行号（`~/refs/spring-framework-6.2.x`），不开参照仓就跟不上 |
+| `🔖(第 NN 章)` | 此处只给结论 | 本章实现了但只讲一层，展开在第 NN 章；那章还没写就写 `🔖(第 NN 章，未写)`，**不许假装讲完了** |
+
+执行者不需要再判断，按这四问走：① 引用了前面章节的实现吗？否 → `🌱`；② 需要知道 Bean 的创建/初始化/销毁顺序吗？是或不确定 → `🌿`；③ 有带参照仓行号的「🔍 真实 Spring」小节吗？是 → 加 `🕳️`；④ 「这一章砍掉了什么」表里有指向第 NN 章的条目吗？是 → 在正文对应位置加 `🔖(第 NN 章)`。
 
 ## 提交规范
 
@@ -313,3 +524,22 @@ git commit -am "fix(step-05): ..."
 - [ ] 本章新增的每个类，是否都写了"它砍掉了什么"？
 - [ ] 有没有为了达标而写的空断言测试？
 - [ ] 正面教材与反面示例，是否分别放在了正确的位置？
+
+### 闸门 8：文档引用可验证性
+
+**它防的是什么**：这本书的教学价值有一半不在代码里，而在「这个类对应真实 Spring 的哪一行」。
+一道 Checkstyle 检查不到注释里的类名拼错，PMD 不知道你写的 `FooTests.java:45` 里根本没有第 45 行。
+第 01 章评审一次就抓到 5 处这样的引用——虚构的测试类名、编造的方法名、编造的行号。
+对新手来说，这类错误的代价比编译错误高得多：他照着去找，找不到，然后开始怀疑自己。
+
+**判定语义**：javadoc 里的 `{@code X}`、正文里的 `File.java:行`、栈帧 `m(Foo.java:12)`，
+必须能在 ① 本项目全部 `step-*` 模块（含内部类）② 上游 Spring 源码树 ③ JDK 三处之一解析到。
+
+**两类白名单，都必须写理由**：
+
+- `scripts/doc-refs-allow-symbols.txt`：不是本项目类的简单类名（JDK 类型、上游类型）。
+- `scripts/doc-refs-allow-missing.txt`：文中**自己声明过**不是仓库文件的名字（临时探针、已拆分的旧版）。
+  其它任何引用都不许进这张表——进表等于承认这个引用不可验证。
+
+**上游源码树**：`SPRING_REF` 指向 `spring-framework` 6.2.x checkout。拿不到时脚本不装懂：
+标注「出处：」的引用打 INFO 跳过，本地行号越界降级为 WARN。

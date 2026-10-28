@@ -46,16 +46,20 @@ import org.springframework.beans.factory.config.SingletonBeanRegistry;
  * {@code new ConcurrentHashMap<>(256)}（{@code :85}）。
  *
  * <p>
- * <b>砍掉了什么</b>：{@code singletonFactories} / {@code earlySingletonObjects}（三级缓存， 第 30
- * 章）、{@code singletonsCurrentlyInCreation}（创建中标记，第 30 章）、 {@code disposableBeans}
- * 与依赖关系图（第 13 章）、以及 6.2 新增的 {@code tryLock} + strict/lenient 双模（第 31 章）。
+ * <b>砍掉了什么</b>：6.2 的 {@code singletonCallbacks}（创建回调）、{@code inCreationCheckExclusions}
+ * （创建中检查豁免）、lenient 创建模式（{@code lenientCreationLock} /
+ * {@code singletonsInLenientCreation} / {@code currentCreationThreads}，为兼容老代码而死锁规避用），
+ * 以及依赖关系图三兄弟 {@code containedBeanMap} / {@code dependentBeanMap} /
+ * {@code dependenciesForBeanMap}（真实 Spring {@code :91-:137}）。这几样在本书的场景里都用不到，
+ * 硬塞进来只会让「三级缓存」这条主线变糊。
  *
  * @see DefaultListableBeanFactory
  */
 public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 
 	/**
-	 * 名字 → 成品。这是本章唯一新增的状态。
+	 * 名字 → 成品。它是三级缓存的<b>第一级</b>：成品。第二级（早期引用）与第三级（{@code ObjectFactory}）由<b>第 30
+	 * 章</b>加入，把第三级换成并发容器由<b>第 31 章</b>完成。
 	 *
 	 * <p>
 	 * {@code 256} 是真实 Spring 的初始容量（{@code DefaultSingletonBeanRegistry.java:85}），

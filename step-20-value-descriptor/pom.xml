@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-20-value-descriptor</artifactId>
-	<name>step-19-autowire-candidates</name>
+	<name>step-20-value-descriptor</name>
 	<description>第 20 章 @Value 与 DependencyDescriptor</description>
 
 	<dependencies>

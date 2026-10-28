@@ -16,9 +16,9 @@ import org.springframework.beans.PropertyValues;
  *
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.beans.factory.config.BeanDefinition}（388
- * 行， 30 多个方法）。本章只留了 10 个方法与 5 个常量，砍掉的部分见章末对照表——被砍掉最多的三项是
+ * 行， 30 多个方法）。本章只留了 24 个方法与 5 个常量，砍掉的部分见章末对照表——被砍掉最多的三项是
  * 构造器参数（{@code ConstructorArgumentValues}，第 04 章）、属性值（{@code MutablePropertyValues}， 第 05
- * 章）和自动装配候选信息（{@code isAutowireCandidate}/{@code isPrimary}，第 19 章）。
+ * 章）和自动装配候选信息（{@code isAutowireCandidate}/{@code setFallback}，第 19 章）。
  *
  * @see AbstractBeanDefinition
  */

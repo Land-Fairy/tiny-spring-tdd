@@ -1,0 +1,8 @@
+# 第 8 道闸门的「非仓库文件」白名单（tab 分隔：文件名 <TAB> 理由）。
+#
+# 只收文中**自己声明过**不是仓库文件的名字：临时探针、已拆分的旧版。
+# 其它任何引用都不许进这张表——进表等于承认这个引用不可验证。
+# 每一行都要能指着正文说出处，评审会逐条查。
+
+NullReturnProbeTests.java	第 07 章正文写明「用一个临时探针」，跑完即弃，不入库
+PatternWitnessTests.java	第 34 章正文写明是「第一版」写法，已被 AopPatternTests / ContainerPatternTests 拆掉

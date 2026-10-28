@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-35-graduation</artifactId>
-	<name>step-26-autoproxy</name>
+	<name>step-35-graduation</name>
 	<description>第 35 章 毕业：对照真实 Spring 6.2.x 的 refresh()</description>
 
 	<dependencies>

@@ -1,5 +1,7 @@
 # 第 30 章 三级缓存与循环依赖
 
+> 🌿(ch00–ch29) 🕳️
+
 > 本章代码：`step-30-circular-dependencies`。测试 **421** 个（新增 6），行覆盖 86.7%（2979/3436）、
 > 分支覆盖 75.5%（1141/1512）。新增主代码只有 42 行的 `BeanCurrentlyInCreationException` 与 33 行的
 > `SmartInstantiationAwareBeanPostProcessor`，其余全是往三个已有类里加东西：
@@ -364,6 +366,10 @@ if (!this.singletonLock.tryLock()) {
 那为什么不用「延迟代理」——即二级缓存也存工厂？那就已经是三级缓存了。命名的区别不重要，
 机制的区别只有一条：**「交出去的时机」与「能不能加工」是不是解耦的**。
 
+这条判断还有第三种结局，本节没覆盖、第 [6 节](#6-能力边界async-为什么让三级缓存失效) 专门讲：
+**三级缓存在，但代理晚了一步**——`@Async` 的代理在初始化之后才产生，早期引用只能是裸对象。
+环照样解开，注入方拿到的却是「同步版」。
+
 ### 5.4 与 `@Lazy` 的关系
 
 `@Lazy` 注入的是**代理**（一个 `ObjectFactory` 的前身），所以它能让「构造器注入的环」变成可解：
@@ -377,7 +383,180 @@ if (!this.singletonLock.tryLock()) {
 | 代价 | 两个 Map、一次工厂调用、`isCurrentlyInCreation` 读写 | 多一层代理、类型判断变复杂、`final` 类不可用 |
 | 边界 | 只对单例有效 | 对 prototype 也有效 |
 
-## 6. 思考题
+## 6. 能力边界：`@Async` 为什么让三级缓存失效
+
+前面五节都在讲「三级缓存怎么把代理保住」。这一节讲反面：**有一种代理，三级缓存救不了它。**
+它也是真实项目里最容易踩的一脚——一个 `@Async` 方法撞上循环依赖，启动直接失败，
+报出来的却是一句「in its raw version ... but has eventually been wrapped」。
+`spring-framework` 仓库里就挂着这样一份报告：issue
+[#35554](https://github.com/spring-projects/spring-framework/issues/35554)
+《Problem in `@Async` annotation and circular dependencies》，2025-09 提交，至今仍是 open 状态。
+
+### 6.1 时序：两次「包装」机会，一次在窗口里，一次在窗口外
+
+容器给后处理器留了**两次**「把裸对象包成代理」的机会。三级缓存只对第一次有效：
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as 容器 doCreateBean
+    participant L3 as 三级缓存
+    participant B as beta
+    participant BPP as 后处理器的 getEarlyBeanReference（:973 → :976）
+    C->>C: 实例化，裸 alpha 出炉
+    C->>L3: addSingletonFactory(...)（:600）
+    Note over C,L3: 窗口打开：填充属性之前
+    C->>B: 填充 alpha.beta，需要 beta
+    B->>L3: getSingleton(alpha, true)
+    L3->>BPP: 第 1 次机会（早）
+    alt AOP：AbstractAutoProxyCreator 覆写了它（:265）
+        BPP-->>L3: wrapIfNecessary → 代理
+        L3-->>B: beta.alpha = 代理 ✓
+    else @Async：AsyncAnnotationBeanPostProcessor 没覆写，走接口默认实现（:106）
+        BPP-->>L3: 原样返回裸 alpha
+        L3-->>B: beta.alpha = 裸对象 ✗
+    end
+    B-->>C: beta 就绪，alpha.beta 填好
+    C->>C: initializeBean(alpha)
+    Note over C: 第 2 次机会（晚）在这里：AbstractAdvisingBeanPostProcessor:88<br/>此刻窗口已关，替换规则发现「早的」和「晚的」不是同一个
+```
+
+时序里有两个时刻，名字都很长，但记住它们的**先后**就够了：
+`getEarlyBeanReference`（`:973`，早）与 `postProcessAfterInitialization`（`:88`，晚）。
+三级缓存能捎出去的，只有「早」那一刻求出来的对象。
+
+### 6.2 一句话根因
+
+> **`@Async` 的代理是在初始化之后才创建的（`postProcessAfterInitialization`），
+> 而三级缓存能捎带出去的只有初始化之前求出的早期引用。早的那次它没覆写、给不出代理；
+> 晚的那次没人再回来取。于是环里的注入方永远拿不到异步代理。**
+
+对照组一句话：AOP 代理不炸，是因为 `AbstractAutoProxyCreator` **两个**入口都实现了——早期引用
+那一次就把代理造出来（`:265`），after 阶段再从 `earlyProxyReferences` 里取回同一个对象。
+`AsyncAnnotationBeanPostProcessor` 继承自 `AbstractAdvisingBeanPostProcessor`（`:37` 声明了
+`SmartInstantiationAwareBeanPostProcessor`），但整个类**没有**覆写 `getEarlyBeanReference`，
+于是走接口默认实现 `SmartInstantiationAwareBeanPostProcessor:106`——`return bean;`，原样奉还。
+
+### 6.3 与第 27、28 章对照：同样是代理，命运不同
+
+| | AOP 代理（`AbstractAutoProxyCreator`） | `@Async` 代理（`AsyncAnnotationBeanPostProcessor`） |
+| --- | --- | --- |
+| 代理在哪个阶段产生 | `getEarlyBeanReference`（`:265`）与 `postProcessAfterInitialization`（`:315`）**两个**入口，先到先包、包过记账 | 只有 `postProcessAfterInitialization`（`AbstractAdvisingBeanPostProcessor:88`）**一个**入口 |
+| 早期引用交出什么 | 代理（`wrapIfNecessary`），并记进 `earlyProxyReferences` | 裸对象（接口默认实现 `:106`） |
+| 能不能进三级缓存 | 能 | 不能 |
+| 环里有依赖方时的结果 | 注入方拿到代理，`isSameAs` 成立（第 30 章红二的绿灯） | 注入方拿到裸对象；真实 Spring 在 `:619`/`:622` 判定后于 `:631` 抛 `BeanCurrentlyInCreationException` |
+| 没有环时 | 无差别 | 无差别（异步正常工作） |
+
+两条交叉引用值得顺着读：
+
+- **第 27 章**回答「字段填在谁身上」——早期引用交出去的是**代理**，目标源在代理内部，
+  这是本章三级缓存能成立的物理前提。`@Async` 恰好违反了这条前提。
+- **第 28 章**回答「`this` 不是代理」。`@Async` 上是它的变体：**注入进来的那个也不是代理**。
+  两种情况下业务代码写的 `service.doAsync()` 都在同步执行，区别只是你在哪一层被骗。
+
+### 6.4 最小复现：「只在 after 阶段包装」的后处理器
+
+不用装 Spring，也不用改本章的容器：`@Async` 的行为可以用一个**只实现 `BeanPostProcessor`、
+只在 after 阶段包装**的后处理器等价模拟出来。它与 `AdvisorAutoProxyCreator` 的差别只有一行——
+谁被加进 `addBeanPostProcessor`：
+
+```java
+// @Async 的等价物：只在 after 阶段包装，不实现 SmartInstantiationAwareBeanPostProcessor
+static class AsyncLikePostProcessor implements BeanPostProcessor {
+
+	private final CountingInterceptor interceptor;
+
+	AsyncLikePostProcessor(CountingInterceptor interceptor) {
+		this.interceptor = interceptor;
+	}
+
+	@Override
+	public Object postProcessAfterInitialization(Object bean, String beanName) {
+		if (!"alpha".equals(beanName)) {
+			return bean;
+		}
+		ProxyFactory proxyFactory = new ProxyFactory(bean);
+		proxyFactory.addAdvice(this.interceptor);
+		return proxyFactory.getProxy();
+	}
+
+}
+```
+
+跑两组，唯一差别是容器里挂哪个后处理器：
+
+```java
+CountingBeanFactory factory = new CountingBeanFactory();        // 数 getEarlyBeanReference 的调用
+new XmlBeanDefinitionReader(factory).loadBeanDefinitions(new ClassPathResource("ch30/circular.xml"));
+factory.addBeanPostProcessor(new AsyncLikePostProcessor(interceptor));   // 对照组换成 AdvisorAutoProxyCreator
+factory.preInstantiateSingletons();
+```
+
+真实输出（探针在 `/tmp/probe60`，跑在 `step-30-circular-dependencies/target/classes` 上）：
+
+```text
+── 对照组：AdvisorAutoProxyCreator（AOP 代理，走 getEarlyBeanReference）
+   getEarlyBeanReference(alpha) 调用次数 = 1，交出去的早期引用是代理 = true
+   池子里的 alpha 是代理 = true
+   beta.getAlpha() 是代理 = true
+   两者是同一个对象 = true
+   通过注入引用调用 hello() = alpha，增强被调用次数 = 1
+
+── 实验组：AsyncLikePostProcessor（@Async 那种 only-after 包装）
+   getEarlyBeanReference(alpha) 调用次数 = 1，交出去的早期引用是代理 = false
+   池子里的 alpha 是代理 = true
+   beta.getAlpha() 是代理 = false
+   两者是同一个对象 = false
+   通过注入引用调用 hello() = alpha，增强被调用次数 = 0
+```
+
+四行数字就是全部故事：同一份 XML、同一个环，换掉一个后处理器，
+**早期引用从「代理」变成「裸对象」**，注入方手里的对象与池子里的对象从「同一个」变成「两个」，
+增强被调用次数从 1 变成 0——`beta` 背后那条路彻底绕过异步。
+
+真实 Spring 不会让这种不一致静默存在。它在 `:617` 拿到早期引用、在 `:619` 比较
+`exposedObject == bean`，一旦发现「包过一层」就继续往下走，最后在 `:631` 抛异常。
+本章没实现 `hasDependentBean` 与 `allowRawInjectionDespiteWrapping`（见「这一章砍掉了什么」），
+所以只能把那段判定抄成二十行，验证消息长什么样：
+
+```text
+── 真实 Spring 的判定（:617-637）在这组事实下的结果
+   抛出：IllegalStateException
+   消息含 "raw version" = true，含 "wrapped" = true
+```
+
+消息全文（`AbstractAutowireCapableBeanFactory:631-637`）：
+「Bean with name 'alpha' has been injected into other beans [beta] in its raw version as part of a
+circular reference, but has eventually been wrapped. This means that said other beans do not use the
+final version of the bean.」——这正是本章红四里引用过、但我们的容器没有能力抛出的那句话。
+
+### 6.5 三种解法，以及什么时候不该用
+
+| 解法 | 怎么解开 | 代价 | 什么时候不该用 |
+| --- | --- | --- | --- |
+| `@Lazy` 注入 | 注入一个占位代理，真要用时才回容器取，环被时间错开 | 多一层代理；`final` 类、`final` 方法失效；类型判断变复杂 | 循环两端的调用都在构造期就要用到对方；或类被 `final` 修饰 |
+| `ObjectProvider<T>` / `ObjectFactory<T>` | 同上，但把「延迟」写在代码里，意图更明确 | 每次取都是一次容器查询，写法变啰嗦；`getObject()` 的时机由你负责 | 只是偶尔用一次延迟、却要付全链路的可读性代价；或者团队里有人会把它当万能药 |
+| 重构，拆掉环 | 抽出第三方法（C），A、B 都依赖 C；异步动作用事件/消息解耦 | 要改设计，短期成本最高 | 拆出来的是一个贫血的、只为消环而存在的类——那只是把环藏起来了 |
+| （真实 Spring 的另一条路）`allowRawInjectionDespiteWrapping = true` | 允许裸版注入，容器不再抛异常 | **把错误静默化**：注入方拿到的是同步版，异步过期、事务失效，且没有任何日志 | 除了「先让启动过」的临时救火，正常代码里不该出现 |
+
+最后一行是重点：前面三种是**解题**，最后一种是**把题目藏起来**。
+本章红四的容器行为恰好等于这一行——它不抛异常，于是不一致安静地留在那儿。
+
+### 6.6 回到 5.3：三种「解出来对不对」
+
+[5.3 节](#53-二级缓存够不够的争论以及为什么必须有第三级)把「能不能解环」与「解出来对不对」分开。
+`@Async` 给出了第三种组合，正好补全这张表：
+
+| 配置 | 能不能解环 | 解出来对不对 |
+| --- | --- | --- |
+| 只有一/二级缓存 | 能（普通环） | **不对**：注入方是裸对象（红二） |
+| 三级缓存 + AOP 代理 | 能 | **对**：注入方与池子里是同一个代理（红二的反面） |
+| 三级缓存 + `@Async` 代理 | 能 | **不对**：注入方是裸的「同步版」；真实 Spring 直接抛异常 |
+
+所以三级缓存不是「代理保险箱」，它只是把**一个**特定时机（初始化之前）能算出来的代理保住。
+后处理器在晚于那个时机才产生代理，缓存再好也只能看着。
+
+## 7. 思考题
 
 先自己写，再看 [`../appendix/B-answers.md#第-30-章`](../appendix/B-answers.md#第-30-章)。
 
@@ -392,7 +571,7 @@ if (!this.singletonLock.tryLock()) {
 5. 三级缓存让「同一个 Bean 的早期形态与最终形态是同一个对象」成立。但 `prototype` 作用域
    完全没有这套机制——为什么？这个差别是否意味着 prototype 的循环依赖无解？
 
-## 7. 小结
+## 8. 小结
 
 一句话：**缓存的层级不是「越多越安全」，而是「每加一层，回答一个当时答不出来的问题」。**
 
@@ -417,6 +596,7 @@ if (!this.singletonLock.tryLock()) {
 | `FactoryBean` 的 `&` 前缀缓存键 | `AbstractAutoProxyCreator:337` | 我们的 `FactoryBean` 与产品共用键 |
 | 作用域 `prototype` 的环处理 | 无（prototype 不提前暴露） | 我们的 prototype 环会栈溢出 |
 | `ObjectProvider` / `@Lazy` 占位代理 | `ContextAnnotationAutowireCandidateResolver` | 只在本章 5.4 对比，不实现 |
+| `@Async` 这类「只在 after 阶段包装」的后处理器 | `AbstractAdvisingBeanPostProcessor:88` 无 `getEarlyBeanReference` 覆写 | 第 [6 节](#6-能力边界async-为什么让三级缓存失效) 用自造后处理器做了对照实验 |
 
 下一章把这三层缓存放回**容器的整体生命周期**里看：`refresh()` 的十二步、BeanFactory 后处理器与
 Bean 后处理器的分工、以及为什么「容器自己也要能被扩展」。前面十章散落的钩子，会在那里连成一条线。

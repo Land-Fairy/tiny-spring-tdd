@@ -1,5 +1,7 @@
 # 第 07 章 Resource 抽象：一个接口，四种来源
 
+> 🌿(ch00–ch06) 🕳️
+
 > **本章你要带走的一句话**：抽象的价值不在方法少，在**调用方不必知道来源**——同一段解析代码，换一个 `Resource` 实现就能从 classpath 换成磁盘、换成 URL、换成内存。
 >
 > **前提**：前六章所有图纸都是手写代码注册的（`new GenericBeanDefinition()` + `setBeanClassName(...)`）。真实项目里图纸来自 XML、注解、`@Bean` 方法——它们都要先**读到字节**。
@@ -635,7 +637,7 @@ ClassPath  FileSystem  Url      ByteArray            │
 
 分开之后，处理方就可以脱离 `ResourceLoader` 单独测试——`PropertiesLoaderTests` 里可以直接 `loader.load(new ByteArrayResource(...))`，不需要任何工厂。
 
-### 4.3 `getDescription()` 的三个实现，三种称呼
+### 4.3 `getDescription()` 的四个实现，四种称呼
 
 ```java
 	// ClassPathResource
@@ -701,24 +703,24 @@ but was: "URL [file:/tmp/junit-4174622885254177221/app.properties]"
 
 | 本书的类 | 真实全限定名 | 真实行数 | 本书行数 |
 | --- | --- | --- | --- |
-| `InputStreamSource` | `org.springframework.core.io.InputStreamSource` | 59 | 26 |
-| `Resource` | `org.springframework.core.io.Resource` | 212 | 47 |
-| `AbstractResource` | `org.springframework.core.io.AbstractResource` | 262 | 51 |
+| `InputStreamSource` | `org.springframework.core.io.InputStreamSource` | 59 | 24 |
+| `Resource` | `org.springframework.core.io.Resource` | 212 | 45 |
+| `AbstractResource` | `org.springframework.core.io.AbstractResource` | 262 | 48 |
 | *(无)* | `org.springframework.core.io.AbstractFileResolvingResource` | 404 | — |
-| `ClassPathResource` | `org.springframework.core.io.ClassPathResource` | 290 | 82 |
-| `FileSystemResource` | `org.springframework.core.io.FileSystemResource` | 411 | 76 |
-| `UrlResource` | `org.springframework.core.io.UrlResource` | 404 | 58 |
+| `ClassPathResource` | `org.springframework.core.io.ClassPathResource` | 290 | 71 |
+| `FileSystemResource` | `org.springframework.core.io.FileSystemResource` | 411 | 60 |
+| `UrlResource` | `org.springframework.core.io.UrlResource` | 404 | 51 |
 | *(无)* | `org.springframework.core.io.FileUrlResource` | — | — |
-| `ByteArrayResource` | `org.springframework.core.io.ByteArrayResource` | 146 | 45 |
+| `ByteArrayResource` | `org.springframework.core.io.ByteArrayResource` | 146 | 42 |
 | *(无)* | `org.springframework.core.io.InputStreamResource` | 176 | — |
 | *(无)* | `org.springframework.core.io.PathResource` | 313 | — |
 | *(无)* | `org.springframework.core.io.WritableResource` | 71 | — |
 | *(无)* | `org.springframework.core.io.ContextResource` | 39 | — |
 | *(无)* | `org.springframework.core.io.VfsResource` | 142 | — |
-| `ResourceLoader` | `org.springframework.core.io.ResourceLoader` | 82 | 26 |
-| `DefaultResourceLoader` | `org.springframework.core.io.DefaultResourceLoader` | 213 | 46 |
+| `ResourceLoader` | `org.springframework.core.io.ResourceLoader` | 82 | 24 |
+| `DefaultResourceLoader` | `org.springframework.core.io.DefaultResourceLoader` | 213 | 47 |
 
-注意 `AbstractFileResolvingResource` 有 404 行——**比任何一个具体实现都长**。它处理的全是「这个资源能不能变成 `File`」：`file:` URL、`jar:` URL 里的条目、vfs 路径、以及 Windows 上的 `file:./x` 这种怪格式。这是本书完全不碰的一块，也是 classpath 抽象最容易出 bug 的地方。
+注意 `AbstractFileResolvingResource` 有 404 行——**比本书这四个实现都长**（真实 Spring 里只有 `FileSystemResource` 的 411 行超过它）。它处理的全是「这个资源能不能变成 `File`」：`file:` URL、`jar:` URL 里的条目、vfs 路径、以及 Windows 上的 `file:./x` 这种怪格式。这是本书完全不碰的一块，也是 classpath 抽象最容易出 bug 的地方。
 
 ### 5.2 `Resource` 接口的真实方法清单（`Resource.java`）
 

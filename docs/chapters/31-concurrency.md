@@ -1,5 +1,7 @@
 # 第 31 章 并发模型：锁、延迟 `ObjectFactory`
 
+> 🌿(ch00–ch30) 🕳️
+
 > 本章代码：`step-31-concurrency`。测试 **420** 个（新增 5），行覆盖 86.3%（2951/3419）、
 > 分支覆盖 75.0%（1131/1508）。改动集中在一个文件：
 > `DefaultSingletonBeanRegistry`（421 行）——去掉一段锁、把一个 `HashMap` 换成

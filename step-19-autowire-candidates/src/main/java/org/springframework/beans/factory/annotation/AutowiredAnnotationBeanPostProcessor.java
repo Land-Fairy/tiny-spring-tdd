@@ -1,5 +1,6 @@
 package org.springframework.beans.factory.annotation;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -17,7 +18,7 @@ import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.NoSuchBeanException;
 import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
-import org.springframework.beans.factory.config.InstantiationAwareBeanPostProcessor;
+import org.springframework.beans.factory.config.SmartInstantiationAwareBeanPostProcessor;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 
@@ -45,10 +46,18 @@ import org.springframework.core.annotation.Order;
  * {@code ConcurrentHashMap}（本书每次扫一遍，见 3.4 节的限制）；按类型挑候选的完整决策链在
  * {@code DefaultListableBeanFactory#doResolveDependency}（第 19 章的「🔍 真实 Spring」逐行对照）。
  *
+ * <p>
+ * <b>第 19 章的改动</b>：它不再只是「填字段的后处理器」——它爬到了更早的位置，用 {@link #determineCandidateConstructors}
+ * 在<b>实例化之前</b>决定「用哪个构造器」。这是本章最反直觉的一点： 一个「造完之后才跑」的东西，凭什么管「怎么造」？答案在接口上：管这件事的方法不在
+ * {@code InstantiationAwareBeanPostProcessor} 里，而在更早的
+ * {@link SmartInstantiationAwareBeanPostProcessor} 里。
+ *
  * @see org.springframework.beans.factory.annotation.Autowired
  * @see org.springframework.beans.factory.config.InstantiationAwareBeanPostProcessor
+ * @see SmartInstantiationAwareBeanPostProcessor
  */
-public class AutowiredAnnotationBeanPostProcessor implements InstantiationAwareBeanPostProcessor, BeanFactoryAware {
+public class AutowiredAnnotationBeanPostProcessor
+		implements SmartInstantiationAwareBeanPostProcessor, BeanFactoryAware {
 
 	private ListableBeanFactory beanFactory;
 
@@ -78,6 +87,99 @@ public class AutowiredAnnotationBeanPostProcessor implements InstantiationAwareB
 					"AutowiredAnnotationBeanPostProcessor requires a ListableBeanFactory but got: " + beanFactory);
 		}
 		this.beanFactory = listableBeanFactory;
+	}
+
+	/**
+	 * <b>本章新增的那次发言</b>：在对象还不存在的时候，回答「用哪个构造器」。
+	 *
+	 * <p>
+	 * 这是全书唯一<b>不</b>发生在「造完对象之后」的回调。其它回调都要先有对象，而它拿到的只有一张图纸和一个 {@code Class}——所以它不在
+	 * {@link org.springframework.beans.factory.config.InstantiationAwareBeanPostProcessor}
+	 * 上，而在更早的 {@link SmartInstantiationAwareBeanPostProcessor} 上（第 19 章新增的那个最小接口）。
+	 *
+	 * <p>
+	 * 语义逐条对齐真实 Spring 的 {@code determineCandidateConstructors}（{@code :365}）：
+	 * <ol>
+	 * <li>扫全部构造器，挑出带 {@code @Autowired} 的；
+	 * <li>带 {@code required=true} 的构造器最多一个，且不能与别的带注解构造器并存，否则抛
+	 * {@link BeanCreationException}（两条消息与真实 Spring {@code :415} / {@code :423} 一字不差）；
+	 * <li>有带注解的构造器就<b>只用</b>它们；{@code required=false} 的那条凑不齐时允许退回无参构造器， 所以把无参构造器垫在候选末尾；
+	 * <li>没有带注解的构造器、但类只有<b>一个带参构造器</b>——没得选，就是它（真实 Spring 的「单构造器自动选中」）；
+	 * <li>其余情况返回 {@code null}：多个构造器一个都没标，或只有一个无参构造器。
+	 * </ol>
+	 * 第 5 条在本仓的落地与真实 Spring 有一处<b>已知差异</b>，写在正文里而不是藏起来：真实 Spring 拿到 {@code null} 之后走
+	 * {@code instantiateBean}（只认无参构造器），本仓拿到 {@code null} 之后走第 04 章的
+	 * {@link org.springframework.beans.factory.support.ConstructorResolver}（参数多的优先）。第 04
+	 * 章的规矩不动， 它的测试在 {@code ConstructorInjectionTests} 里钉着。
+	 * @param beanClass 要造的类
+	 * @param beanName Bean 名字，只用于异常消息
+	 * @return 候选构造器；{@code null} 表示「我不管，按第 04 章的规矩挑」
+	 */
+	@Override
+	public Constructor<?>[] determineCandidateConstructors(Class<?> beanClass, String beanName) {
+		Constructor<?>[] rawCandidates = beanClass.getDeclaredConstructors();
+		List<Constructor<?>> candidates = new ArrayList<>(rawCandidates.length);
+		Constructor<?> requiredConstructor = null;
+		Constructor<?> defaultConstructor = null;
+		for (Constructor<?> candidate : rawCandidates) {
+			Autowired autowired = candidate.getAnnotation(Autowired.class);
+			if (autowired != null) {
+				candidates.add(candidate);
+				if (autowired.required()) {
+					requiredConstructor = requireSingle(candidates, requiredConstructor, candidate, beanName);
+				}
+			}
+			else if (candidate.getParameterCount() == 0) {
+				defaultConstructor = candidate;
+			}
+		}
+		if (!candidates.isEmpty()) {
+			return withOptionalFallback(candidates, requiredConstructor, defaultConstructor);
+		}
+		if (rawCandidates.length == 1 && rawCandidates[0].getParameterCount() > 0) {
+			return rawCandidates;
+		}
+		return null;
+	}
+
+	/**
+	 * 校验「带 {@code required=true} 的构造器最多一个」，并把那个构造器记下来。
+	 *
+	 * <p>
+	 * 两条消息都点名<b>冲突的那两个构造器</b>——「哪个类里有两个 {@code @Autowired} 构造器」正是用户唯一想知道的事。
+	 * @param candidates 目前收集到的带注解构造器（已含 {@code candidate}）
+	 * @param requiredConstructor 之前遇到的 {@code required=true} 构造器，没有则为 {@code null}
+	 * @param candidate 当前这个构造器
+	 * @param beanName Bean 名字
+	 * @return 应当记为「唯一必需构造器」的那个
+	 */
+	private Constructor<?> requireSingle(List<Constructor<?>> candidates, Constructor<?> requiredConstructor,
+			Constructor<?> candidate, String beanName) {
+		if (requiredConstructor != null) {
+			throw new BeanCreationException(beanName, "Invalid autowire-marked constructor: " + candidate
+					+ ". Found constructor with 'required' Autowired annotation already: " + requiredConstructor);
+		}
+		if (candidates.size() > 1) {
+			throw new BeanCreationException(beanName, "Invalid autowire-marked constructors: " + candidates
+					+ ". Found constructor with 'required' Autowired annotation: " + candidate);
+		}
+		return candidate;
+	}
+
+	/**
+	 * 把一条「退路」垫在候选末尾：必需构造器存在时不给退路（凑不齐就该报错，这正是 {@code required=true} 的含义），
+	 * 只有可选构造器才允许退回无参构造器。
+	 * @param candidates 带注解的构造器
+	 * @param requiredConstructor 必需构造器，没有则为 {@code null}
+	 * @param defaultConstructor 无参构造器，没有则为 {@code null}
+	 * @return 候选构造器数组
+	 */
+	private Constructor<?>[] withOptionalFallback(List<Constructor<?>> candidates, Constructor<?> requiredConstructor,
+			Constructor<?> defaultConstructor) {
+		if (requiredConstructor == null && defaultConstructor != null) {
+			candidates.add(defaultConstructor);
+		}
+		return candidates.toArray(new Constructor<?>[0]);
 	}
 
 	@Override

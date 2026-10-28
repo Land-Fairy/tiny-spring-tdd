@@ -1,5 +1,7 @@
 # 第 04 章 反射实例化：构造器参数名匹配
 
+> 🌿(ch00–ch03) 🕳️ 🔖(第 08 章) 🔖(第 09 章) 🔖(第 19 章)
+
 > **本章你要带走的一句话**：容器能 `new` 出一个对象，靠的不是魔法，是两件小事的组合——**知道参数叫什么名字**，**知道容器里谁能填这个坑**。名字来自编译器开关，坑来自递归。
 >
 > **前提**：第 03 章的容器已经能「同一个名字只造一次」。但那个容器只会调 `getDeclaredConstructor()`，也就是无参构造器。
@@ -168,7 +170,48 @@ javac -d /tmp/noparams/classes $(find src/main/java -name '*.java') /tmp/noparam
 javac -parameters -d /tmp/noparams/classes2 $(find src/main/java -name '*.java') /tmp/noparams/Names.java
 ```
 
-`Names.java` 只有一件事：把 `GreetingService` 构造器的参数名打印出来。
+`Names.java` 只有一件事：把 `GreetingService` 构造器的参数名打印出来，然后试着让容器用它造对象。它要放在 `/tmp/noparams/` 下（不要放进 `src/main/java`，否则会被 Maven 一起编译），全文如下：
+
+```java
+package org.springframework.samples.ch04;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Parameter;
+
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.beans.factory.support.GenericBeanDefinition;
+
+public final class Names {
+
+	public static void main(String[] args) {
+		Constructor<?> constructor = GreetingService.class.getConstructors()[0];
+		for (Parameter parameter : constructor.getParameters()) {
+			System.out.println("  " + parameter.getName() + "  isNamePresent=" + parameter.isNamePresent());
+		}
+		DefaultListableBeanFactory factory = new DefaultListableBeanFactory();
+		String[] beanNames = { "repository", "audit", "service" };
+		Class<?>[] types = { GreetingRepository.class, GreetingAudit.class, GreetingService.class };
+		for (int i = 0; i < types.length; i++) {
+			GenericBeanDefinition definition = new GenericBeanDefinition();
+			definition.setBeanClassName(types[i].getName());
+			factory.registerBeanDefinition(beanNames[i], definition);
+		}
+		try {
+			factory.getBean("service");
+			System.out.println("（容器成功造出对象）");
+		}
+		catch (RuntimeException ex) {
+			System.out.println(ex.getClass().getName() + ": " + ex.getMessage());
+		}
+	}
+
+	private Names() {
+	}
+
+}
+```
+
+三条 `beanNames` 里的 `repository` / `audit` 必须与构造器参数名一致——这正是本章要讲的事：**名字对不上，容器就凑不齐参数**。（这两段输出我按上面的命令在 JDK 21 上重跑过一遍，与下文逐字一致。）
 
 **不带 `-parameters` 的真实输出：**
 
@@ -198,7 +241,7 @@ org.springframework.beans.factory.UnsatisfiedDependencyException: Could not reso
 
 ## 3. 实现
 
-### 3.1 新增的五个文件
+### 3.1 新增的六个文件
 
 | 文件 | 行数 | 职责 |
 | --- | --- | --- |
