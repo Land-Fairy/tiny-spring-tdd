@@ -21,6 +21,7 @@ import org.springframework.beans.PropertyValues;
  * 章）和自动装配候选信息（{@code isAutowireCandidate}/{@code setFallback}，第 19 章）。
  *
  * @see AbstractBeanDefinition
+ * @see org.springframework.beans.factory.config.BeanDefinition
  */
 public interface BeanDefinition extends BeanMetadataElement {
 

@@ -16,6 +16,7 @@ package org.springframework.core.env;
  *
  * @param <T> 底层数据结构的类型（比如 {@code Map<String, Object>}）
  * @see MapPropertySource
+ * @see org.springframework.core.env.PropertySource
  */
 public abstract class PropertySource<T> {
 

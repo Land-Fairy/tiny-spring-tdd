@@ -475,9 +475,9 @@ catch (ClassNotFoundException | InvocationTargetException | InstantiationExcepti
 
 | 类 | 本书行数 | 真实行数（6.2.x） |
 | --- | --- | --- |
-| `BeanDefinition` | 178 | 388 |
-| `AbstractBeanDefinition` | 201 | 1405 |
-| `GenericBeanDefinition` | 43 | 102 |
+| `BeanDefinition` | 179 | 388 |
+| `AbstractBeanDefinition` | 202 | 1405 |
+| `GenericBeanDefinition` | 44 | 102 |
 | `DefaultListableBeanFactory` | 144 | 2778 |
 
 `AbstractBeanDefinition` 从 1405 行砍到 201 行，砍掉的 1200 行里大约一半是"属性值 + 构造器参数 + 合并逻辑"，另一半是 `clone()`、`equals()`、`validate()`、各类 `autowireMode` 相关的分支。

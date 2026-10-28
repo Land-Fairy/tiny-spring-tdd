@@ -29,6 +29,8 @@ import org.springframework.core.io.ClassPathResource;
  * 对应</b>：{@code org.springframework.context.support.ClassPathXmlApplicationContext} （约
  * 140 行，且有 {@code String... configLocations} 多文件、通配符、{@code setConfigLocation}
  * 等能力）。本书只支持单个资源位置。
+ *
+ * @see org.springframework.context.support.ClassPathXmlApplicationContext
  */
 public class ClassPathXmlApplicationContext extends GenericApplicationContext {
 

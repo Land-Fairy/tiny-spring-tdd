@@ -24,6 +24,7 @@ import org.springframework.beans.factory.BeanFactory;
  * {@code DependencyDescriptor}，第 20 章）、以及 {@code applyBeanPostProcessors*} （第 11 章）。
  *
  * @see BeanFactory
+ * @see org.springframework.beans.factory.config.AutowireCapableBeanFactory
  */
 public interface AutowireCapableBeanFactory extends BeanFactory {
 

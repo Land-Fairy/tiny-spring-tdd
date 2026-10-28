@@ -22,6 +22,7 @@ package org.springframework.beans.factory;
  * {@code BeanFactory#containsBean} 的语义澄清，这也是它在接口文档里最强调的一句。
  *
  * @see BeanFactory
+ * @see org.springframework.beans.factory.HierarchicalBeanFactory
  */
 public interface HierarchicalBeanFactory extends BeanFactory {
 

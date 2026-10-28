@@ -37,6 +37,8 @@ import org.springframework.beans.factory.support.GenericBeanDefinition;
  * 真实对应物：{@code org.springframework.beans.factory.xml.DefaultBeanDefinitionDocumentReader}（349
  * 行） + {@code BeanDefinitionParserDelegate}（1544 行）。真实实现把「遍历文档」与
  * 「解释单个标签」拆成两个类，后者大得多——因为它要处理命名空间、构造器参数、 内部 Bean、集合、p／c 命名空间、lookup-method 等等。
+ *
+ * @see org.springframework.beans.factory.xml.DefaultBeanDefinitionDocumentReader
  */
 public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocumentReader {
 

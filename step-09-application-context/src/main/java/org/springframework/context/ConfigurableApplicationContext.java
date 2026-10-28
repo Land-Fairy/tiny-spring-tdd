@@ -23,6 +23,7 @@ import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
  * {@code setEnvironment} / {@code addProtocolResolver} 等十来个方法。本书只保留与本章故事有关的四个。
  *
  * @see AbstractApplicationContext
+ * @see org.springframework.context.ConfigurableApplicationContext
  */
 public interface ConfigurableApplicationContext extends ApplicationContext, AutoCloseable {
 

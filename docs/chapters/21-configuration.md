@@ -587,12 +587,12 @@ ConstantPool() {
 | 我们 | 行数 | 真实 Spring | 行数 |
 |---|---|---|---|
 | `ConfigurationClassEnhancer.java` | 525 | `ConfigurationClassEnhancer.java` | 620 |
-| `ConfigMethodInterceptor.java` | 128 | （内含 `BeanMethodInterceptor`，`:343-620`） | — |
-| `ConfigurationClassPostProcessor.java` | 153 | `ConfigurationClassPostProcessor.java` | 827 |
+| `ConfigMethodInterceptor.java` | 129 | （内含 `BeanMethodInterceptor`，`:343-620`） | — |
+| `ConfigurationClassPostProcessor.java` | 154 | `ConfigurationClassPostProcessor.java` | 827 |
 | — | — | `ConfigurationClassParser.java` | 1162 |
 | — | — | `ConfigurationClassBeanDefinitionReader.java` | 511 |
 | — | — | `ConfigurationClassUtils.java` | 229 |
-| `FactoryMethodInProgress.java` | 76 | `SimpleInstantiationStrategy.java`（相关部分） | 205 |
+| `FactoryMethodInProgress.java` | 78 | `SimpleInstantiationStrategy.java`（相关部分） | 205 |
 | `@Bean` 方法 → 图纸 | 本章 `registerBeanMethods` 约 30 行 | `ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForBeanMethod`（`:185`） | 约 120 行 |
 
 `520` 对 `620` 看着差不多，但**我们的 520 行里有一半是手写常量池，真实 Spring 的这一半由 CGLIB 承担**（`net.sf.cglib` 是一个单独的库）。真正的等价物是「我们的生成器 + 手写的常量池」对「CGLIB 的 `Enhancer` + `ASM`」。

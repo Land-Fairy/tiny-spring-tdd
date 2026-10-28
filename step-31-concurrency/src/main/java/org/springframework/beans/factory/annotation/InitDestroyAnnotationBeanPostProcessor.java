@@ -32,6 +32,8 @@ import org.springframework.beans.factory.config.DestructionAwareBeanPostProcesso
  * 对应</b>：{@code org.springframework.beans.factory.annotation.InitDestroyAnnotationBeanPostProcessor}
  * （489 行）。它支持自定义注解类型（{@code setInitAnnotationType}），识别 {@code @PostConstruct} /
  * {@code @PreDestroy} 的子类由 {@code CommonAnnotationBeanPostProcessor} 配置。
+ *
+ * @see org.springframework.beans.factory.annotation.InitDestroyAnnotationBeanPostProcessor
  */
 public class InitDestroyAnnotationBeanPostProcessor implements DestructionAwareBeanPostProcessor {
 

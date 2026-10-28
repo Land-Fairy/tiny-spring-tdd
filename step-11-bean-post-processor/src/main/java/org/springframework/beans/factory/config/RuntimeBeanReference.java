@@ -14,6 +14,8 @@ package org.springframework.beans.factory.config;
  *
  * <p>
  * 真实对应物：{@code org.springframework.beans.factory.config.RuntimeBeanReference}（152 行）。
+ *
+ * @see org.springframework.beans.factory.config.RuntimeBeanReference
  */
 public class RuntimeBeanReference {
 

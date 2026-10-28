@@ -663,16 +663,16 @@ return initializedBean;
 
 | 本书 | 真实 Spring（`spring-beans` / `spring-context`） | 体量（行） |
 |---|---|---|
-| `DisposableBean` | `org.springframework.beans.factory.DisposableBean` | 22 / **46** |
+| `DisposableBean` | `org.springframework.beans.factory.DisposableBean` | 24 / **46** |
 | `InitializingBean` | `org.springframework.beans.factory.InitializingBean` | 26 / **46** |
 | `@PostConstruct` | `jakarta.annotation.PostConstruct`（不在 Spring 仓库里） | 23 / — |
 | `@PreDestroy` | `jakarta.annotation.PreDestroy`（同上） | 23 / — |
-| `InitDestroyAnnotationBeanPostProcessor` | `...factory.annotation.InitDestroyAnnotationBeanPostProcessor` | 124 / **489** |
-| `DestructionAwareBeanPostProcessor` | `...factory.config.DestructionAwareBeanPostProcessor` | 35 / **61** |
-| `DisposableBeanAdapter` | `...factory.support.DisposableBeanAdapter` | 149 / **559** |
-| `DefaultSingletonBeanRegistry` | 同名 | 321 / **841** |
+| `InitDestroyAnnotationBeanPostProcessor` | `...factory.annotation.InitDestroyAnnotationBeanPostProcessor` | 126 / **489** |
+| `DestructionAwareBeanPostProcessor` | `...factory.config.DestructionAwareBeanPostProcessor` | 37 / **61** |
+| `DisposableBeanAdapter` | `...factory.support.DisposableBeanAdapter` | 151 / **559** |
+| `DefaultSingletonBeanRegistry` | 同名 | 322 / **841** |
 | `DefaultListableBeanFactory` | 同名 | 764 / **2778** |
-| `AbstractApplicationContext` | `...context.support.AbstractApplicationContext` | 465 / **1653** |
+| `AbstractApplicationContext` | `...context.support.AbstractApplicationContext` | 466 / **1653** |
 
 一个值得注意的细节：`@PostConstruct` / `@PreDestroy` 从 Spring 6 起**不再是 Spring 自己的注解**，而是 Jakarta EE 的（包名从 `javax.annotation` 变成 `jakarta.annotation`）。Spring 只是「认」这两个注解的实现方——这也印证了 2.3 节的结论：注解本身没有任何魔力，魔力在扫描它的后处理器里。
 

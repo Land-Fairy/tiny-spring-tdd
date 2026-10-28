@@ -54,6 +54,7 @@ import org.springframework.beans.factory.config.SingletonBeanRegistry;
  * 硬塞进来只会让「三级缓存」这条主线变糊。
  *
  * @see DefaultListableBeanFactory
+ * @see org.springframework.beans.factory.support.DefaultSingletonBeanRegistry
  */
 public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 

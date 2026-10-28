@@ -10,6 +10,8 @@ package org.springframework.beans.factory;
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.beans.factory.DisposableBean}（46 行），方法在
  * {@code :40}。真实契约里还有一句关键的话：<b>销毁回调不应该抛异常</b>——因为此时容器正在关闭， 抛出去也没人接，只会让后面的 Bean 销毁不掉。
+ *
+ * @see org.springframework.beans.factory.DisposableBean
  */
 public interface DisposableBean {
 

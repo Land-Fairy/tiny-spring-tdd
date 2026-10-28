@@ -33,6 +33,7 @@ import org.springframework.beans.factory.ListableBeanFactory;
  * @see ListableBeanFactory
  * @see AutowireCapableBeanFactory
  * @see ConfigurableBeanFactory
+ * @see org.springframework.beans.factory.config.ConfigurableListableBeanFactory
  */
 public interface ConfigurableListableBeanFactory
 		extends ListableBeanFactory, AutowireCapableBeanFactory, ConfigurableBeanFactory {

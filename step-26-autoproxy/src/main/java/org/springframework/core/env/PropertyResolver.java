@@ -13,6 +13,7 @@ package org.springframework.core.env;
  * {@code AbstractPropertyResolver}（388 行）。
  *
  * @see StandardEnvironment
+ * @see org.springframework.core.env.PropertyResolver
  */
 public interface PropertyResolver {
 

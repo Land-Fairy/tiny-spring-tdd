@@ -23,6 +23,8 @@ import org.springframework.beans.factory.FactoryBean;
  * 行）； 真实 Spring 在它和 {@code DefaultListableBeanFactory} 之间还有一层
  * {@code AbstractBeanFactory}（2146 行）。 本书把 {@code AbstractBeanFactory} 的职责并入了
  * {@code DefaultListableBeanFactory}。
+ *
+ * @see org.springframework.beans.factory.support.FactoryBeanRegistrySupport
  */
 public abstract class FactoryBeanRegistrySupport extends DefaultSingletonBeanRegistry {
 

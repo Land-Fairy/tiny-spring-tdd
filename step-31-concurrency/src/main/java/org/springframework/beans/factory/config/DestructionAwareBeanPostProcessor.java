@@ -11,6 +11,8 @@ package org.springframework.beans.factory.config;
  * 两个方法的分工是本章最巧妙的一处设计：{@link #requiresDestruction} 在<b>创建期</b>被问一次 （决定要不要给这个 Bean
  * 挂销毁适配器），{@link #postProcessBeforeDestruction} 在<b>销毁期</b>被调。 前者是「你要不要参与」，后者是「现在轮到你」。真实
  * Spring 同名接口 87 行。
+ *
+ * @see org.springframework.beans.factory.config.DestructionAwareBeanPostProcessor
  */
 public interface DestructionAwareBeanPostProcessor extends BeanPostProcessor {
 

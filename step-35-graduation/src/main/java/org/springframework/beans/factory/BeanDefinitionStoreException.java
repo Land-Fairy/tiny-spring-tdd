@@ -12,6 +12,8 @@ import org.springframework.beans.FatalBeanException;
  *
  * <p>
  * 真实对应物：{@code org.springframework.beans.factory.BeanDefinitionStoreException}。
+ *
+ * @see org.springframework.beans.factory.BeanDefinitionStoreException
  */
 public class BeanDefinitionStoreException extends FatalBeanException {
 

@@ -26,6 +26,7 @@ import org.springframework.beans.factory.support.DefaultListableBeanFactory;
  *
  * @see AbstractApplicationContext
  * @see ClassPathXmlApplicationContext
+ * @see org.springframework.context.support.GenericApplicationContext
  */
 public class GenericApplicationContext extends AbstractApplicationContext {
 

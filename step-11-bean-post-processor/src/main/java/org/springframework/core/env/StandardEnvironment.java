@@ -18,6 +18,7 @@ import org.springframework.util.PropertyPlaceholderHelper;
  * 都在它的父类 {@code AbstractPropertyResolver} 里）。本书把它们合成一个类。
  *
  * @see Environment
+ * @see org.springframework.core.env.StandardEnvironment
  */
 public class StandardEnvironment implements Environment {
 

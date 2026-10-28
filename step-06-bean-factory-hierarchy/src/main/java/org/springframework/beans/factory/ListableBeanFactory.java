@@ -19,6 +19,7 @@ import java.util.Map;
  * 时展开）、 按注解枚举（{@code getBeanNamesForAnnotation}，第 17 章包扫描需要它）、以及 {@code getBeanProvider}。
  *
  * @see BeanFactory
+ * @see org.springframework.beans.factory.ListableBeanFactory
  */
 public interface ListableBeanFactory extends BeanFactory {
 

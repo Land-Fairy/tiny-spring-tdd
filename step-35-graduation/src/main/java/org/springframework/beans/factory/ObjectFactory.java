@@ -22,6 +22,7 @@ package org.springframework.beans.factory;
  * 章才建起来，所以这里先不声明受检异常； 到那一章会把 {@code BeansException} 加回来，让读者看见「异常也参与接口设计」。
  *
  * @param <T> 造出来的对象类型
+ * @see org.springframework.beans.factory.ObjectFactory
  */
 @FunctionalInterface
 public interface ObjectFactory<T> {

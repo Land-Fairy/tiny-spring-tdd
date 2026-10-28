@@ -774,12 +774,12 @@ getBean(beanName)
 
 | 本书的接口 | 真实 Spring 的全限定名 | 真实行数 | 本书行数 | 真实方法数 | 本书方法数 |
 | --- | --- | --- | --- | --- | --- |
-| `BeanFactory` | `org.springframework.beans.factory.BeanFactory` | 404 | 104 | 15 | 6 |
-| `ListableBeanFactory` | `org.springframework.beans.factory.ListableBeanFactory` | 423 | 59 | 13 | 5 |
-| `HierarchicalBeanFactory` | `org.springframework.beans.factory.HierarchicalBeanFactory` | 53 | 41 | 2 | 2 |
-| `AutowireCapableBeanFactory` | `org.springframework.beans.factory.config.AutowireCapableBeanFactory` | 405 | 56 | 15 | 3 |
+| `BeanFactory` | `org.springframework.beans.factory.BeanFactory` | 404 | 105 | 15 | 6 |
+| `ListableBeanFactory` | `org.springframework.beans.factory.ListableBeanFactory` | 423 | 60 | 13 | 5 |
+| `HierarchicalBeanFactory` | `org.springframework.beans.factory.HierarchicalBeanFactory` | 53 | 42 | 2 | 2 |
+| `AutowireCapableBeanFactory` | `org.springframework.beans.factory.config.AutowireCapableBeanFactory` | 405 | 57 | 15 | 3 |
 | `ConfigurableBeanFactory` | `org.springframework.beans.factory.config.ConfigurableBeanFactory` | 436 | 50 | 35 | 3 |
-| `ConfigurableListableBeanFactory` | `org.springframework.beans.factory.config.ConfigurableListableBeanFactory` | 179 | 55 | 10 | 2 |
+| `ConfigurableListableBeanFactory` | `org.springframework.beans.factory.config.ConfigurableListableBeanFactory` | 179 | 56 | 10 | 2 |
 
 注意 `HierarchicalBeanFactory`：真实 53 行、2 个方法，本书 41 行、2 个方法。**这一层小得连缩写都省不出来**——它的价值与代码量完全不成比例。这是分层设计的一个真实特征：**重要的不是接口大小，是它切开的那条缝在哪**。
 

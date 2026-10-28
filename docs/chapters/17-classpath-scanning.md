@@ -500,11 +500,11 @@ private static final int PARSING_OPTIONS =
 
 | 本书 | 行数 | 真实 Spring | 行数 | 少做了什么 |
 |---|---|---|---|---|
-| `ClassMetadata` | 47 | `org.springframework.core.type.ClassMetadata` + `AnnotationMetadata` | 122 + 145 | 父类、接口、方法元数据 |
-| `SimpleMetadataReader` | 289 | `org.springframework.core.type.classreading.SimpleMetadataReader` | 83 | 用 ASM `ClassReader`，自己只写 visitor |
+| `ClassMetadata` | 49 | `org.springframework.core.type.ClassMetadata` + `AnnotationMetadata` | 122 + 145 | 父类、接口、方法元数据 |
+| `SimpleMetadataReader` | 291 | `org.springframework.core.type.classreading.SimpleMetadataReader` | 83 | 用 ASM `ClassReader`，自己只写 visitor |
 | `SimpleClassMetadata` | 47 | `SimpleAnnotationMetadata` + `SimpleClassMetadata` | 180 + 104 | 元注解缓存、`isAbstract`/`isIndependent` |
-| `ClassPathScanningCandidateComponentProvider` | 157 | 同名类 | **593** | include/exclude 过滤器体系、环境判断 |
-| `ClassPathBeanDefinitionScanner` | 57 | 同名类 | 393 | 默认过滤器注册、`doScan`、`@Component` 名字 |
+| `ClassPathScanningCandidateComponentProvider` | 159 | 同名类 | **593** | include/exclude 过滤器体系、环境判断 |
+| `ClassPathBeanDefinitionScanner` | 59 | 同名类 | 393 | 默认过滤器注册、`doScan`、`@Component` 名字 |
 | （无） | — | `AnnotationBeanNameGenerator` | 288 | 显式命名、连续大写处理 |
 | （无） | — | `AnnotationTypeFilter` | 139 | 整个「过滤器」抽象 |
 

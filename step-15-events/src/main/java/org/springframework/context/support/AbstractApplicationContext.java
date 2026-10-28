@@ -46,6 +46,7 @@ import org.springframework.context.event.SimpleApplicationEventMulticaster;
  * {@code freezeConfiguration}）里，另加 {@code startupShutdownLock} 这层并发保护（第 31 章）。
  *
  * @see GenericApplicationContext
+ * @see org.springframework.context.support.AbstractApplicationContext
  */
 public abstract class AbstractApplicationContext implements ConfigurableApplicationContext {
 

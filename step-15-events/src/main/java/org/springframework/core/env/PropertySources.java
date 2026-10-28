@@ -13,6 +13,7 @@ package org.springframework.core.env;
  * {@code remove} 与 {@code replace}，本书只保留加入与遍历。
  *
  * @see MutablePropertySources
+ * @see org.springframework.core.env.PropertySources
  */
 public interface PropertySources extends Iterable<PropertySource<?>> {
 

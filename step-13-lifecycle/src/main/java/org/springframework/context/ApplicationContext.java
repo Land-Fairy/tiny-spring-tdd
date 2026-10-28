@@ -28,6 +28,7 @@ import org.springframework.beans.factory.ListableBeanFactory;
  * </ul>
  *
  * @see ConfigurableApplicationContext
+ * @see org.springframework.context.ApplicationContext
  */
 public interface ApplicationContext extends ListableBeanFactory, HierarchicalBeanFactory {
 

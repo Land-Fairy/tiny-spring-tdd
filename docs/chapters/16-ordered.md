@@ -528,11 +528,11 @@ sort（Comparator）  →  决定「组内」关系：同一批里的先后
 
 | 本书 | 行数 | 真实 Spring | 行数 |
 |---|---|---|---|
-| `core/Ordered` | 35 | `org.springframework.core.Ordered` | 71 |
-| `core/PriorityOrdered` | 22 | `org.springframework.core.PriorityOrdered` | 47 |
-| `core/OrderComparator` | 90 | `org.springframework.core.OrderComparator` | 229 |
+| `core/Ordered` | 37 | `org.springframework.core.Ordered` | 71 |
+| `core/PriorityOrdered` | 24 | `org.springframework.core.PriorityOrdered` | 47 |
+| `core/OrderComparator` | 92 | `org.springframework.core.OrderComparator` | 229 |
 | `core/annotation/Order` | 35 | `org.springframework.core.annotation.Order` | 75 |
-| `core/annotation/AnnotationAwareOrderComparator` | 60 | 同名（在 `core.annotation` 包，**不在 `core`**） | 145 |
+| `core/annotation/AnnotationAwareOrderComparator` | 62 | 同名（在 `core.annotation` 包，**不在 `core`**） | 145 |
 | — | — | `org.springframework.core.annotation.OrderUtils` | 146 |
 
 ### 5.2 `Ordered` 的真实原句

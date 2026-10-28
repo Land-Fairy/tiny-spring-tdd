@@ -16,6 +16,7 @@ package org.springframework.core.env;
  * 里被注入 `Environment` 的 Bean 改不了 profile。
  *
  * @see StandardEnvironment
+ * @see org.springframework.core.env.Environment
  */
 public interface Environment extends PropertyResolver {
 

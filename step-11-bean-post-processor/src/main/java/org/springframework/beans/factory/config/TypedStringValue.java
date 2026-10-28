@@ -11,6 +11,8 @@ package org.springframework.beans.factory.config;
  * 真实对应物：{@code org.springframework.beans.factory.config.TypedStringValue}（240 行）。 我们砍掉了
  * {@code targetType} 的解析（保持字符串），类型转换留到第 23 章 的
  * {@code ConversionService}——这是本书最大的一处「先记账、后还债」。
+ *
+ * @see org.springframework.beans.factory.config.TypedStringValue
  */
 public class TypedStringValue {
 

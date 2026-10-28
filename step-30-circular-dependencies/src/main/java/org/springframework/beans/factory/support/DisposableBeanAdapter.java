@@ -28,6 +28,8 @@ import org.springframework.beans.factory.config.DestructionAwareBeanPostProcesso
  * 对应</b>：{@code org.springframework.beans.factory.support.DisposableBeanAdapter} （559
  * 行）。差额主要来自：{@code AutoCloseable.close()} 支持、异步/响应式销毁（{@code Future} /
  * Reactor）、{@code destroy-method} 的 {@code (boolean)} 变体、以及依赖图的级联销毁。
+ *
+ * @see org.springframework.beans.factory.support.DisposableBeanAdapter
  */
 public class DisposableBeanAdapter implements DisposableBean {
 

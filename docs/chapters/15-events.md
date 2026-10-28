@@ -613,16 +613,16 @@ protected Collection<ApplicationListener<?>> getApplicationListeners(Application
 
 | 本书 | 真实 Spring | 体量（行） |
 |---|---|---|
-| `context/event/ApplicationEvent` | 同名 | 42 / **77** |
-| `context/event/ApplicationListener` | 同名 | 27 / **76** |
-| `context/event/ApplicationEventPublisher` | `org.springframework.context.ApplicationEventPublisher` | 24 / **90** |
-| `context/event/ApplicationEventMulticaster` | 同名 | 50 / **133** |
-| `context/event/AbstractApplicationEventMulticaster` | 同名 | 110 / **532** |
-| `context/event/SimpleApplicationEventMulticaster` | 同名 | 91 / **227** |
-| `context/event/ApplicationContextEvent` | 同名 | 30 / **47** |
-| `context/event/ContextRefreshedEvent` | 同名 | 26 / **40** |
-| `context/event/ContextClosedEvent` | 同名 | 24 / **40** |
-| `util/ErrorHandler` | `org.springframework.util.ErrorHandler` | 23 / **36** |
+| `context/event/ApplicationEvent` | 同名 | 44 / **77** |
+| `context/event/ApplicationListener` | 同名 | 29 / **76** |
+| `context/event/ApplicationEventPublisher` | `org.springframework.context.ApplicationEventPublisher` | 26 / **90** |
+| `context/event/ApplicationEventMulticaster` | 同名 | 52 / **133** |
+| `context/event/AbstractApplicationEventMulticaster` | 同名 | 112 / **532** |
+| `context/event/SimpleApplicationEventMulticaster` | 同名 | 93 / **227** |
+| `context/event/ApplicationContextEvent` | 同名 | 32 / **47** |
+| `context/event/ContextRefreshedEvent` | 同名 | 28 / **40** |
+| `context/event/ContextClosedEvent` | 同名 | 26 / **40** |
+| `util/ErrorHandler` | `org.springframework.util.ErrorHandler` | 25 / **36** |
 | 无 | `PayloadApplicationEvent` | — / **83** |
 
 注意 `ApplicationEventPublisher` 在真实 Spring 里位于 **`org.springframework.context`** 包，不在 `.event` 子包——因为它是「上下文」暴露给业务的能力，而 `.event` 包里装的是事件机制的实现。
