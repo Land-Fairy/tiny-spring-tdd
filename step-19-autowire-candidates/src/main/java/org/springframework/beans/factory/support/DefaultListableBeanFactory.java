@@ -1,5 +1,6 @@
 package org.springframework.beans.factory.support;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
@@ -29,6 +30,7 @@ import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.config.Scope;
 import org.springframework.beans.factory.config.InstantiationAwareBeanPostProcessor;
+import org.springframework.beans.factory.config.SmartInstantiationAwareBeanPostProcessor;
 import org.springframework.core.ParameterNameDiscoverer;
 import org.springframework.core.StandardReflectionParameterNameDiscoverer;
 
@@ -653,6 +655,35 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 		}
 	}
 
+	/**
+	 * 问所有后处理器「这个类该用哪个构造器」——全书<b>唯一</b>一次在对象还不存在时的问话。
+	 *
+	 * <p>
+	 * 所以这里找的不是 {@link BeanPostProcessor} 而是
+	 * {@link SmartInstantiationAwareBeanPostProcessor}：普通后处理器的回调都要先有对象，
+	 * 只有它这个子接口的回调发生在实例化<b>之前</b>。真实 Spring 对应
+	 * {@code AbstractAutowireCapableBeanFactory#determineConstructorsFromBeanPostProcessors}（{@code :1327}），
+	 * 由 {@code createBeanInstance}（{@code :1227}）在挑构造器之前调用。
+	 *
+	 * <p>
+	 * 返回值是<b>第一个</b>愿意给意见的后处理器的答案（{@code null} 表示「我没意见」，继续问下一个）—— 与真实 Spring
+	 * 一样，后处理器之间不投票。
+	 * @param beanName Bean 名字
+	 * @param beanClass 要造的类
+	 * @return 候选构造器；没有后处理器愿意给意见时 {@code null}
+	 */
+	private Constructor<?>[] determineCandidateConstructors(String beanName, Class<?> beanClass) {
+		for (BeanPostProcessor processor : this.beanPostProcessors) {
+			if (processor instanceof SmartInstantiationAwareBeanPostProcessor smartProcessor) {
+				Constructor<?>[] candidates = smartProcessor.determineCandidateConstructors(beanClass, beanName);
+				if (candidates != null) {
+					return candidates;
+				}
+			}
+		}
+		return null;
+	}
+
 	private ConstructorResolver getConstructorResolver() {
 		ConstructorResolver resolver = this.constructorResolver;
 		if (resolver == null) {
@@ -670,7 +701,9 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 	 */
 	private Object doCreateBean(String beanName, BeanDefinition beanDefinition) {
 		Class<?> beanClass = resolveBeanClass(beanName, beanDefinition);
-		Object bean = getConstructorResolver().instantiate(beanName, beanClass);
+		// 第 19 章：实例化之前，先问后处理器「这个类该用哪个构造器」。
+		Object bean = getConstructorResolver().instantiate(beanName, beanClass,
+				determineCandidateConstructors(beanName, beanClass));
 		populateBean(beanName, beanDefinition, bean);
 		Object initializedBean = initializeBeanInternal(beanName, bean, beanDefinition);
 		// 第 13 章：只有单例才登记销毁。prototype 的生死由调用方负责，容器从没管过它。
