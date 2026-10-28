@@ -637,7 +637,7 @@ ClassPath  FileSystem  Url      ByteArray            │
 
 分开之后，处理方就可以脱离 `ResourceLoader` 单独测试——`PropertiesLoaderTests` 里可以直接 `loader.load(new ByteArrayResource(...))`，不需要任何工厂。
 
-### 4.3 `getDescription()` 的三个实现，三种称呼
+### 4.3 `getDescription()` 的四个实现，四种称呼
 
 ```java
 	// ClassPathResource

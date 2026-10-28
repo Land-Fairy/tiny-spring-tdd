@@ -4,25 +4,28 @@
 
 > **本章你要带走的一句话**：接口分层的目的不是「代码整洁」，是**让调用方只依赖它真正需要的那部分能力**——这样实现才能换、测试才能桩、依赖方向才不会倒。
 >
-> **前提**：到第 05 章结束，`DefaultListableBeanFactory` 已经有 24 个公开方法，还有 6 个从 `DefaultSingletonBeanRegistry` 继承来的。所有测试都写着 `DefaultListableBeanFactory`。
+> **前提**：到第 05 章结束，`DefaultListableBeanFactory` 有 9 个公开方法，还有 6 个从 `DefaultSingletonBeanRegistry` 继承来的，一共 15 个。所有测试都写着 `DefaultListableBeanFactory`。
 >
 > **本章结束时你会看到**：同一个 `GreetingRenderer` 类，构造器参数从 `DefaultListableBeanFactory` 换成 `BeanFactory` 之后，**一行不改**就能跑在一个只有 `HashMap` 的桩上。
 
 ---
 
-## 1. 痛点：一个类，三十个方法，所有调用方都被绑死
+## 1. 痛点：一个类，十五个方法，所有调用方都被绑死
 
 ### 1.1 现在的样子
 
-第 05 章结束时，这个类的公开方法有 30 个：
+第 05 章结束时，这个类的公开方法有 15 个（自有 9 个 + 继承 6 个）：
 
 ```
 图纸相关  registerBeanDefinition / removeBeanDefinition / getBeanDefinition /
           containsBeanDefinition / getBeanDefinitionNames / getBeanDefinitionCount / isBeanNameInUse
+参数名    getParameterNameDiscoverer
+取 Bean   getBean
+造与填    createBean（private）/ populateBean（protected）/ invokeInitMethods（protected）
 单例相关  registerSingleton / getSingleton ×2 / containsSingleton / getSingletonNames / getSingletonCount
-取 Bean   getBean ×2 / containsBean / isSingleton / isPrototype / getType
-造与填    createBean / applyBeanPropertyValues / initializeBean
 ```
+
+数一下：`DefaultListableBeanFactory` 自己 9 个 `public` + 3 个非 `public`，加上继承来的 6 个，对外能调的正好 15 个。**本章结束时会变成 30 个**——多出来的 15 个全是接口要求的新方法，本章第 3 节逐个交代。
 
 而调用方只有三种完全不同的需求：
 
@@ -53,7 +56,7 @@ factory.registerBeanDefinition("greeter", definition);
 `GreetingRenderer` 的单元测试本来不需要容器——它只需要「给我一个 `Greeter` 的东西」。但因为它声明依赖 `DefaultListableBeanFactory`，测试里就只能：
 
 - 要么造一个真的 `DefaultListableBeanFactory`（慢，而且把容器的行为混进渲染器的测试）
-- 要么继承 `DefaultListableBeanFactory` 造一个假子类（30 个方法里绝大多数是噪音，而且父类构造器有副作用）
+- 要么继承 `DefaultListableBeanFactory` 造一个假子类（15 个方法里绝大多数是噪音，而且父类构造器有副作用）
 
 两种做法都在说同一件事：**依赖的类型越宽，替身越难做**。
 
@@ -909,7 +912,7 @@ getBean(beanName)
 
 1. **接口分层的唯一目的是让调用方只依赖它需要的能力**。判断标准不是「看起来整齐」，是「能不能换实现、能不能写替身」。
 2. **兄弟接口比父子接口更常见**。`Listable` / `Hierarchical` / `AutowireCapable` 三者互不相干，各自继承 `BeanFactory`——所以能力边界能被类型系统验证。
-3. **收益归调用方，代价归实现方**。`MapBackedBeanFactory` 六行方法一个都不能少；`DefaultListableBeanFactory` 30 个公开方法只需要在需要时被转型到合适的那一层。
+3. **收益归调用方，代价归实现方**。`MapBackedBeanFactory` 六行方法一个都不能少；`DefaultListableBeanFactory` 30 个公开方法（本章结束时的数量）只需要在需要时被转型到合适的那一层。
 
 ### 7.2 本章留下的三个缺陷（都是故意的）
 

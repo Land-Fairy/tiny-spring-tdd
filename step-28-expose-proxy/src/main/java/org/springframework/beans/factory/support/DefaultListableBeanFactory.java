@@ -41,7 +41,7 @@ import org.springframework.core.StandardReflectionParameterNameDiscoverer;
  * 容器本体：图纸表 + 单例池 + 父子回退 + 对容器外对象的能力。
  *
  * <p>
- * <b>本章唯一的变化</b>：这个类的<b>方法</b>几乎一行没改，变的是它<b>声明的身份</b>——从「一个具体的类」
+ * <b>第 06 章唯一的变化</b>（此后各章沿用这段说明）：这个类的<b>方法</b>几乎一行没改，变的是它<b>声明的身份</b>——从「一个具体的类」
  * 变成「{@link ConfigurableListableBeanFactory} 的一个实现」。所有新增的能力都长在接口上，
  * 而下面每个方法都标注了它「属于哪一层」，这样读的时候能对上：
  *
