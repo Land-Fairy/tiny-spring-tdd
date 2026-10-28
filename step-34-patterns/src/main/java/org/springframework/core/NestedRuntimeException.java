@@ -22,6 +22,7 @@ package org.springframework.core;
  * {@code NestedCheckedException} 存在的原因是 Java 只有一个父类）。
  *
  * @see NestedExceptionUtils
+ * @see org.springframework.core.NestedRuntimeException
  */
 public abstract class NestedRuntimeException extends RuntimeException {
 

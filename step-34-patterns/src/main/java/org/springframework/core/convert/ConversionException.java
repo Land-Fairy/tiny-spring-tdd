@@ -15,6 +15,8 @@ import org.springframework.core.NestedRuntimeException;
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.core.convert.ConversionException} （47
  * 行，抽象类，继承 {@code NestedRuntimeException}）。
+ *
+ * @see org.springframework.core.convert.ConversionException
  */
 public abstract class ConversionException extends NestedRuntimeException {
 

@@ -19,6 +19,8 @@ package org.springframework.beans.factory;
  * <p>
  * 真实 Spring：{@code org.springframework.beans.factory.BeanCurrentlyInCreationException}
  * （继承 {@code BeanCreationException}，构造器两个重载：只带名字、带名字与自定义消息）。
+ *
+ * @see org.springframework.beans.factory.BeanCurrentlyInCreationException
  */
 public class BeanCurrentlyInCreationException extends BeanCreationException {
 

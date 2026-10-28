@@ -20,7 +20,7 @@
 | **K2 不变量可见** | 约束写在类型与构造器里，不写在注释里：与真实 Spring 同形的值对象用 `final class` + 全 `private final` + 构造期校验；本书自创、仅供内部使用的纯数据载体用 `record`；可变对象（`BeanDefinition` 系）全 `private` + 统一风格 setter + 构造期校验 | `K2SourceContractTests`（2 条：禁 public record、可变值对象须声明） | 注释写「name 不能为 null」，字段却是可变 `public` |
 | **K3 意志单一** | 一个类只有一个变化理由：方法行数是症状，变化理由是病根 | checkstyle `MethodLength` ≤**40**（硬线）、`ParameterNumber` ≤5、`NestedIfDepth` ≤3；≤30 只是写作目标 | 1120 行的 `DefaultListableBeanFactory` |
 | **K4 异常即文档** | 异常消息三段式：**谁 · 为什么 · 怎么办**；与单个 bean 相关的异常要把 `beanName` 作为结构化字段，不是只写进字符串 | **人工**（没有契约测试；欠账 1 处见下） | `throw new IllegalStateException("error")` |
-| **K5 契约可见** | 新增 `public` 类必须有 `@see org.springframework.…` 与「砍掉了什么」一句话 | **`K5SourceContractTests`**：基线 137 个存量类登记在 `k5-baseline.txt`，基线之外缺 `@see` 即红；补完必须删基线行 | 新类没有 `@see`，读者不知道它对应真实 Spring 的谁 |
+| **K5 契约可见** | 新增 `public` 类必须有 `@see org.springframework.…` 与「砍掉了什么」一句话 | **`K5SourceContractTests`**：基线登记在 `k5-baseline.txt`（2026-10 存量 137 个，已销账 7 个），基线之外缺 `@see` 即红；补完必须删基线行 | 新类没有 `@see`，读者不知道它对应真实 Spring 的谁 |
 | **K6 成对对照** | 每章至少一对「朴素写法 / 优雅写法」，两者都编译、都过**同一组**断言 | **人工**（「测试文件计数」这条机制从未存在，别再写成机器判定） | 只有正确写法，读者无从比较 |
 
 ### K1 机制单一：每个并发容器都要能说出理由
@@ -651,8 +651,8 @@ git commit -am "fix(step-05): ..."
 ### 闸门 13：评审文档自己的引用
 
 **它防的是什么**：`docs/reviews/` 是这份评审的交付物，它满篇用 `file:line` 当证据（39 篇共 456 处）。
-如果评审里写 `Foo.java:98` 而那个文件只有 32 行，读者按它去核对会扑空——**评审就犯了它正在指控全文的那个错**。
-这不是假设：闸门建成后第一次跑就抓到 `docs/reviews/ch12.md` 的 C2 条把行号标成一个 32 行文件的第 98 行。
+如果评审把行号标到远超一个文件总行数的位置，读者按它去核对会扑空——**评审就犯了它正在指控全文的那个错**。
+这不是假设：闸门建成后第一次跑就抓到 `docs/reviews/ch12.md` 的 C2 条：行号标在了一个约 32 行文件的总行数之外。
 
 **判定语义**（只判三件机器能判的事，不猜语义）：
 1. 文件名必须解析到本仓（`step-*` / `docs/`）、上游 `SPRING_REF` 或 JDK（JDK 靠 `jimage list` 认词干）；

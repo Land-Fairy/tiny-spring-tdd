@@ -1,5 +1,6 @@
 # K5「契约可见」基线：这些 public 类型还没有 @see org.springframework.…
-# 它们是 2026-10 之前的存量（138 个），一次性补不现实，所以在此登记，仅供新代码不再欠账。
+# 它们是 2026-10 之前的存量，一次性补不现实，所以在此登记，仅供新代码不再欠账。
+# 「还剩几个」故意不写死在这里：写死的数字会漂（上一版写 138，实数 137）。要看剩余条数，数非注释行。
 # 补一个就从这里删一行；不在表里的新 public 类型必须有 @see，否则 K5SourceContractTests 失败。
 org.springframework.aop.Advice
 org.springframework.aop.Advisor
@@ -38,11 +39,7 @@ org.springframework.aop.support.StaticMethodMatcherPointcut
 org.springframework.aop.support.TruePointcut
 org.springframework.aop.target.HotSwappableTargetSource
 org.springframework.aop.target.SingletonTargetSource
-org.springframework.beans.BeansException
-org.springframework.beans.FatalBeanException
-org.springframework.beans.PropertyAccessException
 org.springframework.beans.SimpleTypeConverter
-org.springframework.beans.factory.BeanCurrentlyInCreationException
 org.springframework.beans.factory.BeanDefinitionStoreException
 org.springframework.beans.factory.BeanFactory
 org.springframework.beans.factory.BeanIsNotAFactoryException
@@ -98,13 +95,10 @@ org.springframework.context.support.AbstractApplicationContext
 org.springframework.context.support.ClassPathXmlApplicationContext
 org.springframework.context.support.GenericApplicationContext
 org.springframework.context.support.SimpleThreadScope
-org.springframework.core.NestedExceptionUtils
-org.springframework.core.NestedRuntimeException
 org.springframework.core.OrderComparator
 org.springframework.core.Ordered
 org.springframework.core.PriorityOrdered
 org.springframework.core.annotation.AnnotationAwareOrderComparator
-org.springframework.core.convert.ConversionException
 org.springframework.core.convert.ConversionFailedException
 org.springframework.core.convert.ConversionService
 org.springframework.core.convert.ConverterNotFoundException

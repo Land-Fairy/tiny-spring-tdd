@@ -13,6 +13,8 @@ package org.springframework.core;
  * {@code getRootCause}/{@code getMostSpecificCause} 自 4.3.9 起是静态工具方法；
  * {@code buildMessage} 在 6.0 起被标记 {@code @Deprecated}——因为「nested exception is …」这种
  * 拼接会把原因重复三遍（原因已经在栈里了），新版改为「每层只写自己知道的上下文」。
+ *
+ * @see org.springframework.core.NestedExceptionUtils
  */
 public abstract class NestedExceptionUtils {
 

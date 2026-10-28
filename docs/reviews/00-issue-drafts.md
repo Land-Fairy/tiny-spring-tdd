@@ -222,18 +222,24 @@ ch25 用「通知」指 `Advice`；「增强」既指 `Advice` 又指 `@Configur
 
 ---
 
-## 草稿 9：K5 基线里还欠着 137 个 `public` 类型的 `@see`
+## 草稿 9：K5 基线里还欠着 130 个 `public` 类型的 `@see`
 
 **label**：`type/docs` `area/standards`
 
 **背景**：新加的 `K5SourceContractTests` 只强制「基线之外的新类必须有 `@see org.springframework.…`」，
-基线 `step-35-graduation/src/test/resources/k5-baseline.txt` 登记了 **137** 个存量类型。
+基线 `step-35-graduation/src/test/resources/k5-baseline.txt` 登记了 **137** 个存量类型（2026-10-28 已销账 7 个，剩 **130**）。
 换句话说：K5 从今天起不再欠新账，但旧账还在。
 
 **证据**：
 
-- 框架层 `public` 顶层类型 180 个，其中 43 个已带 `@see`/`{@link org.springframework…}`，137 个没有。
-- 本轮顺手补了 6 份副本：`SmartInstantiationAwareBeanPostProcessor` 在第 30–35 章被重写过 javadoc，
+- 框架层 `public` 顶层类型 180 个，其中 50 个已带 `@see`/`{@link org.springframework…}`，130 个没有。
+- **已知副作用（ADR-0001 的固有代价）**：本书与上游同名同包（`org.springframework.beans.factory.BeanCurrentlyInCreationException`
+  两边都叫这个名），所以 `@see org.springframework.…` 解析到的是**本书自己的类**，读者点过去看不到真实 Spring。
+  这也解释了为什么仓库里更早就存在同样的写法（`util/ClassUtils.java:25` 指向自己）。真要区分只能写全 URL，
+  但那就不是 javadoc 该干的事——所以这条只登记，不擅自改口径。
+- 本轮补了 7 个类型、24 份副本（选的是副本数最少的一批：每个类型只有 3–6 份，上游同名文件唯一，
+  所以映射不用猜）；剩余 130 个多在 11–34 份副本量级，按章推进更划算。
+- 更早还顺手补了 6 份副本：`SmartInstantiationAwareBeanPostProcessor` 在第 30–35 章被重写过 javadoc，
   重写时把「真实 Spring 对应」那段丢了（前 21–29 章有）。
 
 **建议**：不要求一次补完。按章推进：每章下次被改动时，把该章新增的类从基线里划掉。
