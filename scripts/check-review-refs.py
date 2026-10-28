@@ -133,16 +133,15 @@ def main() -> int:
             print(f"{name}\t引用 {total} 处，多候选 {ambiguous} 处，越界 {bad} 处")
         return 0
 
-    # 没有上游源码时降级：上游引用无法核对，只记 WARN；本仓文件的越界仍然判红。
-    # 没有上游源码时整体降级：评审里大量引用指向真实 Spring（行号 400+ 而上游文件上千行），
-    # 缺了上游就无法区分「越界」与「上游引用」，此时一概只提示、不判死。
-    # 权威判定在 CI（第 8/13 道闸门跑在同一个带上游源码的作业里）。
+    # 缺上游源码时「无法判定」，既不能判红也不能判绿。
+    # 判红会冤枉上游引用（行号 400+ 而上游文件上千行），判绿就是把关闸关掉——
+    # 实测：注入一个本仓文件的假行号（指向第 99999 行），缺上游时它照样 exit 0。
+    # 所以这里退 2：CI 侧已把闸门 13 挪进带上游克隆的作业（见 ci.yml），
+    # 本机跑要自己设 SPRING_REF（默认 /home/jasen/refs/spring-framework-6.2.x）。
     if not SPRING_REF.is_dir():
-        print(f"INFO 模式：降级（找不到上游源码，SPRING_REF={SPRING_REF}）——全部引用只记提示")
-        for e in errors:
-            print(f"WARN {e}（无上游源码，未判定）")
-        print(f"── 汇总: 降级模式，{len(errors)} 处待上游核对（不计入失败）")
-        return 0
+        print(f"INFO 降级：找不到上游源码（SPRING_REF={SPRING_REF}）——引用无法核对，本次不判定")
+        print(f"── 汇总: 未判定（{len(errors)} 处待上游核对）；退出码 2 = 无法判定，不是通过")
+        return 2
 
     if errors:
         for e in errors:
