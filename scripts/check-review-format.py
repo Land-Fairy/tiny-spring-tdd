@@ -32,6 +32,26 @@ LINE = re.compile(
 )
 
 
+# 三节必须存在——它们是「六视角」这个承诺在文档里的最低形状：
+# 矩阵（六条视角各自的判决）、复核记录（哪些数字是我亲手跑的）、
+# 读者会在哪放弃（这份评审对读者的用处）。缺任何一节，读者就没法判断这份评审算不算数。
+REQUIRED = (
+    ("六视角矩阵", ("六视角", "视角矩阵")),
+    ("复核记录", ("复核记录",)),
+    ("读者会在哪", ("会在哪",)),
+)
+
+
+def has_structure(lines: list[str], needles: tuple[str, ...]) -> bool:
+    """命中标题或表格行都算——ch01–15 用 `## 一、六视角矩阵`，ch16–26 用带 V1–V6 的表。"""
+    for line in lines:
+        if line.startswith("## ") and any(n in line for n in needles):
+            return True
+        if line.startswith("|") and any(n in line for n in needles):
+            return True
+    return False
+
+
 def check_one(path: pathlib.Path) -> list[str]:
     errors: list[str] = []
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -53,6 +73,9 @@ def check_one(path: pathlib.Path) -> list[str]:
     for key, label in (("bc", "修前"), ("ac", "修后")):
         if not m.group(key).strip():
             errors.append(f"{path.name}:{idx + 1}: {label}括号说明不得为空")
+    for label, needles in REQUIRED:
+        if not has_structure(lines, needles):
+            errors.append(f"{path.name}: 缺「{label}」一节（六视角评审的最低形状）")
     return errors
 
 
