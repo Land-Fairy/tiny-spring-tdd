@@ -255,6 +255,12 @@ public class SimpleMetadataReader implements MetadataReader {
 	/**
 	 * 常量池的两个平行数组：UTF8 字符串，以及「CONSTANT_Class 槽位 → 它的 name_index」。
 	 *
+	 * <p>
+	 * <b>为什么这里是 {@code record}</b>（CODE-STANDARDS 的 K2-b）：它是本书自创的、只在本类内部使用的纯数据载体—— 不进任何公共
+	 * API、不需要继承、也不靠「同一个实例」表达身份（两个字段相同的常量池就是同一个常量池）。 这四条同时成立时，{@code record} 比手写
+	 * {@code final class} 更准确：它把「不可变 + 值相等」从约定变成 语言保证。反例是 {@code PropertyValue}——那个要与真实
+	 * Spring 保持形状，所以不能用 {@code record}。
+	 *
 	 * @param utf8 UTF8 常量
 	 * @param classRefs 类引用
 	 */
