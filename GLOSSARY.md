@@ -165,3 +165,133 @@ Pointcut + Advice 的组合体。这是 Spring AOP 的**基本单元**，
 **历史快照（historical snapshot）**
 每个章节目录都是一份完整可运行的副本，代表该阶段的能力边界。
 后一章不回改前章的代码（正确性 bug 除外，见 ADR-0003）。
+
+## 类型转换与元数据
+
+**ConversionService / Converter / ConverterFactory**
+`ConversionService` 是"类型转换的可查询集合"：能问「这对类型能不能转」，也能直接转。
+`Converter<S,T>` 是一次转换；`ConverterFactory<S,R>` 是"一族"转换（如 String → 任意枚举）。
+与 `PropertyEditor` 的区别是：后者把规则写死在字段上，前者把规则做成可注册、可组合的注册表。
+
+**DependencyDescriptor**
+"这个依赖长什么样"的元数据：声明它的字段或参数、是否必需、泛型类型、`@Value` 给出的建议值。
+有了它，注入才能从"按名字找"升级为"按声明信息找"。
+
+**StringValueResolver**
+占位符解析的抽象：给定 `${...}`，返回解析后的字符串。它只做**字符串到字符串**，
+不管类型——类型交给 `ConversionService`。两件事分开，才能各自替换实现。
+
+**BeanDefinition 的 value 与 ref**
+XML 里 `<property value="...">` 存的是字符串，`ref="..."` 存的是"另一个 Bean 的名字"。
+两者在**属性填充**阶段才被解析成真正的对象——这就是 `BeanDefinitionValueResolver` 的职责。
+
+## 资源定位
+
+**PathMatchingResourcePatternResolver**
+支持 `classpath*:` + Ant 通配的批量定位：`classpath*:com/acme/**/*.class` 一次取出全部匹配资源。
+`classpath:` 只取第一个（把它当 URL 用），`classpath*:` 扫全部 classpath（含 jar）——差一个星号。
+
+**Ant 路径匹配**
+`**` 匹配任意层目录、`*` 匹配单层内的任意字符、`?` 匹配单个字符。与正则不同：
+它不以 `/` 为特殊语义的通配边界，所以「整条转成正则」是错的（第 18 章的错误答案之一）。
+
+**包扫描（classpath scanning）**
+按包路径找出候选类并注册 BeanDefinition。底层**不加载类**，用 ASM 读 `.class` 的元数据
+（注解、接口、父类）；反射版只是教学对照物。
+
+## 容器内部机制
+
+**refresh() 十二步**
+`ApplicationContext` 的启动骨架：`prepareRefresh` → `obtainFreshBeanFactory` → `prepareBeanFactory`
+→ `postProcessBeanFactory` → `invokeBeanFactoryPostProcessors` → `registerBeanPostProcessors`
+→ `initMessageSource` → `initApplicationEventMulticaster` → `onRefresh` → `registerListeners`
+→ `finishBeanFactoryInitialization` → `finishRefresh`。前后顺序是契约，不是风格。
+
+**提前引用（early reference）**
+对象还没填充完就先把引用交出去，用来解循环依赖。第三级缓存存的是「怎么造这个提前引用」
+（`ObjectFactory`），而不是提前引用本身——因为「要不要包代理」这件事要到那一刻才有答案。
+
+**在创建集合 / 令牌制**
+容器用一个"正在创建中"的集合当令牌：谁先登记谁负责创建，后来者要么等、要么在环里拿到提前引用。
+这是「同一时刻不能有两条线创建同一个单例」的实现方式。
+
+**getBean 全链路**
+一次 `getBean` 会经过「按名字/别名归一 → 单例池快路径 → 父容器 → 图纸 → 创建 → 填充 → 初始化
+→ 代理 → 入池」等若干跳。跳数不多，但每一跳都属于不同章节的机制——这是第 32 章存在的理由。
+
+## AOP 进阶
+
+**TargetSource**
+"目标对象从哪来"的抽象：单例、热替换、池化、原型。代理本身不持有目标，它每次调用时向
+`TargetSource` 要一个。属性填充的坑（第 27 章）就出在「代理对象自己没有目标对象那些字段」上。
+
+**AopProxy / ProxyFactory**
+`AopProxy` 是"能产出代理对象的策略接口"（本书只有 JDK 实现）；`ProxyFactory` 是门面：
+把 target + advisors 交给 `JdkDynamicAopProxy`，取回代理。
+
+**AutoProxyCreator（自动代理创建器）**
+一个 `BeanPostProcessor`，在 `postProcessAfterInitialization` 里判断「这个 Bean 命中 Advisor 吗」，
+命中就换成代理，不命中就原样返回。**不加这个 BPP，切面永远不生效**。
+
+**Advisor 链 / ReflectiveMethodInvocation**
+一个方法调用可能命中多个 Advisor，按顺序串成链，用 `proceed()` 递归推进。
+`currentInterceptorIndex` 从 `-1` 开始，`proceed()` 每调一次加一——`-1` 表示"还没进第一个拦截器"。
+
+**exposeProxy / AopContext**
+把当前代理塞进 `ThreadLocal`，让 `AopContext.currentProxy()` 能在"自调用"里拿到代理。
+默认关闭，因为它有代价：额外的线程局部存储与"代理逃逸"风险。
+
+**静态匹配 / 运行期匹配**
+按方法名能确定的切点，可以在**创建代理时**算一次（静态）；按参数值才能确定的，必须在**每次调用时**算
+（运行期）。这个区分决定了切点能不能被缓存。
+
+## 异常体系
+
+**BeansException**
+容器异常的统一根：`BeanCreationException`（造 Bean 失败）、`BeanDefinitionStoreException`（图纸有问题）、
+`NoSuchBeanException`（找不到）、`NoUniqueBeanDefinitionException`（歧义）。全是**非受检**。
+
+**嵌套异常（nested exception）**
+Spring 的"加壳"约定：外层异常只说"哪个 Bean 失败"，底层原因挂在 `cause` 上。
+`getRootCause()` 取最内层，`getMostSpecificCause()` 取最内层**或自身**，`contains(Class)` 沿链查找。
+排错时最有用的是 `contains`——最内层往往是 `NumberFormatException` 这种没有上下文的异常。
+
+**错误码（errorCode）**
+`PropertyAccessException` 带一个稳定的字符串码（`typeMismatch` / `methodInvocation`），
+让调用方能按类别处理，而不必匹配异常消息文本。
+
+## 条件装配
+
+**@Conditional / Condition**
+"这个 Bean 要不要注册"的判断，发生在**图纸阶段**而不是创建阶段。判断晚了，
+索引里就会留下永远取不到的 Bean。
+
+**@Profile**
+一个预置的 `@Conditional(ProfileCondition.class)`：条件是"activeProfiles 里有没有它"。
+默认 profile 是 `default`。
+
+**@Import / ImportSelector**
+`@Import` 是"点名的类"，不扫包；`ImportSelector` 是"用代码决定导入谁"。
+`DeferredImportSelector` 更晚执行——在所有用户配置解析完之后，这是自动配置能在"用户配置之后"生效的关键。
+
+**@Lazy**
+延迟的是**对象创建**：注入一个代理，第一次调用方法时才真正 `getBean`。
+
+## 教学专用词汇（续）
+
+**参照仓（reference repo）**
+真实 Spring Framework 6.2.x 的只读快照，放在仓库外（`~/refs/spring-framework-6.2.x`），
+由 `scripts/refs.sh` 拉取。每章"🔍 真实 Spring 里它在哪"的行号都出自它——
+记录 commit hash 是硬要求，否则行号会漂。
+
+**六道闸门**
+`mvn verify` 里硬性阻断构建的六类检查：格式、依赖、静态分析、覆盖率、分层依赖、测试。
+它们不是"代码规范建议"，是"过不了就别提交"。
+
+**真红（red test）**
+**真的跑出来的**失败输出。正文里贴的报错必须是实测的堆栈，不许手写编造——
+这是本书"先写会红的测试"支柱的证据形态。
+
+**传播（propagate）**
+`scripts/propagate.sh`：在第 N 章发现前序章节的正确性 bug 时，把修复逐章 apply 到后续快照，
+冲突即停（提示需要人工介入）。不允许只修当前章——那会让"历史快照"变成"历史错误"。

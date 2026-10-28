@@ -609,6 +609,8 @@ boolean isRuntime();                                                    // 我�
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-25-章`](../appendix/B-answers.md#第-25-章)。
+
 **6.1** `MethodBeforeAdviceInterceptor` 传给增强的第三个参数是 `invocation.getThis()`（代理对象），
 而不是目标对象。假设你在增强里写 `log.info("{} 调用了 {}", target.getClass().getSimpleName(), method.getName())`，
 日志里会打出什么？要打出业务类名，有哪两条路？（提示：一条靠 `AopProxyUtils` 解包，一条靠

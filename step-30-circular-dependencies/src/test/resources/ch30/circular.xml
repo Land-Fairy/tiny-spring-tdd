@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	   xsi:schemaLocation="http://www.springframework.org/schema/beans https://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<!-- 第 30 章的循环依赖：alpha -> beta -> alpha。两边都是 setter 注入，所以「理论上」可解。 -->
+	<bean id="alpha" class="org.springframework.samples.ch30.Alpha">
+		<property name="beta" ref="beta"/>
+	</bean>
+
+	<bean id="beta" class="org.springframework.samples.ch30.Beta">
+		<property name="alpha" ref="alpha"/>
+	</bean>
+
+</beans>

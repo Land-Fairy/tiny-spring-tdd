@@ -562,6 +562,8 @@ DependencyDescriptor: line 13/15 (87%)
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-20-章`](../appendix/B-answers.md#第-20-章)。
+
 1. **`@Value` 的岔口为什么用「注解给没给值」而不是「字段类型是不是 String」？**
    举一个两种判断结果相反的例子，说明错的那种会怎么坏。
    （提示：`@Autowired` 标在 `String` 字段上时，它要的到底是 Bean 还是值？）

@@ -656,6 +656,8 @@ private boolean factoryContainsBean(ConfigurableBeanFactory beanFactory, String 
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-22-章`](../appendix/B-answers.md#第-22-章)。
+
 1. **为什么条件必须在图纸阶段判断，而不能在创建阶段判断？** 请构造一个反例：如果 `preInstantiateSingletons` 遍历到某个图纸时才发现「它其实不该存在」，调用方会看到什么？再想：这个反例能不能靠 `getBean` 里再判一次条件来修？
 2. `removeIfConditional` 把图纸删掉了。如果条件为真的判断本身**依赖图纸表**（比如「容器里已经有 `dataSource` 才生效」），那么在遍历过程中删图纸、加图纸会带来什么后果？真实 Spring 的 `:435` 那一段（再扫一遍）解决了哪个问题、没解决哪个问题？
 3. 我们的 `@Profile({"dev","test"})` 是「或」。要实现「与」得写自定义 `Condition`。请写出那个 `Condition` 的实现，并解释为什么真实 Spring 不把「与」做成默认语义（提示：想想 `@Profile` 最常见的用法）。

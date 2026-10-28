@@ -615,6 +615,8 @@ registerBeanPostProcessors(beanFactory, nonOrderedPostProcessors);
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-16-章`](../appendix/B-answers.md#第-16-章)。
+
 **Q1**：`PriorityOrdered` 为什么不直接定义成 `getOrder()` 返回 `Integer.MIN_VALUE` 的 `Ordered`，而要单独做一个空接口？
 
 **Q2**：如果两个 `PriorityOrdered` 的 `getOrder()` 都返回 0，它们的执行顺序有保证吗？请在真实 Spring 的 Javadoc 里找到依据，并说明为什么「不保证」在设计上是可接受的。

@@ -451,6 +451,8 @@ finally {
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-27-章`](../appendix/B-answers.md#第-27-章)。
+
 1. 为什么 `releaseTarget` 必须放在 `finally` 里，而不是 `return` 之前？如果目标源是
    `CommonsPool2TargetSource`，漏还一次的具体后果是什么？
 2. `getTarget()` 返回 `T`，`releaseTarget` 收 `Object`。如果两个都写成 `T`，`invoke` 里会遇到什么麻烦？

@@ -7,6 +7,55 @@
 
 ---
 
+## 第 00 章
+
+### B-00-1　`getBean()` 上的断点被命中 300 次，怎么缩小范围？
+
+**别在中转站下断点，去终点下。** 一次 `refresh()` 里 `getBean` 会被框架自己反复调用三百次，但你真正关心的事件只有一个——**某个对象被造出来**。所以往下走：
+
+- `createBean` 入口（只在真的要创建时命中，命中次数直接掉到个位数）；
+- 构造器上（对象只会造一次）；
+- 单例池的 `put` / `addSingleton`（成品入库那一刻）；
+- 或者在 `getBean` 那行加条件断点 `beanName.equals("orderService")`——条件是**字符串**，比数次数便宜得多。
+
+配合 IDEA 的 `Drop Frame`：从深处发现「这次不是我要的那次」时回退到上一层，不必重跑整个容器。
+
+### B-00-2　`Parameter.isNamePresent()` 返回 `false` 说明什么？
+
+说明编译时**没有** `-parameters`，class 文件里没有 `MethodParameters` 属性，参数名已经退化成 `arg0`、`arg1`。
+
+如果框架在这种情况下**静默**退化成按位置匹配，bug 会藏在三个地方：① 有人给构造器**中间**插了一个参数，位置整体错位；② 两个参数**类型相同**（比如两个 `String`），注入错了不会抛任何异常，错误在业务逻辑里才显形；③ 换个编译器/构建工具版本，属性写法变了，行为跟着变却没有 diff。
+
+所以第 4 章的选择是**大声失败**：拿不到参数名就抛 `BeanDefinitionStoreException`，消息里直接给出「加 `-parameters`」的修复提示。可失败的框架比「能跑但偶尔跑错」的框架好得多。
+
+### B-00-3　为什么 `-parameters` 必须配在 `maven-compiler-plugin`，不能放进 surefire 的 `argLine`？
+
+因为两者改的是**不同阶段的东西**：
+
+- `-parameters` 是 **javac 的编译期开关**，作用是让编译器把参数名写进 class 文件（`MethodParameters` 属性）。它必须出现在生成字节码的那一步——`maven-compiler-plugin` 的 `<configuration><parameters>true</parameters></configuration>`。
+- surefire 的 `argLine` 是**运行期 JVM 参数**。到那时候字节码早已生成、参数名早已丢掉，放进去对已经编译好的 class 一点用都没有（而且 `java` 根本不认识 `-parameters` 这个选项）。
+
+一句话判据：**改的是生成物，还是运行环境？**
+
+### B-00-4　把参照仓放进本书仓库，除了体积，还有什么每天都会遇到的麻烦？
+
+**它会污染每一次「看仓库」的动作。** `git status`、`git diff`、`git add .`、IDE 索引、全文搜索、`grep`/`find` 全都会被两万多个不属于本书的文件淹没；更危险的是某次 `git add .` 把参照仓一起提交，diff 体积瞬间爆炸，code review 直接不可用。
+
+所以本书的做法是：参照仓放在**仓库外**（`~/refs/spring-framework-6.2.x`），仓库里只保留取它的脚本 `scripts/refs.sh`。要复现某一章的对照，跑一次脚本即可——**内容不进仓库，能力进仓库**。
+
+### B-00-5　没有 CGLIB，哪个场景**必须**改变设计？丢了什么？
+
+最典型的是 `@Configuration` 的 **full 模式**。真实 Spring 用 CGLIB 生成配置类子类，把每个 `@Bean` 方法覆写成「先问容器有没有、没有再调方法体」，于是配置类内部 `a()` 调 `b()` 拿到的仍然是容器里那个单例。
+
+没有 CGLIB 时只有两条路：
+
+1. **JDK 动态代理**——行不通。配置类通常没有实现任何接口，而 JDK 代理只能代理接口；更致命的是 `b()` 是**类内自调用**，代理根本接不住（第 28 章的失效场景在配置类上重演）。
+2. **改变设计**——本书的选择：给容器加一个「拦截工厂方法调用」的机制，并**手写一个最小的类文件生成器**，只为配置类这一种受控场景生成子类（第 21 章）。生成器只支持「无分支的方法体」这类极窄的子集，换来的是「不引入 CGLIB 依赖、也不需要读者先学 ASM」。
+
+丢掉的是**通用的对象增强能力**：对任意用户类造子类代理这条路没了。后果在第 24 章明说——本书的 AOP 只有 JDK 代理，**没有实现接口的 Bean 无法被增强**（真实 Spring 会退回 CGLIB）；`final` 类、`final` 方法、`private` 方法的失效场景也因此比真实 Spring 更早暴露（第 29 章）。这不是省事，是**把代价写在明处**。
+
+---
+
 ## 第 01 章
 
 ### B-01-1　`register` 改成收 `Class<?>`，容器要多做哪三件事？
@@ -3258,3 +3307,813 @@ but has eventually been wrapped ...
 
 这也是为什么「自调用失效」是四个高频场景里唯一**没有其他迹象**的一个：它不报错、不警告，
 业务完全正确，只是增强静默消失。唯一的排查手段是运行时观察。
+
+## 第 30 章
+
+### B-30-1 为什么「提前暴露」的窗口只能在「实例化之后、填充属性之前」？
+
+**下界（不能再早）**：提前暴露的东西必须是「一个已经存在的对象」。实例化之前没有对象，
+`ObjectFactory` 交出去的只能是「第二次创建」——那会造出两个实例，比环更糟。
+
+**上界（不能再晚）**：属性填充期间就会用到它。`alpha` 填 `beta` 时，`beta` 填 `alpha` 时，
+如果此刻 `alpha` 还没被登记为「可提前暴露」，第二次 `getBean("alpha")` 就只能走向「再创建一次」，
+被「创建中」检测拦下（红一就是这样炸的）。填充之后才登记，等于错过了唯一一个「别人会来要它」的时刻。
+
+**为什么这两条推出「必须用工厂而不是对象」**：窗口的上界卡在 `populateBean` 之前，而
+「要不要包代理」这个决定只能由 `postProcessAfterInitialization` 给出，它排在 `initializeBean` 里、
+也就是 `populateBean` **之后**。于是：
+
+> 要交出去的时刻，代理还不存在；
+> 而代理只可能在之后才被造出来。
+
+「现在交对象」只能交出裸对象；「交出一个以后能算出对象的东西」才能交出代理。这就是第三级缓存的全部理由。
+换句话说，**第三级缓存不是「多存一份」，而是把「要不要包代理」这个决定推给了一个信息更全的时刻**。
+
+### B-30-2 用 `lock()` 而不是 `tryLock()`，能构造出什么死锁？
+
+先说锁保护的是什么：`singletonLock` 保护三个 Map 的一致性，而**创建线程在整个创建过程中一直持有它**
+（`getSingleton(name, factory)` 把创建动作包在锁里）。
+
+死锁需要「等待图里出现环」，所以光有两个线程不够，得让它们互相等：
+
+| 时刻 | 线程 T1 | 线程 T2 |
+| --- | --- | --- |
+| t1 | `getBean("alpha")`，拿到 `singletonLock`，开始创建 `alpha` | `getBean("gamma")`，排队等锁 |
+| t2 | `alpha` 填充属性需要 `gamma` → `getBean("gamma")` → 等锁（T2 已持有） | 拿到锁，开始创建 `gamma` |
+| t3 | T1 阻塞在锁上 | `gamma` 填充属性需要 `alpha` → `getSingleton("alpha", true)` → `lock()` |
+| t4 | 等 T2 | 等 T1 |
+
+t4 就是环：T1 要锁（被 T2 持有），T2 要「T1 把 alpha 造完」（不可能，T1 正阻塞）。
+两边永远等下去。
+
+`tryLock()` 在这一步把 `null` 返回给 T2，语义是「**我不知道 alpha 的早期引用，因为我不是它的创建线程**」。
+T2 于是走正常路径：要么等到 alpha 造完（拿到成品），要么在它自己的线程里重新创建 alpha ——
+无论哪种，等待图里都没有环了。
+
+这条缺陷值得记住的原因不是「我们写错了」，而是：**单线程测试永远不会发现它**。
+只有在「并发创建」与「循环依赖」同时出现时才触发，而这恰好是真实应用里最难复现的场景之一。
+我们在缺陷表里如实记录了它。
+
+**第 31 章的修正**：上面这张时序表描述的是**真实 Spring 的两把锁**（创建用
+`synchronized (singletonObjects)` / 早期引用用 `singletonLock`），不是我们第 30 章的代码——
+我们只有**一把**可重入锁，两个线程不可能同时持有它，所以第 30 章的单锁实现**死锁不了**，
+它只是把所有创建都串行了。第 31 章 3.5 节把这份「串行」量了出来（两个 200 毫秒的无关 Bean
+总耗时 ≥ 350 毫秒），并用「早期引用路径不进创建锁 + 令牌制」去掉了那次无谓的排队。
+真正需要 `tryLock` + 宽松创建的是**细粒度**设计，也就是真实 Spring 6.2 的处境。
+
+### B-30-3 两个 `Alpha@15a902e7` 为什么打印一样却不是同一个对象？
+
+`Object.toString()` 打印的是 `类名@Integer.toHexString(hashCode())`，而 `hashCode` 默认实现返回
+identity hash，**由对象决定、但因对象不同而不同**——除非……代理把 `toString()` 转发给了裸对象。
+
+红四里的情况正是后者：池子里放的是 `proxy`，注入方手里是 `raw`。调用 `proxy.toString()`
+→ `JdkDynamicAopProxy` 转发 → `raw.toString()` → 打印 `raw` 的身份。于是两条字符串一模一样，
+`==` 却是 false。
+
+如果业务重写了 `hashCode`/`equals`（例如按主键比较），这条 bug 会换一种更难查的形式暴露：
+
+1. **当 Map 键**：`proxy` 与 `raw` 被当成同一个键（equals 相等、hash 相同），先 put 后 put 会互相覆盖，
+   于是「我明明放了两个不同的实例」这种困惑出现；
+2. **当锁对象**：`synchronized (proxy)` 与 `synchronized (raw)` 是两把不同的锁，
+   互斥彻底失效——这是最危险的一种，因为它只在并发下表现为「数据偶尔坏掉」；
+3. **Set 去重**：两个身份被合并成一个，取出来的那个可能是裸对象。
+
+所以「打印一样」不是巧合，是**代理模型的一个可观测特征**：任何转发型代理都会让
+「身份（identity）」与「表现（behavior）」脱钩。
+
+### B-30-4 忘了清 `earlySingletonObjects`，会怎样？
+
+正常路径下**看起来没问题**：`getSingleton(name, true)` 的第一步就是查 `singletonObjects`（一级缓存），
+成品在里面就直接返回，二级缓存里的陈旧条目永远轮不到。
+
+问题出在「一级缓存里没有这个名字，但它曾经有过」的时刻。最直接的复现场景：
+
+1. 定义 `alpha` ↔ `beta` 的环，`refresh()` → 环解开，池子里是成品；
+2. 手动调用 `context.getBeanFactory().destroySingleton("alpha")`（销毁时只清一级缓存）；
+3. 再次 `getBean("alpha")` —— 创建过程中 `beta` 来要 `alpha` 的早期引用，
+   `earlySingletonObjects` 里还留着**上一轮**那个裸对象，于是被交出去；
+4. 结果是：池子里是这一轮的新对象，`beta` 手里是上一轮的旧对象。第 29 章场景六重演，
+   而且这次连 `getEarlyBeanReference` 都没被调用（根本不需要算）。
+
+这就是「清理责任分散在多个方法里」的典型代价：`addSingleton` 与 `destroySingleton` 都要清，
+漏掉任何一处都不会在 happy path 上暴露。真实 Spring 把二、三级的清理写成一组固定动作
+（`:159` 附近三行），并且 `removeSingleton` 也一并处理。
+
+### B-30-5 `prototype` 为什么没有这套机制？意味着 prototype 的环无解吗？
+
+**没有机制的原因是结构性的**：
+
+- 三级缓存的前提是「一个名字对应一个实例」——`singletonObjects` 的键就是 Bean 名。
+  prototype 每次 `getBean` 都产生新实例，没有「这个名字的那个实例」可言；
+- 于是也就没有「池子里的身份」问题：没有池子，就不存在「注入方与池子里是不是同一个」，
+  第 29 章场景六对 prototype 无意义；
+- 「提前暴露」对 prototype 更是无意义的：即使暴露了，下一次注入还是该新建一个，
+  暴露的那个实例谁也不用。
+
+**但这不等于无解**——它是「应该报错」而不是「应该解开」。真实 Spring 对 prototype 做的是**检测**：
+`AbstractBeanFactory` 用 `ThreadLocal<Object> prototypesCurrentlyInCreation`（`:176`）
+记录当前线程正在创建的 prototype，`beforePrototypeCreation`（`:1200`）登记、
+`afterPrototypeCreation`（`:1225`）摘除，`doGetBean` 在 `:267` 检查
+`isPrototypeCurrentlyInCreation(beanName)` 并抛 `BeanCurrentlyInCreationException`。
+
+换句话说：**单例的环是可以解的（提前暴露 + 代理延迟），prototype 的环是不可解的（环里每一步都要求新实例）**。
+成对的生命周期方法在单例上是「解环的工具」，在 prototype 上是「把栈溢出换成一句人话」的工具。
+
+我们只在单例上做了 `beforeSingletonCreation`/`afterSingletonCreation`，
+prototype 完全没做——所以我们的 prototype 环会以 `StackOverflowError` 结束（缺陷表已记录）。
+补法很短：照 `beforeSingletonCreation` 的样子加一个 `ThreadLocal<String>`（或 `Set`）即可。
+
+## 第 31 章
+
+### B-31-1 删掉「③ 再读一遍」，能稳定触发什么？
+
+**时序**（把 T1 卡在构造器里）：
+
+1. T2 调 `getBean("alpha")` → 锁外读 `singletonObjects` → `null`（T1 还没造完）；
+2. T2 抢锁失败，阻塞（T1 正持锁创建）；
+3. 放行 T1：`addSingleton` 放回、解锁；
+4. T2 拿到锁——此时若没有 ③，它会直接 `beforeSingletonCreation` + 创建。
+
+第 4 步是致命的：T1 已经 `afterSingletonCreation`（名字从「创建中」集合里摘掉了），
+所以 T2 自己的 `beforeSingletonCreation` **不会**报环，它会安安稳稳地再造一个。
+最后 `addSingleton` 的 `putIfAbsent` 撞上 T1 放进去的对象，抛
+`IllegalStateException: ... there is already object [...] bound`。
+
+**为什么八线程那次实验反而可能「看起来只创建一次」**：八个线程里，只要有一个的
+「锁外读」发生在 T1 放回**之后**，它的快路径就直接命中并返回了，压根不进创建流程。
+于是「创建次数」这个计数可能仍然是 1，缺陷却已经存在——它换了个出口：**异常**而不是计数。
+这正是我们让 `addSingleton` 冲突即抛（而不是静默覆盖）的原因：把机会主义的静默错误
+变成必然的响亮错误。测试里断言 `CREATED == 1` 只在「T1 还卡在构造器里」那一刻有效，
+后面那段要用「八个线程拿到同一个对象」+「没有异常」联合保证。
+
+### B-31-2 静默覆盖会让哪些现象难以排查？
+
+1. **`registerSingleton` 二次注册**：先注册 `a`，别的 Bean 已经注入了 `a`；再注册 `b` 覆盖同名。
+   于是「池子里是 `b`、注入方手里是 `a`」——两个对象，一个名字。排查时看日志「容器里明明是 b」，
+   但线上行为符合 `a`。这和第 29 章场景六是同一种病：**身份与表现为敌**。
+2. **`@Bean` 方法名与组件扫描撞名**：`@Bean public Foo foo()` 与一个默认名为 `foo` 的
+   `@Component` 共存。后者先注册、后者被覆盖（或反过来），表现是「我改了 `@Bean` 的定义却没生效」。
+   顺带一个值得知道的历史：Spring Framework 的 `allowBeanDefinitionOverriding` 默认是 `true`
+   （允许覆盖，只留一条 debug 日志），而 Spring Boot 2.1 起默认关掉并在覆盖时抛
+   `BeanDefinitionOverrideException`——正是为了让上面这类问题**响亮**起来。
+
+两个场景的共同点：覆盖发生在「别人已经拿着旧对象」之后。**能被覆盖的注册表，等于取消了
+「同一个名字永远同一个对象」这个承诺。**
+
+### B-31-3 怎么观察 ④ 分支的 `null` 窗口？真实 Spring 为什么能关掉它？
+
+**观察方法**：让工厂在求值过程中慢下来（例如内部 `Thread.sleep(200)`），两个线程同时
+`getSingleton("alpha")`。抢到令牌的线程会阻塞在工厂里；另一个线程走到 ④，读
+`earlySingletonObjects` 拿到 `null`。断言「一个非 null、一个 null，且 `evaluations == 1`」。
+这个窗口的宽度 = 工厂的执行时间，所以只要工厂够慢就必然可观察，不需要靠运气。
+
+**真实 Spring 关掉它的方式**：整段早期引用逻辑在 `tryLock` 成功的临界区里
+（`:219-252`），而且 `remove` 与 `put` 都在锁内：
+
+```java
+singletonObject = singletonFactory.getObject();
+if (this.singletonFactories.remove(beanName) != null) {
+    this.earlySingletonObjects.put(beanName, singletonObject);
+}
+```
+
+锁保证「拿令牌 → 求值 → 落库」是一条原子序列，别的线程要么在抢锁，要么拿不到锁返回 `null`——
+它不会读到「令牌已被抢、结果尚未落库」这种半成品状态。
+
+注意真实 Spring 的 `remove` 放在 `getObject()` **之后**，并且要检查返回值：如果这期间有别的
+路径（例如 `addSingleton` 清理）已经把工厂摘掉，那这次求值的结果就该丢弃、改读池子。
+这是「锁内也要处理被外部改动」的典型写法，我们的令牌制（先 `remove` 再求值）用另一种方式
+避免了同类问题——代价就是那个 `null` 窗口。
+
+### B-31-4 只改 `beforeSingletonCreation` 一个方法，能修掉「误判成环」吗？
+
+**不能，缺两样东西：状态和等待原语。**
+
+1. **缺状态**：`singletonsCurrentlyInCreation` 是 `Set<String>`，它只知道「这个名字有人在创建」，
+   不知道**是谁**。要区分「我自己重入（真环）」与「别人正在创建（假环）」，必须有
+   「名字 → 线程」的映射。真实 Spring 用的是 `currentCreationThreads`（`DefaultSingletonBeanRegistry:118`，
+   `ConcurrentHashMap<String, Thread>`），并且在 `singletonFactory.getObject()` 前后成对 `put`/`remove`（`:371`/`:376`）。
+   无论哪个字段，都要求**改字段**，题设不允许。
+2. **缺等待原语**：就算知道了「是别的线程在创建」，接下来要么抛异常、要么等。
+   「等」需要条件变量（真实 Spring：`lenientCreationFinished`，`:109` 声明、`:330` `await()`），
+   还得在醒来后**复读池子**（因为等的东西已经造好了）。忙等（`while` 循环 + `sleep`）能工作但
+   会把 CPU 烧掉，而且难以给出超时语义。
+
+结论：这说明**并发缺陷很少能靠「改一个方法」修好**，因为它们通常是「状态设计」的问题。
+第 30 章的三级缓存同理——它不是加了三个变量，而是把「什么时候交什么」这件事重新建模了。
+
+### B-31-5 「预期内的串行」与「意外的串行」
+
+分界线只有一条：**串行的范围是否与逻辑依赖一致。**
+
+**预期内**：
+
+- 3.5 节两个无关 Bean 被全局锁串行——已知代价，买的是「不可能死锁」。它发生在容器内部、
+  与业务语义无关，是**实现选择的固定开销**；
+- `preInstantiateSingletons()` 单线程顺序创建——启动阶段的确定性优先，且总时长与 Bean 数量线性相关。
+
+**意外**：
+
+- 某个 Bean 的构造器里做远程调用/查库（每次 300ms），于是**所有**后续 Bean 的创建都被它拖住。
+  这里的荒谬在于：A 的构造器慢，凭什么让无关的 Z 等？——**串行的范围（全局）远大于逻辑依赖
+  （只有依赖 A 的 Bean 才需要等 A）**。
+- 创建回调里触发别的 Bean 的创建（`FactoryBean#getObject()` 里 `getBean(...)`、`@Bean` 方法体里
+  `getBean(...)`）。在细粒度锁下，这是死锁的温床：持锁者在等一个新锁，而新锁的持有者可能正在
+  等第一个锁。真实 Spring 6.2 的宽松创建（`:268-288`）就是为了把这类「回调里再取 Bean」
+  从「死等」改成「绕开锁、直接造」。
+- 销毁期间取 Bean：`singletonsCurrentlyInDestruction` 检查（`:302`）就是为了让这种「意外串行」
+  直接变成异常，而不是变成半个容器。
+
+判断方法很简单：**把等待图画出来。** 如果边与依赖图一致，串行是预期的；如果边出现在两个
+没有依赖关系的 Bean 之间，那是意外——它要么是实现代价（要能被量出来，如 3.5 节），
+要么是缺陷（要么改锁的粒度，要么改代码结构）。
+
+## 第 32 章
+
+### B-32-1 prototype 化的 `Probe`：代理还会出现吗？环还能解吗？
+
+**代理还会出现，每一遍都出现。** 第二个测试跑两遍链，每遍都走到
+`applyBeanPostProcessorsAfterInitialization`，而 `AdvisorAutoProxyCreator` 只问两件事：
+「这个类命中了 Advisor 吗」「这个对象是基础设施类吗」——它**不看 scope**。
+所以 prototype 每一遍都会拿到一个新代理。区别只在于这个代理**不入池**：
+`addSingletonFactory` 与第 ⑬ 步的早期引用替换都在 `isSingleton()` 分支里，prototype 直接跳过。
+
+**环解不了。** 三级缓存的三张表全是「按 beanName 记单例」的，prototype 没有名字级的存储，
+也就没有「提前暴露」这件事可做。于是 `A` 的构造器要 `B`、`B` 的构造器要 `A` 时，只能一层层造下去，
+直到栈溢出（第 29 章实测：1024 层 `StackOverflowError`）。
+
+真实 Spring 的做法是**只检测不解决**：`doGetBean:267` 的
+`isPrototypeCurrentlyInCreation(beanName)` 直接抛 `BeanCurrentlyInCreationException`。
+这条分支的存在本身就是个提示：**prototype 的环是错误，不是需要被兼容的用法**。
+
+### B-32-2 记录器注册在自动代理创建器之后，`beforeInitialization` 看到的是谁？
+
+**一定是裸对象。**
+
+推理只用到 §3.5 的四步顺序：
+
+1. `before` 阶段（⑫b）在 `after` 阶段（⑫d）**之前**；
+2. `AdvisorAutoProxyCreator` 只在 `postProcessAfterInitialization` 里换对象
+   （它的 `postProcessBeforeInitialization` 是恒等）；
+3. 所以在 `before` 链里跑的时候，无论如何排列，代理还没被造出来。
+
+差别只出现在 `after` 链里——而那正是本章两个探测器的设计：
+
+| 探测器的注册位置 | 在 `after` 链中的位置 | 看到的东西 |
+| --- | --- | --- |
+| 自动代理创建器**之前** | 先跑 | 裸对象（`afterInitialization:raw`） |
+| 自动代理创建器**之后** | 后跑 | 代理（`afterInitialization:proxy`） |
+
+这也是日志里那两行相邻记录的由来。它们不是「两个阶段」，而是**同一个阶段的两种视角**。
+
+### B-32-3 两个 `getSingleton` 为什么必须分开？合成一个会怎样？
+
+**合成一个，环会在第 ⑦ 跳炸。**
+
+`getSingleton(name, factory)` 的第一件事就是 `beforeSingletonCreation(beanName)`（登记「我在创建」）。
+环里的第二个 `getBean` 若走到这里，名字已经在集合里 → 抛 `BeanCurrentlyInCreationException`。
+而这个环本来是**能解**的：早期引用就在 `singletonFactories` / `earlySingletonObjects` 里等着。
+
+所以快路径 `getSingleton(name)`（`DefaultSingletonBeanRegistry:189`）不是优化，它是**语义上必须**
+的一步：它回答的是「有没有现成的（含早期引用）」，而不是「给我造一个」。第 30 章把这件事讲成了
+「检测是对的，结论错了」——检测本身没错，错在让一条本可以走快路径的调用走到了检测面前。
+
+还有第二个代价：合成之后每次 `getBean` 都要进锁，第 31 章那条「锁外读」的快路径也没了。
+真实 Spring 同样是两个方法（`:197` 只查、`:257` 查不到就造）。
+
+### B-32-4 去掉第 ⑬ 步的 `initializedBean == bean` 会怎样？
+
+**会出现「池子里是 A、注入方手里是 B」的分裂。**
+
+条件的作用是区分两种情况：
+
+| 情形 | `getEarlyBeanReference` 的返回 | `initializedBean == bean` | 正确做法 |
+| --- | --- | --- | --- |
+| 没人要过早期引用 | 没调用 | `true`（after 阶段也没换对象） | 放 `initializedBean` |
+| 有人要过，早期引用就是代理 | 代理 | `false`（`bean` 是裸对象） | 放**早期引用**（`initializedBean = earlySingletonReference`） |
+| 有人要过，但后处理器在 after 阶段才换 | 裸对象 | `false` | 两者不一致——这是需要被暴露出来的病态情形 |
+
+去掉条件，第二行就会出错：池子里放 `initializedBean`（可能是 after 阶段新造的另一个代理），
+而环里的注入方手里握着早期引用——两个不同的对象同一个名字。
+
+真实 Spring 用**同一套思路但换个方向**：`AbstractAutoProxyCreator` 在 `getEarlyBeanReference:265`
+把裸对象记进 `earlyBeanReferences`，然后在 `postProcessAfterInitialization:315` 里
+
+```java
+if (this.earlyBeanReferences.remove(cacheKey) != bean) {
+    return wrapIfNecessary(bean, beanName, cacheKey);
+}
+return bean;   // 早期引用已经给过代理，这里不再包第二次
+```
+
+即「**同一个 Bean 只被包一次代理**」——我们的 `initializedBean == bean` 与它的
+`remove(cacheKey) != bean` 是同一件事的两种写法：都在问「这个对象是不是已经被包过了」。
+
+### B-32-5 那张顺序表：哪几行是契约，哪几行是巧合？
+
+**属于契约（可以依赖，文档明确承诺）：**
+
+- 属性填充（依赖注入）**先于** `Aware` 回调 —— 否则 `afterPropertiesSet` 里读不到协作者；
+- `Aware` 回调 **先于** `BeanPostProcessor.postProcessBeforeInitialization`；
+- `postProcessBeforeInitialization` **先于** `InitializingBean.afterPropertiesSet`；
+- `afterPropertiesSet` **先于** 自定义 `init-method`（接口契约优先于配置）；
+- `postProcessAfterInitialization` **最后**。
+
+Spring 参考文档的「Lifecycle Callbacks」一节把这五条按此顺序列成一张表，属于对外承诺。
+
+**属于实现巧合（别依赖）：**
+
+- **「代理一定诞生在 after 阶段」**。真实 Spring 还有更早的入口：
+  `InstantiationAwareBeanPostProcessor#postProcessBeforeInstantiation` 可以在**实例化之前**
+  直接返回一个对象、整个 `doCreateBean` 被短路（`createBean` 里的 `resolveBeforeInstantiation:518`）。
+  本书没有这个扩展点，所以「代理只在 after 阶段出现」只对本书成立。
+- **`Dependency` 先于 `probe`**：那是图纸注册顺序决定的，不是契约。
+- **两个探测器在日志里相邻**：那是注册顺序决定的。
+- **`beforeInitialization` 只出现一次**：真实 Spring 的 BPP 链里，同一个对象可能被多个后处理器
+  依次看到（`CommonAnnotationBeanPostProcessor`、`AutowiredAnnotationBeanPostProcessor` 等），
+  日志条数取决于注册了多少个。
+
+判断方法：**问「换个实现还能不能保证」。** 能保证的是契约；只有当前这份代码能保证的是巧合。
+
+## 第 33 章
+
+### B-33-1 `FatalBeanException` 与「可恢复异常」的边界在哪？
+
+**边界不在「严重程度」，而在「换一份输入、再跑一次，结果会不会变」。**
+
+- `FatalBeanException` 管的是**同一份代码 + 同一份配置再跑一次仍然失败**的错：图纸里的类不存在、属性没有 setter、XML 语法错。这类错的修复动作是**改代码或改配置**，重试是没有意义的。
+- 非 fatal 的错，修复动作可能发生在**程序之外**：`TypeMismatchException` 可能来自运维改错了一个环境变量、也可能来自外部请求参数；`NoSuchBeanException` 可能来自某个 profile 没激活。
+
+两个具体例子：
+
+1. **`BeanDefinitionStoreException`（fatal）该被重试逻辑忽略吗？** 就异常本身而言——是，它不该被重试。但注意区分**异常的责任归属**与**外层动作的重试策略**：如果图纸来自远程配置中心，外层「重新拉取配置」是合法动作，重试的是「拉取」这个动作，不是「重新解释同一份坏文本」。**fatal 描述的是「谁的错」，不是「能不能重试」。**
+2. **反例：`NoSuchBeanException`。** 我们刻意让它直接继承 `BeansException` 而不是 `FatalBeanException`——因为第 20 章的 `ObjectProvider` / `@Autowired(required = false)` 把「没有这个 Bean」当成**正常路径**。把它标成 fatal，等于把一条正常的控制流塞进「致命错误」的类别里。见 B-33-2。
+
+### B-33-2 如果 `NoSuchBeanException` 也继承 `FatalBeanException`，会发生什么？
+
+两个后果，一个是调用方的、一个是语义的。
+
+**后果一：`catch (FatalBeanException)` 失去分辨力。** 调用方写这个 `catch` 是为了「启动期的配置错误一律 Fail Fast 并打一条告警」。如果「可选依赖缺失」也被算作 fatal，那么每次正常的可选依赖缺席都会触发一条致命告警——**告警很快就会被忽略，于是真正的致命错误也被忽略**。这是异常分类最常见的失败模式：分类太粗，使用者就会放弃分类。
+
+**后果二：语义倒挂。** `NoSuchBeanException` 回答的是「**这一次查询没有结果**」；`FatalBeanException` 回答的是「**程序本身写错了**」。这两句话的主语不同：前者说的是「查询」，后者说的是「程序」。
+
+看第 20 章 `ObjectProvider` 的实现就明白了：
+
+```java
+@Override
+public T getIfAvailable() {
+	try {
+		return getObject();
+	}
+	catch (NoSuchBeanException ex) {   // 我们「预期」这个异常会出现
+		return null;
+	}
+}
+```
+
+这段代码读起来是通顺的：**「允许没有」是我预期的一种结果，所以我在本地消化掉它。** 如果 `NoSuchBeanException` 是 fatal，这段代码就变成「我在本地消化一个致命异常」——读代码的人会停下来问「致命错误也能吞掉？」，而这恰恰是本章第 1 节「错误答案一」的翻版。
+
+### B-33-3 「我们的 → 普通的 → 我们的」交替三层，`contains` 会漏吗？
+
+**不会漏，但会让 `relatedCauses` 里的东西漏掉——那是另一件事。**
+
+手推一遍 `outer.contains(X)`（`outer` 是 `NestedRuntimeException`）：
+
+| 步骤 | 代码位置 | 发生什么 |
+| --- | --- | --- |
+| 1 | `exceptionType.isInstance(this)` | 先查自己 |
+| 2 | `cause instanceof NestedRuntimeException` | `plain` 是普通异常 → 不成立 |
+| 3 | `while (cause != null)` | 检查 `plain`，然后 `cause = plain.getCause()` = `inner`（我们的） |
+| 4 | 循环里继续 | 对 `inner` 只做 `isInstance` 检查，**不递归它的 `contains`** |
+| 5 | `inner.getCause()` | 继续往下，直到 `null` 或自指闸门 |
+
+关键在第 4 步：**`while` 循环对「我们的异常」只做 `instanceof`，不递归**。为什么不影响正确性？因为 `NestedRuntimeException.contains` 本身也只是沿同一条 `getCause()` 链走，两条路径看到的是同一条链——递归只是省了手写循环，不是多查了一层。
+
+**真正会漏的是 `relatedCauses`。** 我们的 `contains` 完全不看它：
+
+```java
+// 我们的实现：只查 cause 链
+public boolean contains(Class<?> exceptionType) { ... }
+```
+
+而真实 Spring 的 `BeanCreationException` 专门覆写了 `contains()`（`:201-215`），把 `relatedCauses` 也遍历一遍：
+
+```java
+@Override
+public boolean contains(@Nullable Class<?> exClass) {
+	if (super.contains(exClass)) {
+		return true;
+	}
+	if (this.relatedCauses != null) {
+		for (Throwable relatedCause : this.relatedCauses) {
+			if (relatedCause instanceof NestedRuntimeException nested && nested.contains(exClass)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+```
+
+于是同一句 `failure.contains(SomeException.class)`，在真实 Spring 里能查到「其余候选为什么也不行」，在我们的实现里查不到——这叫**假阴性**，已写进本章缺陷表第 5 条。**交替三层不会让你漏，`relatedCauses` 会。**
+
+### B-33-4 为什么 `getRootCause()` 返回 `null`，而 `getMostSpecificCause()` 返回自身？
+
+从**调用方场景**倒推，两个方法的用户根本不是同一类人。
+
+`getRootCause()` 的典型用法是**判断**：
+
+```java
+Throwable root = failure.getRootCause();
+if (root != null && root instanceof XxxException) { ... }   // 「我有没有被包过？」
+```
+
+如果它返回自身，那么 `root != null` 永远成立，「有没有 cause」这个判断就**失去了表达能力**——你不得不再补一句 `root != this`，而这句判断在真实代码里几乎没人写对。**返回 `null` 是在保护「有没有」这个信息。**
+
+`getMostSpecificCause()` 的典型用法是**取用**：
+
+```java
+log.error("根因", failure.getMostSpecificCause());   // 我就要一个能打出来的异常
+```
+
+调用方不想写 `rootCause == null ? failure : rootCause`（这行三元表达式在日志里会被复制一千遍）。所以让它兜底成自身。**返回自身是在保护「调用方少写一行」。**
+
+结论：**两个方法返回类型相同、语义不同，所以不能合并。** 合并成任意一方，都会让另一方的调用方受损——这正是「同一份数据、两种问法」的典型例子，和本章第 3.2 节 `contains` 的双形态是同一种设计直觉。
+
+### B-33-5 `relatedCauses` 与 `cause` 的边界该划在哪？
+
+**`cause` 是线性的「因果链」，`relatedCauses` 是平级的「并列线索」。**
+
+| | `cause` | `relatedCauses` |
+| --- | --- | --- |
+| 关系 | A 因为 B 失败 | A、B、C 各自独立失败 |
+| 结构 | 链表，每个节点最多一个后继 | 集合，顺序无关 |
+| 能回答 | 「根因是谁」 | 「还有谁也不行」 |
+| 遍历方式 | `getRootCause()` / `contains()` | 手动遍历（或覆写 `contains()`） |
+
+如果把「多个候选都失败」也串进 `cause` 链（候选 A 的 cause 是候选 B，候选 B 的 cause 是候选 C），**`getRootCause()` 会给出一个错误结论**：
+
+```
+getRootCause() == 候选 C 的失败     ← 看起来「根因是 C」
+```
+
+但实际上三个候选是**平级**的，谁都不是谁的根因。更糟的是，「谁在链底」完全取决于 `ConstructorResolver` 遍历候选的**顺序**：换个注册顺序，报出来的「根因」就换一个。**一个会随无关顺序变化的「根因」，不是根因。**
+
+所以判据只有一条：**信息之间是否存在「因为」关系。** 有，就进 `cause`；没有，就只能进 `relatedCauses`。这也是本章 3.6 节那段接线代码的形状：
+
+```java
+UnsatisfiedDependencyException failure = new UnsatisfiedDependencyException(beanName, message.toString(),
+		causes.isEmpty() ? null : causes.get(0));   // 第一条当 cause：保持链的单线结构
+for (int i = 1; i < causes.size(); i++) {
+	failure.addRelatedCause(causes.get(i));         // 其余是并列线索
+}
+```
+
+**第一条进 `cause` 是个折中**：`cause` 只容一条，而「链」这个结构本身是有用的（能问「最深的问题」）。真实 Spring 也是这么折中的——只不过它顺手把 `contains()` 覆写成也查 `relatedCauses`，把这个折中的代价补掉了（见 B-33-3）。
+
+## 第 34 章
+
+### B-34-1 `BeanWrapperImpl` 为什么不算装饰器？
+
+被违反的是 GoF 的**第一条前提**：装饰器与被装饰者必须实现**同一个 Component 接口**，客户端只依赖那个接口。这样装饰器才能在客户端**毫不知情**的情况下替换被装饰者——「透明」是装饰器的全部意义。
+
+我们的两个类：
+
+```java
+public class BeanWrapperImpl implements BeanWrapper { ... }   // 我们的接口
+public static class MutableGreeter { ... }                     // 业务类，和 BeanWrapper 毫无关系
+```
+
+`MutableGreeter` 永远不知道自己被包了，客户端（第 05 章的 `populateBean`）依赖的是 `BeanWrapper` 而不是 `MutableGreeter`。所以它是**包装器（Wrapper）**：给一个对象套上一层新接口。
+
+合格的例子是 Servlet 的 `HttpServletRequestWrapper`——它 `implements HttpServletRequest`，与它包装的请求**同接口**，所以过滤器、监听器都照旧工作。反方向的误叫其实更常见：中文教材里凡是「给对象套一层」几乎都被叫作装饰器，因为**动作长得一样，差别只在接口**。
+
+判据一句话：**能不能把包装后的对象当成原来那个类型的实例传下去？** 能，是装饰器；不能，是包装器。
+
+### B-34-2 模板方法与策略的边界在哪？
+
+边界在**「谁拥有调用时机」**。
+
+| | 策略 | 模板方法 |
+| --- | --- | --- |
+| 算法怎么换 | 调用方注入不同实现 | 子类覆盖钩子 |
+| 谁调用 | **调用方显式调用** `strategy.execute(...)` | **父类在固定位置调用**钩子 |
+| 调用时机归谁 | 调用方 | 框架 |
+
+`AbstractAutoProxyCreator` 只能选模板方法，原因是**它自己不是被谁调用的主动方**：它实现的是 `BeanPostProcessor`，由容器在 `applyBeanPostProcessorsAfterInitialization` 的 `for` 循环里调用。也就是说「什么时候执行」这件事**从来不在它手里**，它没有机会去调一个「策略」。
+
+如果硬做成策略，就得让容器知道「有个 `AdvisorSelector` 策略」——那 第 11 章的 `BeanPostProcessor` 抽象立刻漏了：容器必须为每种后处理器类型补一条调用路径，而不是统一地「挨个调 `postProcess*`」。**继承带来的约束（必须实现容器的接口）恰恰是这里能被插进流程的原因。**
+
+还有一个代码层面的证据：钩子的返回类型是 `Object[]` 而不是 `Advisor[]`：
+
+```java
+protected abstract Object[] getAdvicesAndAdvisorsForBean(Class<?> beanClass, String beanName);
+```
+
+这种「返回值故意放宽」的自由度，只有模板方法给得起——策略接口的签名一旦被调用方依赖，就不容易改了。
+
+### B-34-3 责任链为什么不直接用递归？
+
+手写嵌套（`outer(() -> inner(() -> target()))`）功能上等价，但少了四样东西：
+
+1. **链是数据，可以变。**`List<MethodInterceptor>` 能排序（第 16 章）、能增删（`AdvisedSupport#addAdvisor`）、能按目标类过滤（`AopUtils.findAdvisorsThatCanApply`）。嵌套调用是代码，**没法按配置变化**。
+2. **有统一的下标。**`currentInterceptorIndex` 让「现在走到第几个」成为可观察量——诊断日志、`exposeProxy`、异常定位都靠它。
+3. **短路是运行期决定的。**「不调 `proceed()`」这个动作可以依赖**当次调用的参数**（第 25 章的道具拦截器就是缓存命中才短路）。嵌套写法里「跳不跳过下一层」只能在写代码时决定。
+4. **拿到的是整条链的句柄。**拦截器收到的参数是 `MethodInvocation` 而不是「下一个拦截器」，所以它可以调 `proceed()` **多次**（重试语义）或**零次**（缓存语义）。嵌套写法当然也能调两次，但「重试」这件事得在每个 `Supplier.get()` 处各写一遍。
+
+一句话：**嵌套把「链」编进了代码，责任链把「链」变成了对象。**
+
+### B-34-4 `ApplicationEventPublisher` 与「直接注入一组 `ApplicationListener` 然后挨个调」有什么区别？
+
+差别不在「能不能通知」，而在**发布者要不要知道三件它本不该知道的事**：谁在听、按什么顺序、出错怎么办。
+
+多出来的广播器（`SimpleApplicationEventMulticaster`）正是为了把这三件事从发布者身上拿走：
+
+| 职责 | 没有广播器时 | 有广播器时 |
+| --- | --- | --- |
+| 找订阅者 | 发布者注入 `List<ApplicationListener>` | 广播器按事件类型解析（`getApplicationListeners`） |
+| 排序 | 发布者自己排 | 第 16 章的 `AnnotationAwareOrderComparator` 统一排 |
+| 出错处理 | 一个监听器抛异常，后面的收不到 | `ErrorHandler` 集中处理（第 15 章） |
+| 订阅者的生命周期 | 发布者必须在发布前把它们全创建出来 | 广播器可以「先记名字，用的时候再取」 |
+
+最后一条是第 15 章真正绕不开的那件事：`ContextRefreshedEvent` 要在 `refresh()` 结尾发布，而那时**监听器 Bean 可能还没被创建**。我们的解法是「广播器未就绪就先把事件存起来」（第 15 章），而这件事**发布者不可能知道**——它只该知道「我发布了」。
+
+所以这一层其实是**观察者 + 策略**的组合：结构上是发布/订阅，行为上把「投递策略」抽成了可换的广播器。
+
+### B-34-5 如果让你再加一个模式，加在哪、解决什么「若无它会更糟」的问题？
+
+最合适的候选是**建造者（Builder）**，落点是 `BeanDefinition`。
+
+现在的图纸是「一堆 setter 逐步填」：
+
+```java
+GenericBeanDefinition definition = new GenericBeanDefinition();
+definition.setBeanClass(LibraryImpl.class);
+definition.setPropertyValues(propertyValues);
+definition.setFactoryMethodName("createLibrary");   // 只有 @Bean 方法才设
+```
+
+第 08 章的 XML 解析、第 21 章的 `@Bean` 后处理、第 22 章的 `@Import` 都在手工拼这个对象。**若无 Builder 会更糟**的地方很具体：**非法状态可以被构造出来。** 比如「既有 `factoryMethodName` 又有 `beanClass` 表示工厂方法」这套约定，只有在 `createBean` 里才被解释——写错了要等运行期炸。
+
+Builder 的形状是「每一步返回 `this`，最后 `build()` 才检查」：
+
+```java
+BeanDefinition definition = BeanDefinitionBuilder.beanClass(LibraryImpl.class)
+		.addPropertyValue("name", "city library")
+		.initMethod("warmUp")
+		.build();   // 这里才做一致性校验
+```
+
+真实 Spring 里确实有 `BeanDefinitionBuilder`，但 `AbstractBeanDefinition` 仍然保留着全套可变 setter，所以它只是「半个 Builder」——这也是一个可以写进正文的真实观察。
+
+第二个候选是**外观（Facade）**：让 `ApplicationContext` 持有一个 `BeanFactory` 而不是继承四个接口，就能把「按类型取 Bean 要两步」（本章缺陷表第 1 条）藏到外观里面。但它与我们 33 章的教学取舍冲突：**继承让读者一眼看见「上下文就是 BeanFactory 加料」，这本身是本章 3.2 节的证据。** 所以推荐 Builder，不推荐 Facade。
+
+## 第 35 章
+
+### B-35-1 `@Value` 与 `@Autowired` 标在同一个字段上，为什么本书也能处理？冲突时谁说了算？
+
+**为什么能处理**：`descriptorFor` 只问两件事——「有没有 `@Autowired`」「有没有 `@Value`」，
+**两个都没有**才返回 `null`（表示这个字段不是注入点）：
+
+```java
+Autowired autowired = field.getAnnotation(Autowired.class);
+boolean annotatedWithValue = field.getAnnotation(Value.class) != null;
+if (autowired == null && !annotatedWithValue) {
+    return null;
+}
+boolean required = (autowired == null) || autowired.required();
+```
+
+只要命中任意一个，就会造出 `DependencyDescriptor`，后面走 `resolveDependency`。
+而 `resolveDependency` 的**第一句**是：
+
+```java
+String suggestedValue = descriptor.getSuggestedValue();
+if (suggestedValue != null) {
+    return resolveValue(beanName, descriptor, suggestedValue);   // 值路线
+}
+return resolveBean(beanName, descriptor);                         // Bean 路线
+```
+
+`@Value` 存在 ⇒ `suggestedValue != null` ⇒ 直接短路进值路线，**Bean 路线根本不走**。
+所以两个注解同时标着不会打架：`@Value` 提供「值从哪来」，`@Autowired` 只补充「必需性」。
+
+**冲突时谁说了算**：**`@Value` 说了算**。理由是顺序上的因果——值路线不查候选，
+所以 `required` 只剩一个作用：当解析结果是 `null` 时是否报错（第 20 章的 `isRequired()`）。
+`@Autowired(required = false)` + `@Value("${missing}")` 且没有对应属性时：
+
+- 如果容器装了**严格**解析器（`PropertySourcesPlaceholderConfigurer`），第一步
+  `resolveEmbeddedValue` 就抛 `IllegalArgumentException`，`required = false` **救不了**它——
+  因为「属性不存在」和「依赖可以缺失」是两回事；
+- 如果没装严格解析器，`${missing}` 原样返回，字段拿到字符串 `"${missing}"`，
+  启动成功、运行期才发现是脏数据（第 20 章 §4.3 那个真红）。
+
+真实 Spring 的次序完全一致：`DefaultListableBeanFactory#doResolveDependency` 里
+`getSuggestedValue()` 的处理在方法最前面，早于任何候选查询。
+
+### B-35-2 `findAdvisorBeans` 为什么只跳过 `BeanCurrentlyInCreationException`？全跳过会怎样？
+
+因为**只有这一种异常是可自愈的**。
+
+`BeanCurrentlyInCreationException` 的含义是「这个 Bean 正在被创建」——它是个**时序事实**，
+不是错误。下一轮查询（下一个 Bean 的后处理阶段）它就已经造好了，届时自然能查到。
+所以跳过它是安全的：**这一次没有 ≠ 永远没有**。
+
+其它 `BeanCreationException` 是**真错**：构造器里抛了 `IllegalStateException("配置缺少 appId")`、
+`@Value` 解析失败、依赖的 Bean 不存在……这些异常不会因为「等一会儿」而消失。
+
+举个例子说明「全跳过」有多糟：
+
+```java
+@Bean
+public Advisor auditAdvisor(AppConfig config) {
+    if (config.getAppId() == null) {
+        throw new IllegalStateException("audit 需要 appId");
+    }
+    return new DefaultPointcutAdvisor(...);
+}
+```
+
+全跳过的话，`refresh()` **成功返回**，容器里少了 auditAdvisor，于是：
+
+- 业务方法一个都没被审计（**权限与合规问题**，不是启动问题）；
+- 没有任何日志说「审计没生效」（因为对一个 advisor 来说「没被注册」是合法的）；
+- 上线三天后才有人发现审计报表是空的，而那时栈信息早没了。
+
+这正是一条通用纪律：**降级只在你能确认「失败原因是暂时性的」时才允许**。
+`continue` 的每一个位置，都要能回答「为什么这个异常可以当作没有」。
+
+### B-35-3 `invokeBeanFactoryPostProcessors` 真实版只有 17 行（我们 29 行），为什么真实代码反而更短？
+
+因为它把活**交给别人了**：
+
+```java
+protected void invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory beanFactory) {
+    PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors(beanFactory, getBeanFactoryPostProcessors());
+    // 后面还有几行：检测 LoadTimeWeaverAware、重置临时类加载器
+}
+```
+
+`PostProcessorRegistrationDelegate` 是 351 行的专职类，`invokeBeanFactoryPostProcessors`
+和 `registerBeanPostProcessors` 两个方法的**全部复杂度**都在那里（分批、排序、去重、
+「内部后处理器最后注册」等等）。
+
+**这说明的设计取向**：上下文类只做**编排（orchestration）**。它已经有 1653 行，
+不可能再装下每个阶段的实现细节，所以每个阶段一旦超过十几行就被抽成专职类。
+对比本书：我们把所有逻辑塞在 `AbstractApplicationContext` 一个类里（602 行），
+读起来顺，但真实工程里这么写会长成一个 5000 行的上帝类。
+
+**对「读源码」的代价**：行号图会**指向另一个文件**。一个 17 行的方法是 351 行的入口；
+你按方法名搜索，找到的是委托点，不是实现。所以读真实源码要养成一个习惯——
+**看到一行委托，立刻跳到被委托的类**，否则会以为「这么简单？」
+
+### B-35-4 没有 `ignoreDependencyInterface` 时，`@Autowired Environment environment;` 会怎样？
+
+沿第 19 章的决策链推：
+
+1. **`@Qualifier` 硬过滤**：字段上没标，跳过这一步（不缩小候选）。
+2. **按类型取候选**：`getBeanNamesForType(Environment.class)`。容器里**没有任何图纸**声明
+   自己是 `Environment` 类型——`StandardEnvironment` 是我们上下文里的一个普通字段，
+   既没注册成单例，也没有 `registerResolvableDependency` 兜底。
+   → **候选数 = 0**。
+3. **`@Primary`**：0 个候选，无从谈起。
+4. **字段名匹配**：容器里没有名叫 `environment` 的 Bean。
+5. **优先级**：0 个候选，无从谈起。
+
+四步全败 → 抛 `NoSuchBeanException`（第 33 章的措辞：`No bean of type [...] is registered`），
+由 `injectFields` 包一层：`BeanCreationException: Could not inject field 'environment' of bean 'xxx' (declared in ...)`。
+
+**更关键的一点**：就算我们照抄了 `registerResolvableDependency(Environment.class, environment)`，
+**没有 `ignoreDependencyInterface` 仍会出别的问题**。因为「按接口注入」时，
+候选匹配会把「实现了该接口的所有 Bean」都算进来：
+
+```java
+@Autowired
+private ApplicationContextAware something;   // 谁算候选？
+```
+
+`ApplicationContextAware` 是个接口，任何实现了它的 Bean 都能被当成候选——你会得到一个
+「随便哪个实现了 Aware 的 Bean」被塞进这个字段。真实 Spring 用
+`ignoreDependencyInterface(ApplicationContextAware.class)` 把这类接口
+**从「可注入类型」名单里摘掉**，于是「按接口注入」对它们一律返回「没有候选」，
+真正的注入由 `ApplicationContextAwareProcessor` 在**更早的阶段**（`postProcessBeforeInitialization`）
+完成。**两个机制是一对**：一个负责「接口不作为注入类型」，一个负责「接口靠回调注入」。
+
+### B-35-5 设计一个能抓住「空安全基座从 JSR-305 换成 JSpecify」的回归测试
+
+关键是：**断言可观察行为（注入成功还是失败），不要断言注解存在。**
+断言注解存在是无效的——注解换了、代码照样绿。
+
+```java
+class NullabilityContractTests {
+
+    // 场景一：字段标了「可空」→ 容器里没有该类型的 Bean → 应该注入成功，字段为 null
+    static class OptionalHolder {
+        @Nullable                     // ← 用项目实际采用的那套注解
+        private Missing missing;
+    }
+
+    // 场景二：同一场景，但不标可空 → 应该启动失败
+    static class RequiredHolder {
+        private Missing missing;
+    }
+
+    @Test
+    void nullableFieldIsAllowedToStayNull() {
+        assertThat(contextWith(OptionalHolder.class).getBean(OptionalHolder.class).missing).isNull();
+    }
+
+    @Test
+    void plainFieldFailsFast() {
+        assertThatThrownBy(() -> contextWith(RequiredHolder.class).refresh())
+            .isInstanceOf(BeanCreationException.class);
+    }
+}
+```
+
+**它为什么能抓住这次升级**：把 `@Nullable` 从 `javax.annotation` 换成
+`org.jspecify.annotations`，两个测试里只有一个会变红——
+`nullableFieldIsAllowedToStayNull` 会在「用了旧基座 + 新容器」时失败（容器不再识别该注解 →
+字段被当成必需 → 抛异常），而 `plainFieldFailsFast` 一直绿，于是**红/绿对比直接把问题指到「注解没被认」**。
+
+三个设计要点：
+
+1. **必须成对**：只有「应该成功」的用例时，注解完全失效也会绿（因为不识别可空 = 保持默认 = 必需 = 抛异常？不，反过来也一样会绿）。一成一败才构成判别式。
+2. **断言 `refresh()` 的结果与字段值**，而不是 `field.getAnnotation(...)`——后者随注解替换一起变，永远追不上。
+3. **把「容器是否识别这个注解」当成外部契约来测**：这类回归不报错、只是行为变了，
+   所以只能靠「行为断言」在 CI 里现形。
+
+---
+
+## 附：清单勾对
+
+AC 要求「覆盖全部章节的思考题，无遗漏（有清单逐条勾对）」。下面是机械核对的结果：**逐章统计正文章节里的题目条数，与本章 B 小节数对比**。判定脚本只看结构（题号格式 + 小节标题），不看内容——它不替内容背书，只负责证明「一道题都没漏」。
+
+合计：**36 章、180 题、180 条答案**。
+
+| 章 | 标题 | 思考题 | 答案 | 勾对 |
+| ---: | --- | ---: | ---: | :---: |
+| 00 | 第 00 章　读源码的方法论 + 环境搭建 | 5 | 5 | ✅ |
+| 01 | 第 01 章 从 `new` 到容器 | 5 | 5 | ✅ |
+| 02 | 第 02 章 BeanDefinition | 5 | 5 | ✅ |
+| 03 | 第 03 章 注册表与单例池（含线程安全） | 5 | 5 | ✅ |
+| 04 | 第 04 章 反射实例化 | 5 | 5 | ✅ |
+| 05 | 第 05 章 属性填充与依赖注入 | 5 | 5 | ✅ |
+| 06 | 第 06 章 BeanFactory 的接口分层 | 5 | 5 | ✅ |
+| 07 | 第 07 章 Resource 抽象 | 5 | 5 | ✅ |
+| 08 | 第 08 章 XML 解析与 BeanDefinitionReader | 5 | 5 | ✅ |
+| 09 | 第 09 章 ApplicationContext 与 refresh() | 5 | 5 | ✅ |
+| 10 | 第 10 章 BFPP + Environment + 占位符 | 5 | 5 | ✅ |
+| 11 | 第 11 章 BeanPostProcessor | 5 | 5 | ✅ |
+| 12 | 第 12 章 Aware 感知容器 | 5 | 5 | ✅ |
+| 13 | 第 13 章 初始化与销毁 | 5 | 5 | ✅ |
+| 14 | 第 14 章 作用域与 FactoryBean | 5 | 5 | ✅ |
+| 15 | 第 15 章 容器事件与监听器 | 5 | 5 | ✅ |
+| 16 | 第 16 章 扩展点排序 Ordered / PriorityOrdered | 5 | 5 | ✅ |
+| 17 | 第 17 章 包扫描 | 5 | 5 | ✅ |
+| 18 | 第 18 章 `PathMatchingResourcePatternResolver` | 5 | 5 | ✅ |
+| 19 | 第 19 章 `@Autowired` 与类型匹配决策链 | 5 | 5 | ✅ |
+| 20 | 第 20 章 `@Value` 与 `DependencyDescriptor` | 5 | 5 | ✅ |
+| 21 | 第 21 章 `@Configuration` 与 `@Bean` | 5 | 5 | ✅ |
+| 22 | 第 22 章 条件化装配 | 5 | 5 | ✅ |
+| 23 | 第 23 章 类型转换 | 5 | 5 | ✅ |
+| 24 | 第 24 章 代理 | 5 | 5 | ✅ |
+| 25 | 第 25 章 AOP 的三个基本单元 | 5 | 5 | ✅ |
+| 26 | 第 26 章 织入生命周期 | 5 | 5 | ✅ |
+| 27 | 第 27 章 代理对象的属性填充 | 5 | 5 | ✅ |
+| 28 | 第 28 章 自调用失效、exposeProxy、AopContext | 5 | 5 | ✅ |
+| 29 | 第 29 章 AOP 失效场景合集 | 5 | 5 | ✅ |
+| 30 | 第 30 章 三级缓存与循环依赖 | 5 | 5 | ✅ |
+| 31 | 第 31 章 并发模型 | 5 | 5 | ✅ |
+| 32 | 第 32 章 getBean 全链路逐行精读 | 5 | 5 | ✅ |
+| 33 | 第 33 章 异常设计 | 5 | 5 | ✅ |
+| 34 | 第 34 章 设计模式总览 | 5 | 5 | ✅ |
+| 35 | 第 35 章 毕业 | 5 | 5 | ✅ |
+每章「题数 : 答案数」全等才打 ✅。新增章节时重跑同一统计。
+
+核对脚本（仓库根目录，Python 3）：
+
+```python
+import re, glob, os
+
+# 章节题号有四种历史格式：`1. ` / `**5-1**` / `**6.1**` / `**Q1.**` 或 `**Q1**：`
+PATS = [r'^\d+\.\s', r'^\*\*\d+-\d+', r'^\*\*\d+\.\d+\*\*',
+        r'^\*\*\d+）', r'^\*\*Q\d+\.', r'^\*\*Q\d+\*\*']
+
+def count(body):
+    return sum(1 for line in body.splitlines() if any(re.match(p, line) for p in PATS))
+
+exercises = {}
+for f in sorted(glob.glob('docs/chapters/*.md')):
+    num = os.path.basename(f)[:2]
+    text = open(f).read()
+    m = re.search(r'^## \d+\. 思考题$(.*?)^## ', text, re.M | re.S)
+    exercises[num] = count(m.group(1)) if m else 0
+
+answers = {}
+for m in re.finditer(r'^### B-(\d+)-(\d+)', open('docs/appendix/B-answers.md').read(), re.M):
+    answers[m.group(1)] = answers.get(m.group(1), 0) + 1
+
+assert all(exercises[n] == answers.get(n, 0) for n in exercises), '有章节的题没答案'
+print(sum(exercises.values()), '题全部有答案')
+```

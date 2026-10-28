@@ -102,19 +102,19 @@
 
 | 章 | 主题 | 你会得到 |
 |---|---|---|
-| 30 | 三级缓存与循环依赖 | 含"二级行不行"的反证实验 |
-| 31 | 并发模型：锁、`ConcurrentHashMap`、延迟 `ObjectFactory` | 三级缓存真正的难点是并发不是缓存 |
-| 32 | `getBean` 全链路逐行精读 | 把前面所有章节串成一条调用链 |
-| 33 | 异常体系与排错实战 | `BeanCreationException` 栈怎么读 |
-| 34 | 设计模式总览：Spring 里的 9 种模式 | 从"看懂"到"会设计" |
-| 35 | 对照真实 Spring 6.2.x 的 `refresh()` + 6→7 变更 | 毕业 |
+| [30](docs/chapters/30-circular-dependencies.md) | 三级缓存与循环依赖 | 三个 Map、`getEarlyBeanReference`、「二级行不行」的反证实验 |
+| [31](docs/chapters/31-concurrency.md) | 并发模型：锁、`ConcurrentHashMap`、延迟 `ObjectFactory` | 令牌制、`tryLock` 阶梯、粗锁的代价 |
+| [32](docs/chapters/32-getbean-flow.md) | `getBean` 全链路逐行精读 | 十七跳、五阶段、代理在哪里诞生 |
+| [33](docs/chapters/33-exceptions.md) | 异常体系与排错实战 | `BeanCreationException` 栈怎么读 |
+| [34](docs/chapters/34-patterns.md) | 设计模式总览：Spring 里的 9 种模式 | 从"看懂"到"会设计" |
+| [35](docs/chapters/35-graduation.md) | 对照真实 Spring 6.2.x 的 `refresh()` | 毕业：十二步行号图 + 6→7 变更 |
 
 ### 附录
 
 - **A** [类型转换补遗](docs/appendix/A-conversion-supplement.md) —— 集合/数组转换、转换器查找优先级、与 `Formatter` 的关系
-- **B** 思考题答案（**别提前看**）
-- **C** 真实 Spring 类 ↔ 本书类 对照总表
-- **D** 面试题映射表
+- **B** [思考题答案](docs/appendix/B-answers.md)（**别提前看**）—— 36 章共 180 题（含清单逐条勾对）
+- **C** [真实 Spring 类 ↔ 本书类 对照总表](docs/appendix/C-class-map.md) —— 203 个框架类、真实行数、引入章节
+- **D** [面试题映射表](docs/appendix/D-interview-map.md) —— 41 道高频题，每题指回章节
 
 ---
 

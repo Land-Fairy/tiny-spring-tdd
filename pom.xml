@@ -95,6 +95,12 @@
 		<module>step-27-proxy-population</module>
 		<module>step-28-expose-proxy</module>
 		<module>step-29-aop-pitfalls</module>
+		<module>step-30-circular-dependencies</module>
+		<module>step-31-concurrency</module>
+		<module>step-32-getbean-flow</module>
+		<module>step-33-exceptions</module>
+		<module>step-34-patterns</module>
+		<module>step-35-graduation</module>
 	</modules>
 
 	<dependencyManagement>

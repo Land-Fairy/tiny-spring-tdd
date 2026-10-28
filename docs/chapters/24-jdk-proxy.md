@@ -612,6 +612,8 @@ public AopProxy createAopProxy(AdvisedSupport config) throws AopConfigException 
 
 ## 7. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-24-章`](../appendix/B-answers.md#第-24-章)。
+
 1. 代理对象 `p` 满足 `p instanceof Greeter` 但 `p instanceof GreeterImpl` 是 `false`；
    那么 `p.equals(target)` 应该返回什么？我们的实现（`interceptor == null` 时反射转发给目标）会返回什么？
    真实 Spring 在什么条件下才使用目标自己的 `equals`？

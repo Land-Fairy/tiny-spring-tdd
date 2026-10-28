@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+	<bean id="lifecycle" class="org.springframework.samples.ch13.LifecycleBean" init-method="init" destroy-method="shutdown"/>
+
+	<bean id="prototype" class="org.springframework.samples.ch13.LifecycleBean" scope="prototype" init-method="init" destroy-method="shutdown"/>
+
+</beans>
