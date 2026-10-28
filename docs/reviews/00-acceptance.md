@@ -195,3 +195,27 @@ README 是读者第一眼看到的东西，错了劝退率最高。逐条量它�
 附录 E 那 16 处上游行号（`determineAutowireCandidate:2053`、`invokeAwareMethods:1811`、
 `AbstractAutoProxyCreator:315/:354`……）逐条对上了上游 6.2.x。
 \n
+
+---
+
+## 十一、README 的核心承诺能不能兑现（2026-10-28，第 15 轮）
+
+README 三行加粗原则里最硬的一条是「**每章都是可运行快照**：打开 IDEA 点任意一章的测试就能跑，
+不用切分支」。这句话是可证伪的，于是逐模块验：**不做任何 `mvn install`**，直接进模块目录跑它自己的 `test`。
+
+| 验的是什么 | 方法 | 结果 |
+| --- | --- | --- |
+| 35 个模块能否各自独立构建 | 每个模块 `cd step-NN-* && mvn -o test`（父 POM 靠 `relativePath` 从磁盘解析，不依赖本地仓库里的父构件） | **35/35 通过（EXIT=0）** |
+| 模块之间有没有隐藏依赖 | `grep '<artifactId>step' step-*/pom.xml`，每个模块只命中自己 | **零模块间依赖**：第 20 章不依赖第 19 章的产物，全部是「整份副本」 |
+| 根 POM 的模块清单 | `grep -c '<module>' pom.xml` = **35** | 与目录数、与 ADR-0003 更正后的「35 个平铺模块」一致 |
+| 「零运行时依赖」是否成立 | 模块 POM 里 `junit-jupiter` / `assertj-core` / `archunit-junit5` / `mockito` 都不写 `<scope>`；父 POM 的 `dependencyManagement` 把它们统一钉成 `test` | **成立**——`dependencyManagement` 不只管版本，还管 scope；精简写法（模块里不重复写 `test`）没有换来泄漏 |
+| 六道机器闸门 + 六道仓库级检查是否真在 CI | `.github/workflows/ci.yml`：`mvn verify` 一个 job、脚本自检、闸门 7/9/10/11/12 各自一步、闸门 8 单独 job（现拉上游 `6.2.x` 源码树） | **12 道全部在 CI**，且闸门 8 有上游才有意义——它的 job 里 `git clone --depth 1 --branch 6.2.x` |
+
+**为什么这条值得单独验**：「每章都能跑」是本书相对同类教学项目的卖点之一，而它最容易被一次重构
+悄悄破坏（比如某章偷偷 `import` 了前一章的类）。现在有 35/35 的实测记录，破坏它的人会在下一次
+`mvn verify` 里立刻看到红——因为父 POM 的 reactor 顺序不等于模块间的真实依赖。
+
+**顺带记一个发现（不是错，是教学资产）**：子模块 POM 里 `junit-jupiter`、`assertj-core` 都不写
+`<scope>test</scope>`，靠父 POM 的 `dependencyManagement` 统一钉住。这是 Maven 的正确用法，
+也是「零运行时依赖」这条原则的实现手段——但读者第一眼会以为它们是编译期依赖，值得在正文里点一句。
+
