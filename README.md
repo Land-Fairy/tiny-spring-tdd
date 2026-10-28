@@ -202,7 +202,7 @@ mvn verify
 | 7 | `scripts/check-propagation.sh` | 第 K 章的修复没传到第 K+1、K+2 章（「回退」与「静默缺失」两种事故指纹） | CI 红 |
 | 8 | `scripts/check-doc-refs.sh` | 正文与附录里的「出处：`<类名>.java:<行号>`」与真实源码对不上 | CI 红 |
 | 9 | `scripts/check-doc-links.sh` | 文件改名后 markdown 里的相对链接失效 | CI 红 |
-| 10 | `scripts/check-chapter-refs.py` | 「第 NN 章」指错了门（短语主题与被引用章对不上） | CI 红 |
+| 10 | `scripts/check-chapter-refs.py` | 「第 NN 章」指错了门（短语主题与被引用章对不上） | CI 红；泛词只出 WARN，javadoc 里的「第 NN 章」不在扫描范围 |
 | 11 | `scripts/check-doc-tables.py` | 正文「体量」表里手抄的行数，代码改了数字没跟上 | CI 红 |
 | 12 | `scripts/check-review-format.py` | 35 篇评审的判决行，同一件事三种写法 | CI 红 |
 

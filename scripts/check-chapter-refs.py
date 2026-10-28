@@ -54,6 +54,10 @@ BARE = set(" ）)。，、；：|】」”\"' \t")
 CLAUSE_END = set("。，；：、（）()【】「」\"\"'|!?！？\n—-")
 # 「第 NN 章」后面允许的连接词：只有这些才表示「后面这个词是本章的主题」
 CONNECTORS = ("讲的", "说的话", "讲", "说的", "说的那套", "的那套", "的", "中", "里", "这一块", "那套")
+# 主题与章号之间常见的「连接标记」：中文破折号、括号、表格竖线、加粗与空白。
+# 它们是排版，不是从句边界——「**循环依赖**——第 30 章」「| 直接失败 | **第 30 章** |」
+# 在读者眼里都是带主题的引用，跨过去才看得见主题。
+MARKERS = set("|—-\u2014（(【「：:、,， \t*\u3000`")
 
 errors: list[str] = []
 warns: list[str] = []
@@ -176,12 +180,23 @@ def scan_file(path: Path, topics: dict[int, list[str]], dfw: dict[str, int], own
                 forward.append(ch)
             forward_s = "".join(forward).strip()
             # 后向：本章号之前、同一个从句里的部分（「X 的完整解法要到第 NN 章」这种形状）
+            # 只跨「一层」标记：取紧贴章号的那一小段。跨过两层会把上一句的主题也算进来，
+            # 那正是「只处理属性值——因为…不支持构造器参数（第 04 章）」这类假阳性的来源。
             backward = []
+            crossed = False
             for ch in reversed(line[max(0, m.start() - PHRASE_LEN) : m.start()]):
                 if ch in CLAUSE_END:
+                    if ch in MARKERS and not crossed:
+                        crossed = True
+                        continue
                     break
                 backward.append(ch)
-            backward_s = "".join(reversed(backward)).strip()
+            backward_s = "".join(reversed(backward)).strip().lstrip("|—-（(【「：:、,， *`")
+            # 跨标记取回来的那一段，只有在「短且纯中文」时才算主题：
+            # 「构造器注入的循环依赖直接失败 | 第 30 章」是主题，「而 after 链正是干这个的（第 26 章」
+            # 是上一句的尾巴。带英文标识符或长句一律不重构上下文，宁可漏。
+            if crossed and (len(backward_s) > 14 or re.search(r"[A-Za-z0-9@/]", backward_s)):
+                backward_s = ""
 
             tail = line[m.end() : m.end() + PHRASE_LEN]
             if not tail or tail[0] in BARE:
@@ -229,6 +244,20 @@ def scan_file(path: Path, topics: dict[int, list[str]], dfw: dict[str, int], own
                 continue
             others = {t: specific(t) for t in topics if t not in targets and specific(t)}
             if not others:
+                # 通道⑤：短语里的词一个具体词都不构成，但**全都能对上的词只属于某一章**，
+                # 而那一章不是被引章 —— 这是「循环依赖（只属于第 30 章）指到第 27 章」的形状。
+                # 泛词（跨 12 章都出现的「循环依赖」）不给通行证，只是从「静默通过」改成「唯一归属才算错」。
+                owners = {t for t in topics if generic(t)}
+                if len(owners) == 1 and not (owners & targets):
+                    only = next(iter(owners))
+                    # 记 WARN 不记 ERROR：泛词之所以「泛」，是因为后面的章**也**在讲这件事，
+                    # 所以「唯一归属」只是提示，不足以下判决（实测 6 条里至少 3 条是真引用）。
+                    warns.append(
+                        f"{path.relative_to(ROOT)}:{line_no}: 引用 "
+                        + "、".join(f"第 {t:02d} 章" for t in sorted(targets))
+                        + f"，而短语「{phrase}」里的关键词只在第 {only:02d} 章的表里（人工判断）"
+                    )
+                    continue
                 # 只命中泛词（「代理」「Bean」）：说得不够具体，但也说不出它错，计「低置信度通过」
                 if any(generic(t) for t in targets):
                     global weak

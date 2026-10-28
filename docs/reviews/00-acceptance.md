@@ -219,3 +219,37 @@ README 三行加粗原则里最硬的一条是「**每章都是可运行快照**
 `<scope>test</scope>`，靠父 POM 的 `dependencyManagement` 统一钉住。这是 Maven 的正确用法，
 也是「零运行时依赖」这条原则的实现手段——但读者第一眼会以为它们是编译期依赖，值得在正文里点一句。
 
+
+## 十二、闸门自己能不能失败（2026-10-28，第 16 轮）
+
+十道闸门里，能跑的都被反过来打了一次——**故意把仓库改坏，看闸门会不会红**。理由很直接：
+一个只会打绿的检查器和没有检查器，在读者眼里长得一模一样。
+
+| 闸门 | 变异手法 | 结果 |
+|---|---|---|
+| 12 `check-review-format.py` | 把 `docs/reviews/ch07.md` 的判决行改成 `- **判决**：还行`（词表外的词） | **红**，点名 `ch07.md` 与非法词 ✓ |
+| 10 `check-chapter-refs.py` | 把「循环依赖 → 第 30 章」三处改指第 27 章（第 03、05、09 章） | **全绿，一处没抓到** ✗ |
+
+闸门 10 为什么抓不到，查清楚了：它的判据是「短语里的关键词只属于被引章以外的一章」。
+但「循环依赖」出现在 **12 个章节**、「构造器注入」「属性填充」各 12/14 章——这类词按
+`dfw > 5` 一律算「泛词」，泛词不给判决，只提示。**本书最爱交叉引用的概念，恰好全是泛词**，
+于是最可能指错的地方，这道闸门一律放行。
+
+这不是实现 bug，是判据的硬上限：靠关键词归属判「指错」，只能判**窄主题**的错
+（`ThreeLevelCache` 讲成第 31 章、`@Primary` 讲成第 16 章）。全书级概念（循环依赖、三级缓存、
+属性填充、代理）的指错，仍必须靠人读——这一点已写进 `docs/CODE-STANDARDS.md` 与 `README.md`
+的闸门表，不再让它冒充「机械保证」。
+
+### 顺带查出来的两处真错（本轮已修）
+
+- `docs/chapters/35-graduation.md:406` 说 `freezeConfiguration`「第 22 章只有标记位」：
+  第 22 章是装配控制（`@Conditional` / `@Profile` / `@Lazy`），与它无关；
+  全仓 `grep frozen` = **0** 处，连标记位都没有。已改为「全书没有任何 frozen 标记」。
+- `docs/chapters/06-bean-factory-hierarchy.md:887` 把 `freezeConfiguration` / `clearMetadataCache`
+  指到「32」：第 32 章是 getBean 流程，全文不提这两者。已改为「本书未讲」。
+
+### 还没堵上的洞（新发现，已记账）
+
+`step-06-bean-factory-hierarchy/src/main/java/org/springframework/beans/factory/config/ConfigurableListableBeanFactory.java:31`
+的 javadoc 同样把 `freezeConfiguration` 指到「第 32 章」——**闸门 10 只扫 `docs/**.md`，
+不扫 javadoc**，所以代码注释里的「第 NN 章」至今没有任何机械校验。这是第 13 道闸门的候选。
