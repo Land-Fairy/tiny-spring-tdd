@@ -232,7 +232,7 @@ beanFactory.addBeanPostProcessor(new AutowiredAnnotationBeanPostProcessor(beanFa
    真实 Spring 6.x 只为兼容保留，新代码应该用第 23 章的 `ConversionService`。
 
 > 这 8 条合起来说明一件事：**`prepareBeanFactory` 是在「装配容器自己」**。
-> 第 03 章的 BeanFactory 只认识图纸和对象；要让它在「应用」里好用，还得把它自己也变成
+> 第 03 章的注册表只认识图纸和对象；要让它在「应用」里好用，还得把它自己也变成
 > 可注入、可感知环境、可求值表达式的东西。这一段我们整体跳过了，跳过的代价是
 > 上面列的 8 条能力差距——它们被集中收进本章 §7 的缺陷表。
 
