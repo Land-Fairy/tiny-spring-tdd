@@ -4,7 +4,7 @@
 
 > 本章目标：把第 24 章那个「来者全拦」的代理，改造成「按条件拦」，并在过程中弄清楚一件事——
 > Spring AOP 的基本单元是 **Advisor**（切点 + 增强），不是「切面类」。
-> 本章代码：`step-25-advisor`。新增 26 个主类共 989 行、新增 6 个测试类共 589 行，模块内 391 个测试全绿，
+> 本章代码：`step-25-advisor`。新增 26 个主类共 989 行、新增 6 个测试类共 589 行，模块内 402 个测试全绿，
 > 行覆盖 86.6%、分支覆盖 75.2%。
 
 ## 1. 痛点：代理只会「全拦」，可业务要的是「按条件拦」
@@ -521,8 +521,8 @@ public Object invoke(Object proxy, Method method, Object[] args) throws Throwabl
 | 我们的类 | 真实 Spring | 行数 | 关键行 |
 | --- | --- | --- | --- |
 | `aop/Advice.java` 等 5 个标记接口 | `spring-aop/.../aop/Advice.java` 等 | 各 20–60 | — |
-| `aop/MethodInterceptor.java` | `aop/MethodInterceptor.java` | 48 | `invoke` |
-| `aop/Pointcut.java` + `ClassFilter` + `MethodMatcher` | 同名三件套 | 100 / 47 / 60 | — |
+| `aop/MethodInterceptor.java` | `org/aopalliance/intercept/MethodInterceptor.java`（AOP Alliance 的接口，被 spring-aop 收编） | 61 | `invoke` |
+| `aop/Pointcut.java` + `ClassFilter` + `MethodMatcher` | 同名三件套（都在 `aop/`） | 53 / 56 / 105 | — |
 | `support/NameMatchMethodPointcut` | `aop/support/NameMatchMethodPointcut.java` | 128 | `matches` `:88`，`simpleMatch` `:108` |
 | `util/PatternMatchUtils` | `spring-core/.../util/PatternMatchUtils.java` | 142 | `simpleMatch` `:39` |
 | `framework/adapter/DefaultAdvisorAdapterRegistry` | 同名 | 100 | 构造器 `:50-52`，`getInterceptors` `:78` |
