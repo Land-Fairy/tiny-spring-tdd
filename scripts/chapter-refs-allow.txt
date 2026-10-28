@@ -1,0 +1,3 @@
+# 闸门 10 的假阳性豁免表。格式：`相对路径:行号  # 理由`
+# 只有写了理由的行才生效——理由要能被第二个人复核，不是「我觉得它对」。
+step-35-graduation/src/main/java/org/springframework/aop/framework/autoproxy/AbstractAutoProxyCreator.java:36  # 「字段注入拿到别的对象」讲的是多一层代理的后果，因果落在第 27 章（代理对象与属性填充）；关键词「字段注入」属第 05 章，是这个判据的已知误伤面

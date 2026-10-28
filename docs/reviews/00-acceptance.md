@@ -253,3 +253,24 @@ README 三行加粗原则里最硬的一条是「**每章都是可运行快照**
 `step-06-bean-factory-hierarchy/src/main/java/org/springframework/beans/factory/config/ConfigurableListableBeanFactory.java:31`
 的 javadoc 同样把 `freezeConfiguration` 指到「第 32 章」——**闸门 10 只扫 `docs/**.md`，
 不扫 javadoc**，所以代码注释里的「第 NN 章」至今没有任何机械校验。这是第 13 道闸门的候选。
+
+### 第 16 轮第二轮：把 javadoc 也纳入闸门 10（同日）
+
+上一条留下的洞（javadoc 里的「第 NN 章」无人校验）已经堵上，代价很小：
+
+- 扫描范围加了 `step-35-graduation/src/main/java` 的注释行，判定引用从 **395 → 480** 处。
+- 新增两条通道：**类名不符即判错**（短语里点名的类全都首现于别的章），以及 javadoc 的
+  `{@code X}` / `{@link X}` 与 markdown 反引号同等对待。示例类（`samples/`）不算证据——
+  它们出现在哪一章取决于情节，不取决于知识点。
+- 假阳性走 `scripts/chapter-refs-allow.txt`，格式 `相对路径:行号  # 理由`，**没写理由的行不生效**。
+
+变异实测（这轮的重点，因为它是「闸门能不能红」的正面答案）：
+
+| 变异 | 结果 |
+|---|---|
+| `ApplicationContext.java:15` 把「第 06 章的 `{@link ListableBeanFactory}`」改成第 33 章 | **红** ✓（类名不符通道） |
+| 同文件把「第 13 章：只有单例才登记销毁」改成第 33 章 | 绿 ✗（「销毁」是泛词——关键词通道的老上限） |
+
+顺带修出一处真错：`ConfigurableListableBeanFactory` 的 javadoc 把
+`freezeConfiguration` / `clearMetadataCache` 指到「第 32 章」（该章是 getBean 流程，
+全书正文根本没讲这两者），**30 个模块副本**已统一改为「本书未实现」。
