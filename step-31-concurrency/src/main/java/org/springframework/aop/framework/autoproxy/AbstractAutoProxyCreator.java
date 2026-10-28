@@ -4,7 +4,6 @@
 
 package org.springframework.aop.framework.autoproxy;
 
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,8 +48,15 @@ public abstract class AbstractAutoProxyCreator
 
 	private BeanFactory beanFactory;
 
-	/** 被代理过的 Bean 名字，只为测试与诊断（真实 Spring 用 {@code advisedBeans} 缓存判断结果）。 */
-	private final Set<String> proxiedBeanNames = new LinkedHashSet<>();
+	/**
+	 * 被代理过的 Bean 名字，只为测试与诊断（真实 Spring 用 {@code advisedBeans} 缓存判断结果）。
+	 * <p>
+	 * <b>第 31 章</b>：{@code getEarlyBeanReference} 已经跑到创建锁外面了，这里可能是被多个线程同时写的，
+	 * 所以必须是并发容器——「谁跑到锁外，谁就必须是并发容器」这条规则同样约束框架自己的登记表。 真实 Spring 用的是
+	 * {@code ConcurrentHashMap.newKeySet(16)}。 顺带说明：顺序不保证（{@code Set.copyOf}
+	 * 本身也不保证），旧版注释里「按代理生成的顺序」是句空话。
+	 */
+	private final Set<String> proxiedBeanNames = ConcurrentHashMap.newKeySet(16);
 
 	/**
 	 * 「我已经在提前暴露阶段包过这个 Bean 了」的记录。<b>第 30 章</b>。
@@ -94,7 +100,7 @@ public abstract class AbstractAutoProxyCreator
 	}
 
 	/**
-	 * 已经被代理过的 Bean 名字（按代理生成的顺序）。
+	 * 已经被代理过的 Bean 名字（顺序不保证）。
 	 * @return 不可变副本
 	 */
 	public Set<String> getProxiedBeanNames() {
