@@ -265,6 +265,9 @@ return body.invokeWithArguments(callArgs);
 | javaformat | 13 个文件格式不合 | `spring-javaformat:apply` |
 | checkstyle `UnusedImports` | `ConfigurationClassPostProcessor` 的 `java.util.List`、测试里的 `java.util.Map` | 删 |
 | checkstyle `ParameterNumber` | `methodInfo(int,int,int,byte[],int,int)` 六个参数 | 打包成 `private record MethodCode(byte[] bytes, int maxStack, int maxLocals)` |
+
+那个 `MethodCode` 是全书第二处 `record`（另一处是第 17 章的 `ConstantPool`）。为什么这里用 `record`、而 `PropertyValue` 不能用，
+判据在 `docs/CODE-STANDARDS.md` 的 K2-b：**本书自创 / 仅内部使用 / 不进公共 API / 不靠身份语义**，四条同时成立才用。
 | checkstyle `DeclarationOrder` / `ConstantName` | 静态常量 `codeAttributeNameIndex` 声明在方法之后、且不是全大写 | 改名 `CODE_ATTRIBUTE_NAME_INDEX` 并移到类顶部 |
 | checkstyle `IllegalThrows` | 拦截器三处 `throws Throwable` | **收窄规则**（见下） |
 

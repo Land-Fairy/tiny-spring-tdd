@@ -291,6 +291,10 @@ Expecting code to raise a throwable.
 
 ### 3.1 `PropertyValue`：把「要填什么」变成数据
 
+> **顺带一个新手最容易犯的错**：看到 `PropertyValue` 只有三个 `private final` 字段、没有 setter，会想「这不就是 `record` 吗」。
+> 它不是，三条理由写在类注释里（真实 Spring 用的是 `class`；`record` 的相等是结构化相等，而属性合并在意「谁覆盖了谁」的身份；
+> `record` 不可继承）。判据见 `docs/CODE-STANDARDS.md` 的 K2 与「`record` 的适用边界」。
+
 ```java
 public class PropertyValue {
 
