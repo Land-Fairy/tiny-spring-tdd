@@ -102,7 +102,7 @@
 
 | 章 | 主题 | 你会得到 |
 |---|---|---|
-| 30 | 三级缓存与循环依赖 | 含"二级行不行"的反证实验 |
+| [30](docs/chapters/30-circular-dependencies.md) | 三级缓存与循环依赖 | 三个 Map、`getEarlyBeanReference`、「二级行不行」的反证实验 |
 | 31 | 并发模型：锁、`ConcurrentHashMap`、延迟 `ObjectFactory` | 三级缓存真正的难点是并发不是缓存 |
 | 32 | `getBean` 全链路逐行精读 | 把前面所有章节串成一条调用链 |
 | 33 | 异常体系与排错实战 | `BeanCreationException` 栈怎么读 |

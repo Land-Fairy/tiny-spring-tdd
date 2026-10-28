@@ -3258,3 +3258,111 @@ but has eventually been wrapped ...
 
 这也是为什么「自调用失效」是四个高频场景里唯一**没有其他迹象**的一个：它不报错、不警告，
 业务完全正确，只是增强静默消失。唯一的排查手段是运行时观察。
+
+## 第 30 章
+
+### B-30-1 为什么「提前暴露」的窗口只能在「实例化之后、填充属性之前」？
+
+**下界（不能再早）**：提前暴露的东西必须是「一个已经存在的对象」。实例化之前没有对象，
+`ObjectFactory` 交出去的只能是「第二次创建」——那会造出两个实例，比环更糟。
+
+**上界（不能再晚）**：属性填充期间就会用到它。`alpha` 填 `beta` 时，`beta` 填 `alpha` 时，
+如果此刻 `alpha` 还没被登记为「可提前暴露」，第二次 `getBean("alpha")` 就只能走向「再创建一次」，
+被「创建中」检测拦下（红一就是这样炸的）。填充之后才登记，等于错过了唯一一个「别人会来要它」的时刻。
+
+**为什么这两条推出「必须用工厂而不是对象」**：窗口的上界卡在 `populateBean` 之前，而
+「要不要包代理」这个决定只能由 `postProcessAfterInitialization` 给出，它排在 `initializeBean` 里、
+也就是 `populateBean` **之后**。于是：
+
+> 要交出去的时刻，代理还不存在；
+> 而代理只可能在之后才被造出来。
+
+「现在交对象」只能交出裸对象；「交出一个以后能算出对象的东西」才能交出代理。这就是第三级缓存的全部理由。
+换句话说，**第三级缓存不是「多存一份」，而是把「要不要包代理」这个决定推给了一个信息更全的时刻**。
+
+### B-30-2 用 `lock()` 而不是 `tryLock()`，能构造出什么死锁？
+
+先说锁保护的是什么：`singletonLock` 保护三个 Map 的一致性，而**创建线程在整个创建过程中一直持有它**
+（`getSingleton(name, factory)` 把创建动作包在锁里）。
+
+死锁需要「等待图里出现环」，所以光有两个线程不够，得让它们互相等：
+
+| 时刻 | 线程 T1 | 线程 T2 |
+| --- | --- | --- |
+| t1 | `getBean("alpha")`，拿到 `singletonLock`，开始创建 `alpha` | `getBean("gamma")`，排队等锁 |
+| t2 | `alpha` 填充属性需要 `gamma` → `getBean("gamma")` → 等锁（T2 已持有） | 拿到锁，开始创建 `gamma` |
+| t3 | T1 阻塞在锁上 | `gamma` 填充属性需要 `alpha` → `getSingleton("alpha", true)` → `lock()` |
+| t4 | 等 T2 | 等 T1 |
+
+t4 就是环：T1 要锁（被 T2 持有），T2 要「T1 把 alpha 造完」（不可能，T1 正阻塞）。
+两边永远等下去。
+
+`tryLock()` 在这一步把 `null` 返回给 T2，语义是「**我不知道 alpha 的早期引用，因为我不是它的创建线程**」。
+T2 于是走正常路径：要么等到 alpha 造完（拿到成品），要么在它自己的线程里重新创建 alpha ——
+无论哪种，等待图里都没有环了。
+
+这条缺陷值得记住的原因不是「我们写错了」，而是：**单线程测试永远不会发现它**。
+只有在「并发创建」与「循环依赖」同时出现时才触发，而这恰好是真实应用里最难复现的场景之一。
+我们在缺陷表里如实记录了它。
+
+### B-30-3 两个 `Alpha@15a902e7` 为什么打印一样却不是同一个对象？
+
+`Object.toString()` 打印的是 `类名@Integer.toHexString(hashCode())`，而 `hashCode` 默认实现返回
+identity hash，**由对象决定、但因对象不同而不同**——除非……代理把 `toString()` 转发给了裸对象。
+
+红四里的情况正是后者：池子里放的是 `proxy`，注入方手里是 `raw`。调用 `proxy.toString()`
+→ `JdkDynamicAopProxy` 转发 → `raw.toString()` → 打印 `raw` 的身份。于是两条字符串一模一样，
+`==` 却是 false。
+
+如果业务重写了 `hashCode`/`equals`（例如按主键比较），这条 bug 会换一种更难查的形式暴露：
+
+1. **当 Map 键**：`proxy` 与 `raw` 被当成同一个键（equals 相等、hash 相同），先 put 后 put 会互相覆盖，
+   于是「我明明放了两个不同的实例」这种困惑出现；
+2. **当锁对象**：`synchronized (proxy)` 与 `synchronized (raw)` 是两把不同的锁，
+   互斥彻底失效——这是最危险的一种，因为它只在并发下表现为「数据偶尔坏掉」；
+3. **Set 去重**：两个身份被合并成一个，取出来的那个可能是裸对象。
+
+所以「打印一样」不是巧合，是**代理模型的一个可观测特征**：任何转发型代理都会让
+「身份（identity）」与「表现（behavior）」脱钩。
+
+### B-30-4 忘了清 `earlySingletonObjects`，会怎样？
+
+正常路径下**看起来没问题**：`getSingleton(name, true)` 的第一步就是查 `singletonObjects`（一级缓存），
+成品在里面就直接返回，二级缓存里的陈旧条目永远轮不到。
+
+问题出在「一级缓存里没有这个名字，但它曾经有过」的时刻。最直接的复现场景：
+
+1. 定义 `alpha` ↔ `beta` 的环，`refresh()` → 环解开，池子里是成品；
+2. 手动调用 `context.getBeanFactory().destroySingleton("alpha")`（销毁时只清一级缓存）；
+3. 再次 `getBean("alpha")` —— 创建过程中 `beta` 来要 `alpha` 的早期引用，
+   `earlySingletonObjects` 里还留着**上一轮**那个裸对象，于是被交出去；
+4. 结果是：池子里是这一轮的新对象，`beta` 手里是上一轮的旧对象。第 29 章场景六重演，
+   而且这次连 `getEarlyBeanReference` 都没被调用（根本不需要算）。
+
+这就是「清理责任分散在多个方法里」的典型代价：`addSingleton` 与 `destroySingleton` 都要清，
+漏掉任何一处都不会在 happy path 上暴露。真实 Spring 把二、三级的清理写成一组固定动作
+（`:159` 附近三行），并且 `removeSingleton` 也一并处理。
+
+### B-30-5 `prototype` 为什么没有这套机制？意味着 prototype 的环无解吗？
+
+**没有机制的原因是结构性的**：
+
+- 三级缓存的前提是「一个名字对应一个实例」——`singletonObjects` 的键就是 Bean 名。
+  prototype 每次 `getBean` 都产生新实例，没有「这个名字的那个实例」可言；
+- 于是也就没有「池子里的身份」问题：没有池子，就不存在「注入方与池子里是不是同一个」，
+  第 29 章场景六对 prototype 无意义；
+- 「提前暴露」对 prototype 更是无意义的：即使暴露了，下一次注入还是该新建一个，
+  暴露的那个实例谁也不用。
+
+**但这不等于无解**——它是「应该报错」而不是「应该解开」。真实 Spring 对 prototype 做的是**检测**：
+`AbstractBeanFactory` 用 `ThreadLocal<Object> prototypesCurrentlyInCreation`（`:176`）
+记录当前线程正在创建的 prototype，`beforePrototypeCreation`（`:1200`）登记、
+`afterPrototypeCreation`（`:1225`）摘除，`doGetBean` 在 `:267` 检查
+`isPrototypeCurrentlyInCreation(beanName)` 并抛 `BeanCurrentlyInCreationException`。
+
+换句话说：**单例的环是可以解的（提前暴露 + 代理延迟），prototype 的环是不可解的（环里每一步都要求新实例）**。
+成对的生命周期方法在单例上是「解环的工具」，在 prototype 上是「把栈溢出换成一句人话」的工具。
+
+我们只在单例上做了 `beforeSingletonCreation`/`afterSingletonCreation`，
+prototype 完全没做——所以我们的 prototype 环会以 `StackOverflowError` 结束（缺陷表已记录）。
+补法很短：照 `beforeSingletonCreation` 的样子加一个 `ThreadLocal<String>`（或 `Set`）即可。
