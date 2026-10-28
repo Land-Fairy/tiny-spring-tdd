@@ -37,6 +37,16 @@ private final Map<String, Object> disposableBeans = new LinkedHashMap<>();
 
 ### K2 不变量可见：约束写在类型里
 
+四条可执行的落地规则（E2 已在全仓落完）：
+
+| 编号 | 规则 | 当前状态 |
+|---|---|---|
+| **K2-a** | 与真实 Spring 同形的值对象（`PropertyValue`、`ConstructorArgumentValues.ValueHolder`…）按真实形状实现：`final class` + 全 `private final` + 构造期校验，**不得改成 `record`** | 已对齐，理由写进 `PropertyValue` 类注释 |
+| **K2-b** | 本书自创、仅供内部使用的纯数据载体一律用 `record`（四条判据见下） | 全仓恰好 2 处：`SimpleMetadataReader.ConstantPool`、`ConfigurationClassEnhancer.MethodCode` |
+| **K2-c** | 可变对象（`BeanDefinition` 系）必须「一种写法」：全 `private` 字段 + 统一风格 setter + 构造期校验；`*Value`/`*Metadata`/`*Descriptor` 若有非 final 字段，javadoc 必须显式写「可变/mutable」 | 由 `K2SourceContractTests` 钉住 |
+| **K2-d** | 构造器校验统一走自带消息的断言（`Assert.notNull(x, "beanName")` 这类），禁止裸 `if (x == null) throw new IllegalArgumentException()` 散布各处 | 新增代码遵守；存量见 E3 的快照标注 |
+
+
 反例（约束只活在注释和口头约定里）：
 
 ```java
