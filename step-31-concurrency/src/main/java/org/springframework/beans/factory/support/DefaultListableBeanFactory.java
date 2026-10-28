@@ -741,12 +741,6 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 	}
 
 	/**
-	 * 按图纸造一个对象，然后填属性、调初始化回调。三步的顺序是契约。
-	 * @param beanName Bean 的名字，只用于错误消息
-	 * @param beanDefinition 图纸
-	 * @return 新对象
-	 */
-	/**
 	 * 「如果需要提前暴露，这个 Bean 该以什么面目出现？」<b>第 30 章</b>。
 	 *
 	 * <p>
@@ -770,6 +764,12 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 		return exposedObject;
 	}
 
+	/**
+	 * 按图纸造一个对象，然后填属性、调初始化回调。三步的顺序是契约。
+	 * @param beanName Bean 的名字，只用于错误消息
+	 * @param beanDefinition 图纸
+	 * @return 新对象
+	 */
 	private Object doCreateBean(String beanName, BeanDefinition beanDefinition) {
 		Object bean = createBeanInstance(beanName, beanDefinition);
 		// 第 30 章：实例化之后、填充属性之前——这是唯一能插入「提前暴露」的窗口。
