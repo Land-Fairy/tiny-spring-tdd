@@ -1,4 +1,4 @@
-package org.springframework.context.annotation;
+package org.springframework.beans.factory.annotation;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
@@ -18,11 +18,12 @@ import java.lang.annotation.Target;
  * 元数据、以及自定义 {@code AutowireCandidateResolver} 实现的任意语义。
  *
  * <p>
- * <b>真实 Spring 对应</b>：{@code org.springframework.context.annotation.Qualifier}（58 行）。读取点在
+ * <b>真实 Spring 对应</b>：{@code org.springframework.beans.factory.annotation.Qualifier}（44
+ * 行）—— 它就在 {@code spring-beans} 里，不在 {@code spring-context}；这条分层界线真实 Spring 自己也是这么划的。读取点在
  * {@code DefaultListableBeanFactory#checkQualifiers}，由 {@code isAutowireCandidate}
  * 在<b>收集候选时</b>调用——所以它的实际位置 比「第一步」还要早：候选还没凑齐就已经被它筛过了。
  *
- * @see Primary
+ * @see org.springframework.context.annotation.Primary
  */
 @Target({ ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER, ElementType.TYPE, ElementType.ANNOTATION_TYPE })
 @Retention(RetentionPolicy.RUNTIME)

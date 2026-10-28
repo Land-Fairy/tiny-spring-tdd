@@ -85,6 +85,8 @@ public class ClassPathScanningCandidateComponentProvider {
 			if (isCandidateComponent(metadata)) {
 				ScannedGenericBeanDefinition beanDefinition = new ScannedGenericBeanDefinition(metadata);
 				beanDefinition.setLazyInit(metadata.getAnnotationTypes().contains(LAZY_ANNOTATION));
+				beanDefinition.setPrimary(
+						metadata.getAnnotationTypes().contains("org.springframework.context.annotation.Primary"));
 				candidates.add(beanDefinition);
 			}
 		}

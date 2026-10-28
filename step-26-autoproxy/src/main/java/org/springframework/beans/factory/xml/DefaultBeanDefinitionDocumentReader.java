@@ -52,6 +52,8 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 
 	public static final String SCOPE_ATTRIBUTE = "scope";
 
+	public static final String PRIMARY_ATTRIBUTE = "primary";
+
 	public static final String LAZY_INIT_ATTRIBUTE = "lazy-init";
 
 	/**
@@ -88,6 +90,29 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 		return count;
 	}
 
+	/**
+	 * 三个「一个字面量就能表达」的属性：作用域、主候选、懒加载。
+	 *
+	 * <p>
+	 * 抽出来不是为了少写几行，而是为了让 {@link #registerBeanDefinition} 保持在一屏之内——
+	 * 那个方法负责的是「这个元素合不合法」，而这里负责的是「把属性搬到图纸上」， 两件事本来就不该挤在一个方法体里。
+	 * @param element {@code <bean>} 元素
+	 * @param definition 正在组装的图纸
+	 */
+	private void applyScopeAndFlags(Element element, GenericBeanDefinition definition) {
+		String scope = element.getAttribute(SCOPE_ATTRIBUTE);
+		if (!scope.isEmpty()) {
+			definition.setScope(scope);
+		}
+		if (TRUE.equals(element.getAttribute(PRIMARY_ATTRIBUTE))) {
+			// XML 走的是显式声明这条路：注解路径由扫描器翻译成同一个标记
+			definition.setPrimary(true);
+		}
+		if (TRUE.equals(element.getAttribute(LAZY_INIT_ATTRIBUTE))) {
+			definition.setLazyInit(true);
+		}
+	}
+
 	private int registerBeanDefinition(Element element, BeanDefinitionRegistry registry,
 			Set<String> namesInThisDocument) {
 		if (!BEAN_ELEMENT.equals(element.getTagName())) {
@@ -113,13 +138,7 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 
 		GenericBeanDefinition definition = new GenericBeanDefinition();
 		definition.setBeanClassName(className);
-		String scope = element.getAttribute(SCOPE_ATTRIBUTE);
-		if (!scope.isEmpty()) {
-			definition.setScope(scope);
-		}
-		if (TRUE.equals(element.getAttribute(LAZY_INIT_ATTRIBUTE))) {
-			definition.setLazyInit(true);
-		}
+		applyScopeAndFlags(element, definition);
 		// 第 13 章：两条「方法通道」的名字也写在图纸上。注意它们是名字不是方法：
 		// 此时容器还没造出对象，无从知道这个方法存不存在——所以「找不到方法」只能等到初始化期才发现。
 		String initMethodName = element.getAttribute(INIT_METHOD_ATTRIBUTE);
