@@ -188,6 +188,33 @@ java.lang.IllegalStateException: Failed to instantiate [org.springframework.samp
 
 ---
 
+### 2.5 反例：这三处**不该**用 mock
+
+本章的测试一个 mock 都没用（`Mockito` 依赖在 `pom.xml` 里，全书只在前几章讲过它**是什么**）。
+不是偷懒——`refresh()` 这类东西一旦 mock，测出来的就是你对它的想象：
+
+**反例一：mock 掉 `BeanFactory`，去测「启动顺序」。**
+顺序是容器的**产出**，不是它的输入。你把 `registerBeanPostProcessors` mock 掉、
+然后在 `InOrder` 里断言调用次序，等于自己写了一遍答案再拿它当证据。
+正确做法是让真实的工厂跑起来，用一个**记录用的** `BeanPostProcessor` 把顺序写进 list，
+再断言 list（真实测试见 `step-09-application-context` 的 `RefreshStepOrderTests`）。
+
+**反例二：mock 数据对象（POJO）。**
+`when(definition.getBeanClassName()).thenReturn("com.acme.Foo")` —— 这条断言能证明什么？
+只能证明 Mockito 会记住你刚才说的话。数据用真实对象构造，一行 `new GenericBeanDefinition()` 更短也更强。
+
+**反例三：mock 你正在实现的那个类。**
+这是新手最容易滑的一步：`spy(applicationContext)` 然后「验证 `refresh()` 调了 12 个钩子」。
+钩子是你自己刚写的私有/受保护方法，把它们 mock 掉之后，剩下的测试**无法**发现
+「第 7 步和第 8 步之间漏了一个 `try`」。
+
+**什么时候该用 mock**：验证**协作关系**——「这个依赖有没有被调用、调用了几次、带了什么参数」，
+而且这个依赖是你**不拥有**的（第三方服务、时钟、随机源）。一句话判定：
+
+> 如果一条断言里的期望值**来自 mock 的返回值**，那这条测试永远不会失败。
+
+---
+
 ## 3. 实现
 
 ### 3.1 三个类，三种职责

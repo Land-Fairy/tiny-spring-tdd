@@ -115,6 +115,7 @@
 - **B** [思考题答案](docs/appendix/B-answers.md)（**别提前看**）—— 36 章共 180 题（含清单逐条勾对）
 - **C** [真实 Spring 类 ↔ 本书类 对照总表](docs/appendix/C-class-map.md) —— 203 个框架类、真实行数、引入章节
 - **D** [面试题映射表](docs/appendix/D-interview-map.md) —— 41 道高频题，每题指回章节
+- **E** [读真实 Spring 源码的路线图](docs/appendix/E-source-reading.md) —— 包地图、五个断点、命令速查、36 章入口索引
 
 ---
 

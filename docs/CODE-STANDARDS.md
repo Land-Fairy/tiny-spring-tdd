@@ -30,7 +30,8 @@
 | 3 | 编码规范 | `checkstyle`（自定义规则集） | `verify` | 构建失败 |
 | 4 | 优雅度 | `PMD`（curated 规则集） | `verify` | 构建失败 |
 | 5 | 覆盖率 | `JaCoCo`（行 ≥80%，分支 ≥70%） | `verify` | 构建失败 |
-| 6 | 架构约束 | `ArchUnit`（随各章测试落地） | `test` | 测试失败 |
+| 6 | 架构约束 | `ArchUnit`（`LayeringTests`，每个模块各一份） | `test` | 测试失败 |
+| 7 | 跨章回归不变式 | `scripts/check-propagation.sh`（CI 单独跑） | 仓库级 | 退出码 1 |
 
 一条命令跑全部：`mvn verify`
 
@@ -90,40 +91,36 @@ IDE 插件：`spring-javaformat` 有 IDEA / VS Code 插件；命令行修复用
 
 - `if`/`for`/`while` 必须带花括号。
 - 禁止 `switch` 缺 `default`、禁止 `fall through`。
-- 禁止 `catch (Exception)` / `catch (Throwable)`——会掩盖真实错误类型，
+- **禁止 `catch (Throwable)` / `catch (Error)`**——会连 OOM 与 `StackOverflowError` 一起吞掉，
   而我们整个第 33 章都在教"怎么读异常栈"。
+- `catch (Exception)` **原则上也禁止**，只有一种例外：**被调用的接口契约本身就是
+  `throws Exception`**（例如 `InitializingBean#afterPropertiesSet`），此时捕获宽异常是接口逼的，
+  不是作者偷懒。这种地方必须写注释说明「谁逼的」，并且在 `config/checkstyle/checkstyle.xml`
+  的 `IllegalCatch` 里只禁 `Throwable`/`Error` 来落地这条分界。
+  第 05 章踩过一次真红（容器必须 `catch (Exception)` 才能调 `afterPropertiesSet`），
+  处置理由写在那章的正文里；真实 Spring 的 `AbstractAutowireCapableBeanFactory#initializeBean`
+  更宽——它 `catch (Throwable)`（`:1821`–`:1826`），代价是连 `Error` 一起吞。
 - `equals` 与 `hashCode` 必须成对。
 - 禁止 `finalize()`。
 - `equals` 用常量在前（`"x".equals(v)`）避免 NPE。
 
 ### 闸门 4：优雅度（PMD curated）
 
-这一组规则专门针对**"for 循环堆砌"式代码**。它们不是风格偏好，
-是"有没有用对语言"的问题。
+只收录能提升「教学代码可读性」的规则，拒绝制造噪声的默认全集。当前 10 条：
 
-| 规则 | 拦截什么 | 应该写成 |
-|---|---|---|
-| `ForLoopCanBeForeach` | `for (int i = 0; i < list.size(); i++)` | 增强 for 或 `forEach` |
-| `AvoidReassigningParameters` | 给参数重新赋值 | 新建局部变量，标明意图 |
-| `UseCollectionIsEmpty` | `list.size() == 0` | `list.isEmpty()` |
-| `SimplifyBooleanReturns` | `if (x) return true; else return false;` | `return x;` |
-| `CollapsibleIfStatements` | 两层 `if` 无 `else` | 合并条件或 `&&` |
-| `UnnecessaryLocalBeforeReturn` | 只为 `return` 服务的临时变量 | 直接 `return` 表达式 |
-| `UnusedPrivateField/Method/LocalVariable` | 死代码 | 删除 |
-| `EmptyCatchBlock` | 吞异常的 `catch {}` | 记录或重抛 |
+| 规则 | 想拦掉的东西 |
+| --- | --- |
+| `ForLoopCanBeForeach` | 手写索引循环做遍历 |
+| `AvoidReassigningParameters` | 参数重赋值（读代码时「这个变量什么时候变的」） |
+| `UseCollectionIsEmpty` | `size() == 0` |
+| `SimplifyBooleanReturns` | `if (x) return true; else return false;` |
+| `CollapsibleIfStatements` | 可合并的嵌套 `if` |
+| `UnnecessaryLocalBeforeReturn` | 只为 `return` 服务的临时变量 |
+| `UnusedPrivateField` / `UnusedPrivateMethod` / `UnusedLocalVariable` | 死代码 |
+| `EmptyCatchBlock` | 空 `catch`（会静默吞异常） |
 
-**关于 stream**：优先用 stream 表达"对集合的变换"，而不是手写索引循环。
-但**不强制**把所有循环改成 stream——一个需要三层嵌套、加 `peek` 调试的 stream，
-比等价的 for 循环更难读。判断标准是：**读者一眼能不能看出"在做什么"**。
-
-**豁免机制**：本仓要讲"为什么 stream 更好"，就必须先摆一个 for 循环当反面教材。
-所以：
-
-- 刻意朴素的对照代码**只能**放在 `docs/` 的代码块里，或标了 `naive` 的独立目录。
-- 每个"反面示例"文件必须有 `@implNote 教学用反面示例：不要这样写` 的 Javadoc。
-- 这些路径在 `config/pmd/pmd-ruleset.xml` 的 `exclude-pattern` 里显式豁免。
-
-**默认优雅，例外必须被标注**——这是豁免机制的全部意义。
+**豁免**：`org.springframework.beans.factory.naive`（教学用反面示例）整包豁免，
+见 `config/pmd/pmd-ruleset.xml` 的 `exclude-pattern` 与 [ADR-0006](adr/0006-naive-code-location.md)。
 
 ### 闸门 5：覆盖率
 
@@ -147,14 +144,23 @@ context  ──▶  beans  ──▶  core
    │            │
    └──▶ aop ────┘
 
-规则：
+规则（四条，全部在 src/test/java/org/springframework/LayeringTests.java 里）：
 - beans.*  不得依赖 context.*
 - aop.*    不得依赖 context.*
+- aop.*    不得依赖 beans.factory.support.*（可以依赖接口，不得依赖实现）
 - core.*   不得依赖 beans.* / context.* / aop.*
 ```
 
-这条规则会在第 12 章（引入 `ApplicationContext`）时真正生效——那时第一次出现
-"到底谁该依赖谁"的张力，正好可以拿这条规则给学生讲**为什么分层**。
+每个模块都带这份测试，所以 `mvn -pl step-NN-xxx verify` 就是一次分层体检。
+早期章节还没有 `context` / `aop` 包，四条规则都写了 `allowEmptyShould(true)`——
+「没类可查」是合法的，不是失败。
+
+这条规矩第一次真正咬人是在第 19 章之后：`AutowiredAnnotationBeanPostProcessor`
+（在 `beans`）为了读 `@Primary` / `@Qualifier` 直接 `import` 了 `context` 的两个注解类。
+功能上没问题，方向上反了。修法见 `docs/adr/0005`：注解在**注册期**被翻译成
+`BeanDefinition#isPrimary()` 上的布尔量，内层只读事实、不认识注解。
+这个案例比任何"为什么要分层"的论述都更有说服力——**规矩一旦能被机器执行，
+违反就会在当天暴露，而不是在两个月后的 code review 里被偶然发现。**
 
 ---
 
