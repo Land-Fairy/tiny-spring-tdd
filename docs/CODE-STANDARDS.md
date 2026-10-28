@@ -119,8 +119,10 @@ public final class PropertyValue {
 | 6 | 架构约束 | `ArchUnit`（`LayeringTests`，每个模块各一份） | `test` | 测试失败 |
 | 7 | 跨章回归不变式 | `scripts/check-propagation.sh`（CI 单独跑） | 仓库级 | 退出码 1 |
 | 8 | 文档引用可验证性 | `scripts/check-doc-refs.sh`（CI 单独跑） | 仓库级 | 退出码 1 |
+| 9 | 文档链接可达 | `scripts/check-doc-links.sh`（CI 单独跑） | 仓库级 | 退出码 1 |
 
-一条命令跑 1–6：`mvn verify`；7、8 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`
+一条命令跑 1–6：`mvn verify`；7–9 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、`bash scripts/check-doc-links.sh`
+（前两条查内容对不对，第三条查文件还在不在——两种不同的文档腐败）。
 
 ### 闸门 1：格式
 
@@ -324,6 +326,21 @@ throw new IllegalStateException("error");
 
 ## 真实 Spring 参照仓（`@see` 的唯一事实来源）
 
+### 参照仓是「提醒」，不是闸门
+
+`mvn verify` **完全不依赖**参照仓。原因很实际：把外部仓库做成构建前置，等于让无网环境和 CI 无法构建，
+而参照仓的作用只是**核对**。所以：
+
+| 命令 | 语义 | 缺参照仓时 |
+|---|---|---|
+| `scripts/refs.sh status` | 打印路径 / 当前 commit / **本书基准 commit** / 历史窗口 | 打印降级提示，退出 0 |
+| `scripts/refs.sh verify` | 校验基准提交 `daf9551` 是否在本地 | 只警告「行号可能漂移」，退出 0 |
+| `scripts/refs.sh fetch [--history]` | 浅克隆 / 加深历史窗口 | 降级提示，退出 0 |
+
+只有**用法错误**（未知命令）才非 0。判断依据：一条命令若能让构建失败，它就必须是本书自己能保证的东西；
+参照仓是别人的仓库，我们只能核对，不能保证。
+
+
 `@see` 和每章「🔍 真实 Spring 里它在哪」段里的全限定名，**不许凭记忆写**。
 本项目钉在 `spring-framework` **6.2.x** 分支（ADR-0004），只读参照仓放在仓库外：
 
@@ -347,6 +364,18 @@ scripts/refs.sh status   # 路径 / commit hash / 正常还是降级
 ---
 
 ## 向后传播（`scripts/propagate.sh`）
+
+两个脚本的模式与退出码（`--help` 也会打印同样内容）：
+
+| 脚本 | 模式 | 写盘 | 退出码 | 谁在用 |
+|---|---|---|---|---|
+| `propagate.sh` | `--dry-run` | 否（补丁只做 `--check`） | 0 可应用 / 2 冲突即停 | 本地，先看清楚要动哪些文件 |
+| `propagate.sh` | `--verify` | 是，逐章 apply 后跑测试 | 3 某章测试失败 | 本地，传播完自查 |
+| `check-propagation.sh` | 无参数 | 否 | 1 = 有回退或缺失 | **CI 判据** |
+| `check-propagation.sh` | `--dry-run` | 否 | **0（只报告）** | 本地探索、出报告 |
+| `check-propagation.sh` | `--stat` | 否 | 同上 | 只要一行统计 |
+
+`--dry-run` 与 CI 用同一条检测逻辑，唯一差别是「问题是否算失败」——所以本地看干净了，CI 一定干净。
 
 本书的结构决定了它有一个别处没有的维护成本：**每章的代码是前章的副本**。第 05 章修一个 bug，同一份代码还存在于 `step-06`…`step-35`。手工同步三十遍一定会漏，所以用脚本。
 
@@ -403,6 +432,27 @@ git commit -am "fix(step-05): ..."
 ### 一条踩到的坑
 
 `git apply --check --3way` **不能**用来预检冲突：三方合并会冲突时它依然返回成功。只有真正 `git apply --3way` 之后，从索引里 `git diff --diff-filter=U` 才能看出冲突。脚本第一版就是被它骗过，把 `<<<<<<<` 留在了工作区。
+
+## 并发口径：六只容器各说各的（K1）
+
+`DefaultSingletonBeanRegistry` 里六个容器用了**六种不同的保护方式**，这不是风格混乱，而是两次判定问句的结果：**这个访问点是否已在锁内？** **是否必须保序？**
+
+| 容器 | 保护方式 | 为什么是这个 |
+|---|---|---|
+| `singletonObjects` | `ConcurrentHashMap` | 热路径第一次读故意不进锁，靠 map 可见性 + 进锁后二次确认 |
+| `earlySingletonObjects` | `ConcurrentHashMap` | 同上；插入无序 |
+| `singletonsCurrentlyInCreation` | `ConcurrentHashMap` 的 keySet | 要「原子地 add 失败即已有人在造」，这正是环依赖检测 |
+| `singletonFactories` | 第 30 章纯锁内 `HashMap`；第 31 章改 `ConcurrentHashMap` | 保护方式跟着「读写是否都在锁内」走，不跟着字段名走 |
+| `registeredSingletons` | `Collections.synchronizedSet(LinkedHashSet)` | 要保序，JDK 没有并发保序 Set |
+| `disposableBeans` | `Collections.synchronizedMap(LinkedHashMap)` | 要保序，且销毁路径只对 map 自身加锁取快照 |
+
+**禁止的「统一风格」**：把后两个换成 `ConcurrentHashMap`。会同时丢掉保序和 `destroySingletons()` 的快照原子性，而所有功能测试仍然全绿。
+
+口径由两处钉住：`DefaultSingletonBeanRegistry` 类注释里那张表，以及 `step-35` 的 `RegistryConcurrencyContractTests`（断言六只容器的实际类型 + 8 线程并发注册不丢 + 名字保序）。
+
+> 记录一次**被驳回的提案**：曾有人（包括代码审阅）建议「`disposableBeans` 用 `synchronizedMap` 属于早期妥协，应统一换成并发容器」。
+> 查证结论是**反向的**：`registerDisposableBean` 的调用点并不总在 `singletonLock` 内，销毁路径需要对这个 map 自身加锁取快照，
+> 所以它必须自带同步；真正该统一的是**判定过程**，不是**结论**。
 
 ## 测试规范
 
