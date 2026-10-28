@@ -1,0 +1,12 @@
+# 第 13 道闸门的豁免表：这些名字出现在评审里，是**作为反例**出现的——
+# 评审正在指控「书里引用了这个不存在的东西」，所以它必须写得出这个名字。
+# 格式：文件名  # 为什么允许它不存在
+Names.java  # 第 04 章正文承诺给 /tmp/noparams/Names.java 的源码，全书从未给过；评审引用它正是在指认这件事
+tmp/noparams/Names.java  # 同上，带路径的写法
+HashMapOrderTests.java  # 第 02 章 javadoc 里虚构的测试类名；评审引它是为了证明它不存在
+Tests.java  # 00-issue-drafts.md 里描述「任意 *Tests.java 文件」的泛称
+FooTests.java  # 00-acceptance.md 演示「按内容放行」时编的示例文件
+File.java  # 00-acceptance.md 里的 `<File.java:行号>` 占位符
+X.java  # 00-acceptance.md 演示豁免条目时用的占位符
+AGENTS.md  # 指的是仓根之外的全局约定文件（~/.dsh/AGENTS.md），不在本仓源码树内
+chNN.md  # 评审文档自己的命名模式，不是真实文件

@@ -249,7 +249,7 @@ curl -s 'https://search.maven.org/solrsearch/select?q=g:%22org.springframework%2
 | 2 | **每章的「真红」原始输出**：不是「这里会报错」的转述，而是测试真实失败时的控制台原文，36 章每章 2–4 次 | 各章 §2「先写会红的测试」 |
 | 3 | **跨章传播闸门**：35 个模块是同一份代码的快照，`scripts/check-propagation.sh` 机器检查「第 K 章的修复有没有在 K+1 章丢掉」 | [CODE-STANDARDS](docs/CODE-STANDARDS.md) 闸门 7 |
 | 4 | **文档引用闸门**：注释与正文里的每个类名、每个 `File.java:行`、每个栈帧，都必须落到真实存在的文件与行上——「照着书去找，结果找不到」这类损伤信任的错误由机器拦 | [CODE-STANDARDS](docs/CODE-STANDARDS.md) 闸门 8 |
-| 5 | **另外两道文档闸门**：体量表里的行数（闸门 11）与 35 篇评审的判决行写法（闸门 12）——前者防「抄错数字」，后者防「同一件事三种说法」 | [CODE-STANDARDS](docs/CODE-STANDARDS.md) 闸门 11–12 |
+| 5 | **另外三道文档闸门**：体量表里的行数（闸门 11）、35 篇评审的判决行与三节结构（闸门 12）、评审自己引用的 `file:line` 是否指得到东西（闸门 13）——分别防「抄错数字」「同一件事三种说法」「评审犯它正在指控的错」 | [CODE-STANDARDS](docs/CODE-STANDARDS.md) 闸门 11–13 |
 
 **与上游的架构差距**：包结构、实现链层次、`refresh()` 纵深、AOP 家族这四张图，
 以及「体量 / 职责切分 / 刻意不做」三类差异总表，见 **[架构差距](docs/architecture-gap.md)**。

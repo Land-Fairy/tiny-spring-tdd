@@ -2,7 +2,7 @@
 
 **评审对象**：`tiny-spring-tdd` 全 35 章（每章一个 `step-NN-*` 模块；最后一章 `step-35` 含 311 个主源文件、18,605 行主代码、463 个 `@Test`；35 个模块合计 9,734 个 `@Test`（`grep -rh "@Test" step-*/src/test` 实测））
 **判据**：`docs/reviews/00-criteria-card.md` v1.1（六视角 × P0/P1 分类 × 判决规则）
-**方法**：每章六视角（可跑 / 生产可用 / 变异实证 / 模块深度 / 术语 / 文档结构）+ 12 道机器闸门
+**方法**：每章六视角（可跑 / 生产可用 / 变异实证 / 模块深度 / 术语 / 文档结构）+ 13 道机器闸门
 **结论一句话**：**结构可以照抄，说法不能全信。** 35 章的设计与分层经得起看；出错的地方几乎全在「旁证」——行数、栈帧、测试名、上游行号、跨章承诺。
 
 ## 一、110 条 P0 的分布（这是全书最有用的一张表）
@@ -37,7 +37,7 @@
 4. **用 `remove` 的返回值当令牌**：`ConcurrentHashMap#remove` 只有一个线程能拿到非 `null`，「互斥已经由数据结构的原子性提供了」，不需要再加一把锁（ch31 `DefaultSingletonBeanRegistry:222`）。
 5. **异常链留两层**：`BeanCreationException` 的 `cause` 是「真正的原因」，`relatedCauses` 是「其余线索」（如三个候选各失败一次）。新手最容易只留一层，然后在真实项目里丢现场。
 6. **每个 `public` 类都交代「砍掉了什么」并 `@see` 真实 Spring 全限定名**：`docs/CODE-STANDARDS.md` 的三件套。这条让「这是简化」和「这是我编的」在版面上就分得开。
-7. **把旁证交给机器，把判断留给人**：12 道闸门里，4 道是本次评审新建的（8 doc-refs、10 章节交叉引用、11 体量表数字、12 判决行格式）。结论：**评审的价值不在「我读了一遍」，在于把这次的错误变成下次跑一次就能发现的东西。**
+7. **把旁证交给机器，把判断留给人**：13 道闸门里，6 道是本次评审新建的（8 doc-refs、10 章节交叉引用、11 体量表数字、12 评审形状、13 评审引用）。结论：**评审的价值不在「我读了一遍」，在于把这次的错误变成下次跑一次就能发现的东西。**
 8. **驳回要留证据**：全书共驳回 5 条专家意见，其中 4 条是「术语视角把『我没见过』当成『不存在』」。评审报告必须记「被驳回的意见 + 反驳依据」，否则下一轮还会被同一条假问题占用时间。
 
 ## 四、仍然开着的（等用户拍板，未擅自改）
@@ -53,5 +53,5 @@
 
 - 每章判决与证据：`docs/reviews/chNN.md`（35 篇）
 - 判据与分类规则：`docs/reviews/00-criteria-card.md`
-- 机器闸门（12 道，编号见 `docs/CODE-STANDARDS.md` §闸门一览）：`scripts/check-propagation.sh`（7）、`scripts/check-doc-refs.sh`（8）、`scripts/check-doc-links.sh`（9）、`scripts/check-chapter-refs.py`（10）、`scripts/check-doc-tables.py`（11）、`scripts/check-review-format.py`（12）
+- 机器闸门（13 道，编号见 `docs/CODE-STANDARDS.md` §闸门一览）：`scripts/check-propagation.sh`（7）、`scripts/check-doc-refs.sh`（8）、`scripts/check-doc-links.sh`（9）、`scripts/check-chapter-refs.py`（10）、`scripts/check-doc-tables.py`（11）、`scripts/check-review-format.py`（12）、`scripts/check-review-refs.py`（13）
 - 唯一验收：`mvn -o verify` 全绿（格式 / 依赖红线 / Checkstyle / PMD / JaCoCo / ArchUnit）

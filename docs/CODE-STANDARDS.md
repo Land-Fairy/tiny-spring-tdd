@@ -2,7 +2,7 @@
 
 > 这不是一份"建议"，但也别把它读成"全部由机器执行"——2026-10-28 审计过一次，真实情况是：
 >
-> - **闸门 12 道**（§闸门一览）：全部由 `mvn verify` 或 CI 执行，违反即红灯。这部分是硬约束。
+> - **闸门 13 道**（§闸门一览）：全部由 `mvn verify` 或 CI 执行，违反即红灯。这部分是硬约束。
 > - **优雅六条 K1–K6**：只有 **K2、K5** 有源码契约测试（`K2SourceContractTests`、`K5SourceContractTests`），
 >   **K3 部分**由 checkstyle 兜住（`MethodLength` 40 行是硬线，不是 K3 写的 30），**K1/K4/K6 目前靠评审清单**。
 >
@@ -138,12 +138,13 @@ K3 真正管的是**类级**的理由数：一个 1120 行的工厂同时管注�
 | 10 | 章节交叉引用主题 | `scripts/check-chapter-refs.py`（CI 单独跑） | 仓库级 | 退出码 1 |
 | 11 | 章节体量表数字 | `scripts/check-doc-tables.py`（CI 单独跑） | 仓库级 | 退出码 1 |
 | 12 | 评审文档形状（判决行 + 矩阵/复核/放弃点） | `scripts/check-review-format.py`（CI 单独跑） | 仓库级 | 退出码 1 |
+| 13 | 评审文档的引用可解析 | `scripts/check-review-refs.py`（CI 单独跑） | 仓库级 | 退出码 1 |
 
 一条命令跑 1–6：`mvn verify`；7–12 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、
 `bash scripts/check-doc-links.sh`、`python3 scripts/check-chapter-refs.py`、`python3 scripts/check-doc-tables.py`、
-`python3 scripts/check-review-format.py`
-（7 查代码有没有退化；8–12 查文档的五类腐败：引用解析不了、链接指向空气、链接指错了门、
-体量表里的数字对不上、评审结论的写法各说各话）。
+`python3 scripts/check-review-format.py`、`python3 scripts/check-review-refs.py`
+（7 查代码有没有退化；8–13 查文档的六类腐败：引用解析不了、链接指向空气、链接指错了门、
+体量表里的数字对不上、评审结论的写法各说各话、**评审自己引用的 file:line 指不到东西**）。
 
 闸门 10 判六条通道（v2.x）：**类名不符（判错）> 类名归属（通过）> 类名首现章 > 具体关键词 > 泛词唯一归属（WARN）> 泛词提示**。
 扫描范围含 `docs/**.md` **与 `step-35-graduation` 的 javadoc/行注释**（35 份副本内容相同，审最全的一份）。
@@ -647,3 +648,21 @@ git commit -am "fix(step-05): ..."
 闸门加这三条检查时，一次红出 20 篇，全部补齐后转绿。**形状是承诺的下限**：
 没有矩阵就不该自称「六视角评审」，没有复核记录就不该自称「实测」。
 
+### 闸门 13：评审文档自己的引用
+
+**它防的是什么**：`docs/reviews/` 是这份评审的交付物，它满篇用 `file:line` 当证据（39 篇共 456 处）。
+如果评审里写 `Foo.java:98` 而那个文件只有 32 行，读者按它去核对会扑空——**评审就犯了它正在指控全文的那个错**。
+这不是假设：闸门建成后第一次跑就抓到 `docs/reviews/ch12.md` 的 C2 条把行号标成一个 32 行文件的第 98 行。
+
+**判定语义**（只判三件机器能判的事，不猜语义）：
+1. 文件名必须解析到本仓（`step-*` / `docs/`）、上游 `SPRING_REF` 或 JDK（JDK 靠 `jimage list` 认词干）；
+2. 行号不得超过候选文件的行数——同一基名有多份副本时取最长的那份，因为副本只会更长；
+3. 基名有多份候选只记提示：评审没说清是哪一份属可读性问题，不是假引用。
+
+**豁免表**：`scripts/review-refs-allow-missing.txt`。评审**作为反例**引用的名字（书里承诺过却没给的
+`Names.java`、第 02 章 javadoc 里虚构的 `HashMapOrderTests.java`）必须允许它指不到东西——否则
+「指认一个假引用」这件事本身会被闸门拦下。豁免表每行都要写清理由，没有理由的条目在评审里补不出来。
+
+**它和闸门 8 的区别**：闸门 8 查**书**（章节正文 + javadoc）的引用；闸门 13 查**评审**的引用。
+两者共用一个判断：引用必须指得到东西；但豁免表分开——书的豁免小于评审的豁免，因为评审天然要引用
+「不存在的东西」当证据。

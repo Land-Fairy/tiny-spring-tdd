@@ -36,6 +36,7 @@
 | 10 | check-chapter-refs | 「详见第 N 章」指向的章其实没讲这事 | `python3 scripts/check-chapter-refs.py` | 301 处带主题 / **0 指错**（另 194 处人工判、65 处仅泛词、30 处靠类名、264 处跳过） |
 | 11 | check-doc-tables | 体量表里的行数是手抄的、会漂 | `python3 scripts/check-doc-tables.py` | 14 表 / 169 数字 / 0 不符 |
 | 12 | check-review-format | 35 篇评审的判决行格式漂移 + 三节结构缺失 | `python3 scripts/check-review-format.py` | 35 篇 / 全部合规 |
+| 13 | check-review-refs | 评审自己的 `file:line` 指不到东西 | `python3 scripts/check-review-refs.py` | 39 篇 / 456 处引用全部可解析 |
 
 **为什么后 6 道必须存在**：110 条 P0 里 **B（量化矛盾）+ A（虚构引用）= 69 条，占 63%**。
 这一类缺陷靠人眼审不完——审完第 1 章，第 35 章的数字又漂了。所以判断标准不是「这次审出来了」，
@@ -229,6 +230,7 @@ README 三行加粗原则里最硬的一条是「**每章都是可运行快照**
 |---|---|---|
 | 12 `check-review-format.py` | 把 `docs/reviews/ch07.md` 的判决行改成 `- **判决**：还行`（词表外的词） | **红**，点名 `ch07.md` 与非法词 ✓ |
 | 10 `check-chapter-refs.py` | 把「循环依赖 → 第 30 章」三处改指第 27 章（第 03、05、09 章） | **全绿，一处没抓到** ✗ |
+| 13 `check-review-refs.py` | 在 `docs/reviews/ch20.md` 末尾追加一条 `DefaultListableBeanFactory.java:99999` | **红**，点名 `ch20.md`、报「超出最长候选 2778 行（35 份候选）」✓ |
 
 闸门 10 为什么抓不到，查清楚了：它的判据是「短语里的关键词只属于被引章以外的一章」。
 但「循环依赖」出现在 **12 个章节**、「构造器注入」「属性填充」各 12/14 章——这类词按

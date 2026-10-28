@@ -58,6 +58,8 @@ jobs:
       # 35 篇评审是分四批写的，判决行曾有三种写法；想横向比较就得先读懂三种语法。
       - name: 第 12 道闸门 · 评审文档判决行格式
         run: python3 scripts/check-review-format.py
+      - name: 第 13 道闸门 · 评审文档的引用可解析
+        run: python3 scripts/check-review-refs.py
 
       - name: 上传测试与覆盖率报告
         if: always()
