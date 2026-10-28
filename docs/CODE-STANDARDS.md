@@ -270,6 +270,27 @@ git commit -am "fix(step-05): ..."
 
 `git apply --check --3way` **不能**用来预检冲突：三方合并会冲突时它依然返回成功。只有真正 `git apply --3way` 之后，从索引里 `git diff --diff-filter=U` 才能看出冲突。脚本第一版就是被它骗过，把 `<<<<<<<` 留在了工作区。
 
+## 并发口径：六只容器各说各的（K1）
+
+`DefaultSingletonBeanRegistry` 里六个容器用了**六种不同的保护方式**，这不是风格混乱，而是两次判定问句的结果：**这个访问点是否已在锁内？** **是否必须保序？**
+
+| 容器 | 保护方式 | 为什么是这个 |
+|---|---|---|
+| `singletonObjects` | `ConcurrentHashMap` | 热路径第一次读故意不进锁，靠 map 可见性 + 进锁后二次确认 |
+| `earlySingletonObjects` | `ConcurrentHashMap` | 同上；插入无序 |
+| `singletonsCurrentlyInCreation` | `ConcurrentHashMap` 的 keySet | 要「原子地 add 失败即已有人在造」，这正是环依赖检测 |
+| `singletonFactories` | 第 30 章纯锁内 `HashMap`；第 31 章改 `ConcurrentHashMap` | 保护方式跟着「读写是否都在锁内」走，不跟着字段名走 |
+| `registeredSingletons` | `Collections.synchronizedSet(LinkedHashSet)` | 要保序，JDK 没有并发保序 Set |
+| `disposableBeans` | `Collections.synchronizedMap(LinkedHashMap)` | 要保序，且销毁路径只对 map 自身加锁取快照 |
+
+**禁止的「统一风格」**：把后两个换成 `ConcurrentHashMap`。会同时丢掉保序和 `destroySingletons()` 的快照原子性，而所有功能测试仍然全绿。
+
+口径由两处钉住：`DefaultSingletonBeanRegistry` 类注释里那张表，以及 `step-35` 的 `RegistryConcurrencyContractTests`（断言六只容器的实际类型 + 8 线程并发注册不丢 + 名字保序）。
+
+> 记录一次**被驳回的提案**：曾有人（包括代码审阅）建议「`disposableBeans` 用 `synchronizedMap` 属于早期妥协，应统一换成并发容器」。
+> 查证结论是**反向的**：`registerDisposableBean` 的调用点并不总在 `singletonLock` 内，销毁路径需要对这个 map 自身加锁取快照，
+> 所以它必须自带同步；真正该统一的是**判定过程**，不是**结论**。
+
 ## 测试规范
 
 - 框架：**JUnit 5 + AssertJ**。允许 `Mockito`（仅 test scope）。
