@@ -3478,3 +3478,110 @@ if (this.singletonFactories.remove(beanName) != null) {
 判断方法很简单：**把等待图画出来。** 如果边与依赖图一致，串行是预期的；如果边出现在两个
 没有依赖关系的 Bean 之间，那是意外——它要么是实现代价（要能被量出来，如 3.5 节），
 要么是缺陷（要么改锁的粒度，要么改代码结构）。
+
+## 第 32 章
+
+### B-32-1 prototype 化的 `Probe`：代理还会出现吗？环还能解吗？
+
+**代理还会出现，每一遍都出现。** 第二个测试跑两遍链，每遍都走到
+`applyBeanPostProcessorsAfterInitialization`，而 `AdvisorAutoProxyCreator` 只问两件事：
+「这个类命中了 Advisor 吗」「这个对象是基础设施类吗」——它**不看 scope**。
+所以 prototype 每一遍都会拿到一个新代理。区别只在于这个代理**不入池**：
+`addSingletonFactory` 与第 ⑬ 步的早期引用替换都在 `isSingleton()` 分支里，prototype 直接跳过。
+
+**环解不了。** 三级缓存的三张表全是「按 beanName 记单例」的，prototype 没有名字级的存储，
+也就没有「提前暴露」这件事可做。于是 `A` 的构造器要 `B`、`B` 的构造器要 `A` 时，只能一层层造下去，
+直到栈溢出（第 29 章实测：1024 层 `StackOverflowError`）。
+
+真实 Spring 的做法是**只检测不解决**：`doGetBean:267` 的
+`isPrototypeCurrentlyInCreation(beanName)` 直接抛 `BeanCurrentlyInCreationException`。
+这条分支的存在本身就是个提示：**prototype 的环是错误，不是需要被兼容的用法**。
+
+### B-32-2 记录器注册在自动代理创建器之后，`beforeInitialization` 看到的是谁？
+
+**一定是裸对象。**
+
+推理只用到 §3.5 的四步顺序：
+
+1. `before` 阶段（⑫b）在 `after` 阶段（⑫d）**之前**；
+2. `AdvisorAutoProxyCreator` 只在 `postProcessAfterInitialization` 里换对象
+   （它的 `postProcessBeforeInitialization` 是恒等）；
+3. 所以在 `before` 链里跑的时候，无论如何排列，代理还没被造出来。
+
+差别只出现在 `after` 链里——而那正是本章两个探测器的设计：
+
+| 探测器的注册位置 | 在 `after` 链中的位置 | 看到的东西 |
+| --- | --- | --- |
+| 自动代理创建器**之前** | 先跑 | 裸对象（`afterInitialization:raw`） |
+| 自动代理创建器**之后** | 后跑 | 代理（`afterInitialization:proxy`） |
+
+这也是日志里那两行相邻记录的由来。它们不是「两个阶段」，而是**同一个阶段的两种视角**。
+
+### B-32-3 两个 `getSingleton` 为什么必须分开？合成一个会怎样？
+
+**合成一个，环会在第 ⑦ 跳炸。**
+
+`getSingleton(name, factory)` 的第一件事就是 `beforeSingletonCreation(beanName)`（登记「我在创建」）。
+环里的第二个 `getBean` 若走到这里，名字已经在集合里 → 抛 `BeanCurrentlyInCreationException`。
+而这个环本来是**能解**的：早期引用就在 `singletonFactories` / `earlySingletonObjects` 里等着。
+
+所以快路径 `getSingleton(name)`（`DefaultSingletonBeanRegistry:189`）不是优化，它是**语义上必须**
+的一步：它回答的是「有没有现成的（含早期引用）」，而不是「给我造一个」。第 30 章把这件事讲成了
+「检测是对的，结论错了」——检测本身没错，错在让一条本可以走快路径的调用走到了检测面前。
+
+还有第二个代价：合成之后每次 `getBean` 都要进锁，第 31 章那条「锁外读」的快路径也没了。
+真实 Spring 同样是两个方法（`:197` 只查、`:257` 查不到就造）。
+
+### B-32-4 去掉第 ⑬ 步的 `initializedBean == bean` 会怎样？
+
+**会出现「池子里是 A、注入方手里是 B」的分裂。**
+
+条件的作用是区分两种情况：
+
+| 情形 | `getEarlyBeanReference` 的返回 | `initializedBean == bean` | 正确做法 |
+| --- | --- | --- | --- |
+| 没人要过早期引用 | 没调用 | `true`（after 阶段也没换对象） | 放 `initializedBean` |
+| 有人要过，早期引用就是代理 | 代理 | `false`（`bean` 是裸对象） | 放**早期引用**（`initializedBean = earlySingletonReference`） |
+| 有人要过，但后处理器在 after 阶段才换 | 裸对象 | `false` | 两者不一致——这是需要被暴露出来的病态情形 |
+
+去掉条件，第二行就会出错：池子里放 `initializedBean`（可能是 after 阶段新造的另一个代理），
+而环里的注入方手里握着早期引用——两个不同的对象同一个名字。
+
+真实 Spring 用**同一套思路但换个方向**：`AbstractAutoProxyCreator` 在 `getEarlyBeanReference:265`
+把裸对象记进 `earlyBeanReferences`，然后在 `postProcessAfterInitialization:315` 里
+
+```java
+if (this.earlyBeanReferences.remove(cacheKey) != bean) {
+    return wrapIfNecessary(bean, beanName, cacheKey);
+}
+return bean;   // 早期引用已经给过代理，这里不再包第二次
+```
+
+即「**同一个 Bean 只被包一次代理**」——我们的 `initializedBean == bean` 与它的
+`remove(cacheKey) != bean` 是同一件事的两种写法：都在问「这个对象是不是已经被包过了」。
+
+### B-32-5 那张顺序表：哪几行是契约，哪几行是巧合？
+
+**属于契约（可以依赖，文档明确承诺）：**
+
+- 属性填充（依赖注入）**先于** `Aware` 回调 —— 否则 `afterPropertiesSet` 里读不到协作者；
+- `Aware` 回调 **先于** `BeanPostProcessor.postProcessBeforeInitialization`；
+- `postProcessBeforeInitialization` **先于** `InitializingBean.afterPropertiesSet`；
+- `afterPropertiesSet` **先于** 自定义 `init-method`（接口契约优先于配置）；
+- `postProcessAfterInitialization` **最后**。
+
+Spring 参考文档的「Lifecycle Callbacks」一节把这五条按此顺序列成一张表，属于对外承诺。
+
+**属于实现巧合（别依赖）：**
+
+- **「代理一定诞生在 after 阶段」**。真实 Spring 还有更早的入口：
+  `InstantiationAwareBeanPostProcessor#postProcessBeforeInstantiation` 可以在**实例化之前**
+  直接返回一个对象、整个 `doCreateBean` 被短路（`createBean` 里的 `resolveBeforeInstantiation:518`）。
+  本书没有这个扩展点，所以「代理只在 after 阶段出现」只对本书成立。
+- **`Dependency` 先于 `probe`**：那是图纸注册顺序决定的，不是契约。
+- **两个探测器在日志里相邻**：那是注册顺序决定的。
+- **`beforeInitialization` 只出现一次**：真实 Spring 的 BPP 链里，同一个对象可能被多个后处理器
+  依次看到（`CommonAnnotationBeanPostProcessor`、`AutowiredAnnotationBeanPostProcessor` 等），
+  日志条数取决于注册了多少个。
+
+判断方法：**问「换个实现还能不能保证」。** 能保证的是契约；只有当前这份代码能保证的是巧合。

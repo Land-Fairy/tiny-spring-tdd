@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>io.github.landfairy</groupId>
+		<artifactId>tiny-spring-tdd</artifactId>
+		<version>0.0.1-SNAPSHOT</version>
+		<relativePath>../pom.xml</relativePath>
+	</parent>
+
+	<artifactId>step-32-getbean-flow</artifactId>
+	<name>step-26-autoproxy</name>
+	<description>第 32 章 getBean 全链路逐行精读</description>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.assertj</groupId>
+			<artifactId>assertj-core</artifactId>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<!-- 让 JVM 自己把生成的代理类落盘（见 ProxyDiagnostics）；工作目录挪进 target，
+					     落盘的 jdk/proxy1/$ProxyN.class 就不会污染工作区 -->
+					<workingDirectory>${project.build.directory}/proxy-dump-root</workingDirectory>
+					<!-- 必须走 JVM 启动参数：surefire 的 systemPropertyVariables 是在 fork 内部才设的，
+					     而 ProxyGenerator 的静态字段在那之前就可能已经初始化完成（fork 内部会先造代理）。 -->
+					<argLine>@{argLine} -Djdk.proxy.ProxyGenerator.saveGeneratedFiles=true</argLine>
+					<systemPropertyVariables>
+						<jdk.proxy.ProxyGenerator.saveGeneratedFiles>true</jdk.proxy.ProxyGenerator.saveGeneratedFiles>
+					</systemPropertyVariables>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+</project>

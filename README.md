@@ -104,7 +104,7 @@
 |---|---|---|
 | [30](docs/chapters/30-circular-dependencies.md) | 三级缓存与循环依赖 | 三个 Map、`getEarlyBeanReference`、「二级行不行」的反证实验 |
 | [31](docs/chapters/31-concurrency.md) | 并发模型：锁、`ConcurrentHashMap`、延迟 `ObjectFactory` | 令牌制、`tryLock` 阶梯、粗锁的代价 |
-| 32 | `getBean` 全链路逐行精读 | 把前面所有章节串成一条调用链 |
+| [32](docs/chapters/32-getbean-flow.md) | `getBean` 全链路逐行精读 | 十七跳、五阶段、代理在哪里诞生 |
 | 33 | 异常体系与排错实战 | `BeanCreationException` 栈怎么读 |
 | 34 | 设计模式总览：Spring 里的 9 种模式 | 从"看懂"到"会设计" |
 | 35 | 对照真实 Spring 6.2.x 的 `refresh()` + 6→7 变更 | 毕业 |
