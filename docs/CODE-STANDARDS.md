@@ -127,8 +127,11 @@ public final class PropertyValue {
 一条命令跑 1–6：`mvn verify`；7–12 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、
 `bash scripts/check-doc-links.sh`、`python3 scripts/check-chapter-refs.py`、`python3 scripts/check-doc-tables.py`、
 `python3 scripts/check-review-format.py`
-（7 查代码有没有退化；8–12 查文档的四类腐败：引用解析不了、链接指向空气、链接指错了门、
+（7 查代码有没有退化；8–12 查文档的五类腐败：引用解析不了、链接指向空气、链接指错了门、
 体量表里的数字对不上、评审结论的写法各说各话）。
+
+闸门 10 对「短语里没有名词」的引用**直接跳过并计数**（v1.2）：`这就是第 02 章的全部内容`
+这类句子没讲那章的哪个东西，判不了。此前它一律记 WARN，导致 475 条噪音淹没了真正要看的那几条。
 
 ### 闸门 1：格式
 

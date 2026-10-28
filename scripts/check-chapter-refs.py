@@ -12,8 +12,13 @@ v1.1.2 修过两处这类错误（通读才发现的）：
   引用点后面的短语命中目标章的关键词          → 通过
   命中别的章的关键词、且不命中目标章          → ERROR（就是上面那两处的形状）
   一个都不命中（短语太泛）                    → WARN，让人判断
+  短语里压根没有名词（「这就是第 02 章的全部内容」「这个我们第 19 章会碰到」）
+                                             → SKIP，不占 WARN
 
 只认区分性关键词，所以本闸门是「宁可漏、不可吵」：拿不准的一律 WARN。
+v1.2 修过一处自己造成的噪音：短语提取把 markdown 记号与连接词也算进去了，
+于是 475 条里绝大部分是「」「**」「→」「这就是的全部内容」这种没有主题的碎片，
+真正需要人看的被埋在里面。现在先判「有没有名词」，没有的直接跳过并计数。
 """
 
 from __future__ import annotations
@@ -39,6 +44,24 @@ CONNECTORS = ("讲的", "说的话", "讲", "说的", "说的那套", "的那套
 errors: list[str] = []
 warns: list[str] = []
 checks = 0
+skipped = 0
+
+# 短语里出现这些词不算「有主题」——它们只是连接语或指代，说明了不指哪一章
+STOPWORDS = (
+    "这就是", "这也是", "那就是", "那些", "这些", "这个", "那个", "我们", "你们", "你在",
+    "它们", "其余", "然后", "所以", "因为", "但是", "如果", "其中", "以及", "还有", "这里",
+    "那里", "之后", "之前", "就是", "这是", "那是", "会碰", "碰到", "答案", "区别", "问题",
+    "内容", "全部", "一起", "直接", "已经", "可以", "需要", "看到", "来说", "而言",
+)
+
+
+def has_topic(phrase_plain: str) -> bool:
+    """短语里是否含有名词性内容（去掉连接词后还剩 ≥2 个字）。"""
+    t = phrase_plain
+    for w in STOPWORDS:
+        t = t.replace(w, "")
+    t = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "", t)
+    return len(t) >= 2
 
 
 def hit(keyword: str, text: str) -> bool:
@@ -127,6 +150,11 @@ def scan_file(path: Path, topics: dict[int, list[str]]) -> None:
                 phrase_plain = re.sub(r"[`*_\s]+", "", phrase)
             # 抹掉 markdown 记号，否则「`AdvisorAuto」这种会被截断成半个词
             phrase_plain = re.sub(r"[`*_\s]+", "", phrase)
+            if not has_topic(phrase_plain):
+                # 「这就是第 02 章的全部内容」这类：句子里根本没有讲到那章的哪个东西
+                global skipped
+                skipped += 1
+                continue
             checks += 1
             hit_target = [t for t in targets if any(hit(k, phrase_plain) for k in topics[t])]
             if hit_target:
@@ -161,7 +189,10 @@ def main() -> int:
     for e in errors:
         print(f"ERROR {e}")
     print()
-    print(f"── 汇总: {checks} 处带主题的交叉引用，{len(errors)} 个指错，{len(warns)} 处短语太泛未判定（--all-warns 可列出）")
+    print(
+        f"── 汇总: {checks} 处带主题的交叉引用，{len(errors)} 个指错，"
+        f"{len(warns)} 处短语太泛未判定（--all-warns 可列出），{skipped} 处无主题已跳过"
+    )
     return 1 if errors else 0
 
 

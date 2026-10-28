@@ -33,7 +33,7 @@
 | 7 | check-propagation | 改了第 N 章忘了同步第 N+1…35 章 | `bash scripts/check-propagation.sh` | 35 模块 / 491 文件一致 |
 | 8 | check-doc-refs | 正文/注释里的类名、方法名、行号是**编的** | `bash scripts/check-doc-refs.sh --all` | 0 错 0 警 |
 | 9 | check-doc-links | 相对链接 404 | `bash scripts/check-doc-links.sh` | 164 条 / 0 坏链 |
-| 10 | check-chapter-refs | 「详见第 N 章」指向的章其实没讲这事 | `python3 scripts/check-chapter-refs.py` | 565 处 / 0 指错 |
+| 10 | check-chapter-refs | 「详见第 N 章」指向的章其实没讲这事 | `python3 scripts/check-chapter-refs.py` | 301 处带主题 / 0 指错（另 211 处人工判、264 处无主题跳过） |
 | 11 | check-doc-tables | 体量表里的行数是手抄的、会漂 | `python3 scripts/check-doc-tables.py` | 14 表 / 169 数字 / 0 不符 |
 | 12 | check-review-format | 35 篇评审的判决行格式漂移 | `python3 scripts/check-review-format.py` | 35 篇 / 全部合规 |
 
@@ -93,8 +93,14 @@ c79ca22 docs(reviews): 35 篇评审的判决行统一
    本地领先 3 个提交。网络恢复后 `git push origin integration` 即可，不需要别的动作。
 3. **仍有 2 条代码级 P0 未修**（其余 108 条已修）：`step-30` 的不可达分支、`allowEmptyShould`
    的渐变式毕业机制。两条都会改动教学结构，等授权（草稿 1、2）。
-4. **`check-chapter-refs.py` 有 475 处「短语太泛未判定」**。不是错，是它认不出主题时的
-   保守行为；`--all-warns` 可列出。这项能力有上限，别当成「565 处全对」。
+4. **`check-chapter-refs.py` 的能力上限已摸清。** 初版报 475 条「未判定」，查下去发现
+   是闸门自己的缺陷：短语提取把 markdown 记号与连接词也算进主题，于是「」「**」「→」
+   「这就是的全部内容」都成了待判项。v1.2 先判「短语里有没有名词」，没有的跳过并计数，
+   未判定降到 **211 条**。这 211 条我做了机器辅助审计（短语里的类名 → 用 `find` 查出它
+   首现于哪一章，与被引章比对）：**0 条真错**，唯一命中 `04-constructor-injection.md:40`
+   是误报（`GreetingService` 交给第 03 章的容器，容器本来就吃任意对象）。
+   结论：全书 565 处交叉引用里，90 处靠区分性关键词自动通过、211 处人工过了一遍、
+   264 处无主题跳过——**没有发现错**。但这项闸门只认关键词，不认语义，这个上限要记住。
 
 ---
 
