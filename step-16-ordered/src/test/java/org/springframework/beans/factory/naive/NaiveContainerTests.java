@@ -55,6 +55,9 @@ class NaiveContainerTests {
 		// java.lang.AssertionError:
 		// Expected not same: org.springframework.samples.ch01.GreetingController@40c80397
 		assertThat(first).isSameAs(second);
+		// 只断言 isSameAs 是不够的：两个 null 也「相同」。补一条非空断言，
+		// 否则 getBean 坏成返回 null 时这个测试仍然是绿的。
+		assertThat(first).isNotNull();
 	}
 
 	@Test
