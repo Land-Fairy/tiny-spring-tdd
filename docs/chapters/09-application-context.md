@@ -177,7 +177,7 @@ expected: 2
 java.lang.IllegalStateException: Failed to instantiate [org.springframework.samples.ch09.ExplodingBean]:
 	constructor threw [java.lang.IllegalStateException: boom]
 	at ...SimpleInstantiationStrategy.instantiate(SimpleInstantiationStrategy.java:40)
-	at ...DefaultListableBeanFactory.preInstantiateSingletons(DefaultListableBeanFactory.java:327)
+	at ...DefaultListableBeanFactory.preInstantiateSingletons(DefaultListableBeanFactory.java:345)
 ```
 
 第一个说「应该造了 1 个，实际 0 个」，第二个说「第三个对象的编号应该是 2，实际是 1」，第三个更奇怪：一个**我刚注册的**容器在 `refresh` 期间就直接抛异常了。
@@ -606,5 +606,5 @@ protected void destroyBeans() {
 ```bash
 ./mvnw -pl step-09-application-context test      # 159 个测试
 ./mvnw -pl step-09-application-context verify    # 六道闸门
-./mvnw -q verify                                 # 全仓 9 个模块
+./mvnw -q verify                                 # 全仓 35 个模块（本章只关心前 9 个）
 ```

@@ -650,7 +650,8 @@ return initializedBean;
 ### 4.4 `close()` 与 `doClose()` 的分工
 
 - `close()`：**对外的**，可重复调；顺便摘钩子。
-- `doClose()`：**内部一次性的**，用 `active.get() && closed.compareAndSet(false, true)` 保证只跑一遍（第 09 章的 `refresh()` 里那个技巧）。
+- `doClose()`：**内部一次性的**，靠「先读 `active`、再置 false」保证同一线程里只跑一遍——`if (this.active.get()) { this.active.set(false); … }`。
+  注意这里**没有** `compareAndSet`：本书不做并发保证，两个线程同时 `close()` 确实可能都走进来。真正的并发关容器在第 31 章处理。
 
 测试里 `closingTwiceDestroysOnce` 断言的就是这条：关两次，销毁事件只出现一遍。
 
@@ -663,13 +664,13 @@ return initializedBean;
 | 本书 | 真实 Spring（`spring-beans` / `spring-context`） | 体量（行） |
 |---|---|---|
 | `DisposableBean` | `org.springframework.beans.factory.DisposableBean` | 22 / **46** |
-| `InitializingBean` | `org.springframework.beans.factory.InitializingBean` | 21 / **46** |
+| `InitializingBean` | `org.springframework.beans.factory.InitializingBean` | 26 / **46** |
 | `@PostConstruct` | `jakarta.annotation.PostConstruct`（不在 Spring 仓库里） | 23 / — |
 | `@PreDestroy` | `jakarta.annotation.PreDestroy`（同上） | 23 / — |
 | `InitDestroyAnnotationBeanPostProcessor` | `...factory.annotation.InitDestroyAnnotationBeanPostProcessor` | 124 / **489** |
 | `DestructionAwareBeanPostProcessor` | `...factory.config.DestructionAwareBeanPostProcessor` | 35 / **61** |
 | `DisposableBeanAdapter` | `...factory.support.DisposableBeanAdapter` | 149 / **559** |
-| `DefaultSingletonBeanRegistry` | 同名 | 275 / **841** |
+| `DefaultSingletonBeanRegistry` | 同名 | 321 / **841** |
 | `DefaultListableBeanFactory` | 同名 | 764 / **2778** |
 | `AbstractApplicationContext` | `...context.support.AbstractApplicationContext` | 465 / **1653** |
 
