@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+	"-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+	"https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<!--
+	豁免清单（见 docs/adr/0006）。
+	规矩：例外必须被标注。每加一条，都要在注释里写清"为什么"和"谁批准的"。
+-->
+<suppressions>
+	<!--
+		教学用反面示例：故意保留朴素写法的对照代码（org.springframework.beans.factory.naive）。
+		这些类存在的意义就是"看看不这么写会怎样"，所以不参与优雅度/命名/长度类检查。
+	-->
+	<suppress files="[\\/]naive[\\/]" checks=".*"/>
+</suppressions>

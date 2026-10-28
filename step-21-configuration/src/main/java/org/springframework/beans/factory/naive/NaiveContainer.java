@@ -21,6 +21,9 @@ import org.springframework.beans.factory.NoSuchBeanException;
  * <li>不知道依赖关系，属性填充必须由调用方手工完成（第 05、11 章）
  * </ol>
  *
+ * <p>
+ *
+ * @implNote 教学用反面示例：故意保留朴素写法，不要照抄进生产代码（见 docs/adr/0006）。
  * @see org.springframework.beans.factory.support.DefaultListableBeanFactory
  */
 public class NaiveContainer {
