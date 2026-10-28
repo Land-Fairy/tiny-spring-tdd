@@ -1,5 +1,6 @@
 package org.springframework.beans.factory.support;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
@@ -679,6 +680,57 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 		}
 	}
 
+	/**
+	 * 造出「裸对象」：从哪条路来由图纸决定——工厂方法，还是构造器。
+	 *
+	 * <p>
+	 * 真实 Spring 同款入口是
+	 * {@code AbstractAutowireCapableBeanFactory#createBeanInstance}（{@code :1186}）：
+	 * 里面先看工厂方法，再看
+	 * {@code determineConstructorsFromBeanPostProcessors}（{@code :1327}）要不要干预。 <b>第 19
+	 * 章</b>把「问后处理器」插进了构造器这条路——它必须在 {@code instantiate} 之前， 因为一旦开始造，构造器就已经选定了。
+	 * @param beanName Bean 名字
+	 * @param beanDefinition 图纸
+	 * @return 刚造出来、还没填属性的对象
+	 */
+	private Object createBeanInstance(String beanName, BeanDefinition beanDefinition) {
+		if (beanDefinition.getFactoryMethodName() != null) {
+			return instantiateUsingFactoryMethod(beanName, beanDefinition);
+		}
+		Class<?> beanClass = resolveBeanClass(beanName, beanDefinition);
+		return getConstructorResolver().instantiate(beanName, beanClass,
+				determineCandidateConstructors(beanName, beanClass));
+	}
+
+	/**
+	 * 问所有后处理器「这个类该用哪个构造器」——全书<b>唯一</b>一次在对象还不存在时的问话。
+	 *
+	 * <p>
+	 * 所以这里找的不是 {@link BeanPostProcessor} 而是
+	 * {@link SmartInstantiationAwareBeanPostProcessor}：普通后处理器的回调都要先有对象，
+	 * 只有它这个子接口的回调发生在实例化<b>之前</b>。真实 Spring 对应
+	 * {@code AbstractAutowireCapableBeanFactory#determineConstructorsFromBeanPostProcessors}（{@code :1327}），
+	 * 由 {@code createBeanInstance}（{@code :1227}）在挑构造器之前调用。
+	 *
+	 * <p>
+	 * 返回值是<b>第一个</b>愿意给意见的后处理器的答案（{@code null} 表示「我没意见」，继续问下一个）—— 与真实 Spring
+	 * 一样，后处理器之间不投票。
+	 * @param beanName Bean 名字
+	 * @param beanClass 要造的类
+	 * @return 候选构造器；没有后处理器愿意给意见时 {@code null}
+	 */
+	private Constructor<?>[] determineCandidateConstructors(String beanName, Class<?> beanClass) {
+		for (BeanPostProcessor processor : this.beanPostProcessors) {
+			if (processor instanceof SmartInstantiationAwareBeanPostProcessor smartProcessor) {
+				Constructor<?>[] candidates = smartProcessor.determineCandidateConstructors(beanClass, beanName);
+				if (candidates != null) {
+					return candidates;
+				}
+			}
+		}
+		return null;
+	}
+
 	private ConstructorResolver getConstructorResolver() {
 		ConstructorResolver resolver = this.constructorResolver;
 		if (resolver == null) {
@@ -719,9 +771,7 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 	}
 
 	private Object doCreateBean(String beanName, BeanDefinition beanDefinition) {
-		Object bean = (beanDefinition.getFactoryMethodName() != null
-				? instantiateUsingFactoryMethod(beanName, beanDefinition)
-				: getConstructorResolver().instantiate(beanName, resolveBeanClass(beanName, beanDefinition)));
+		Object bean = createBeanInstance(beanName, beanDefinition);
 		// 第 30 章：实例化之后、填充属性之前——这是唯一能插入「提前暴露」的窗口。
 		// 早了没有对象可暴露，晚了属性已经填完、环已经炸过。
 		if (beanDefinition.isSingleton()) {
