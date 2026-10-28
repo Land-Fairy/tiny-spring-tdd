@@ -232,7 +232,7 @@ assertThat(NestedExceptionUtils.getRootCause(selfCaused)).isSameAs(selfCaused);
 
 ---
 
-## 3. 实现：六个新类，六处改基类
+## 3. 实现：六个新类，七处改基类
 
 ### 3.1 `NestedExceptionUtils`（74 行）：三个静态方法
 
@@ -430,9 +430,10 @@ return failure;
 
 **第一条进 `cause`（保持「根因链」的单线结构），其余进 `relatedCauses`（并列线索）。** 这个分工是真实 Spring 的做法，也是异常设计里一个通用技巧。
 
-### 3.7 六处改基类
+### 3.7 七处改基类
 
-改完之后，六个已有异常换了父类，全部接进新体系：
+改完之后，七个已有异常换了父类，全部接进新体系（下表共 9 行，另外两行 `NoUniqueBeanDefinitionException`、
+`UnsatisfiedDependencyException` 父类不变，只改了构造器参数或可捕获性）：
 
 | 类 | 原来继承 | 现在继承 |
 | --- | --- | --- |

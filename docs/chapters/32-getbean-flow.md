@@ -159,19 +159,19 @@ assertThat(log).endsWith("advice:before:work", "target:work");
       (:721)
         ├─ ⑨ instantiate：ConstructorResolver / 工厂方法              (第 03/04/21 章)
         ├─ ⑩ addSingletonFactory(name, () -> getEarlyBeanReference)   (第 30 章)
-        ├─ ⑪ populateBean(:855)                                       (第 05/20 章)
+        ├─ ⑪ populateBean(:905)                                       (第 05/20 章)
         │     └─ BeanWrapperImpl.setPropertyValue → 类型转换(第 23 章) → setter
-        ├─ ⑫ initializeBeanInternal(:918)                             (第 11/12/13 章)
+        ├─ ⑫ initializeBeanInternal(:968)                             (第 11/12/13 章)
         │     ├─ invokeAwareMethods(:939)                             (第 12 章)
         │     ├─ applyBeanPostProcessorsBeforeInitialization(:960)    (第 11 章)
         │     ├─ invokeInitMethods(:1014)  → afterPropertiesSet → init-method (第 13 章)
         │     └─ applyBeanPostProcessorsAfterInitialization(:982)     (第 11 章)
         │            └─ AdvisorAutoProxyCreator 在这里把对象换成代理   (第 26 章)
-        ├─ ⑬ 早期引用替换(:739-744)：池子里放代理而不是裸对象          (第 30 章)
+        ├─ ⑬ 提前引用替换(:739-744)：池子里放代理而不是裸对象          (第 30 章)
         └─ ⑭ registerDisposableBeanIfNecessary(:841)                  (第 13 章)
               │
               ▼
-   ⑮ addSingleton(:159)：putIfAbsent + 清早期引用 + 登记销毁          (第 30/31 章)
+   ⑮ addSingleton(:159)：putIfAbsent + 清提前引用 + 登记销毁          (第 30/31 章)
               │
               ▼
    ⑯ getObjectForBeanInstance(:349)：`&name` 走 FactoryBean，否则原样返回 (第 21 章)
@@ -183,7 +183,7 @@ assertThat(log).endsWith("advice:before:work", "target:work");
 十七跳里，有三处是最容易记错的：
 
 1. **第 ④ 跳在 ⑧ 之前**：快路径不只是「优化」。它在第 30 章之所以是**必需**的，是因为环里的
-   第二个 `getBean` 必须能在这里就拿到早期引用——否则它会走到 ⑦，被「创建中」检测拦下。
+   第二个 `getBean` 必须能在这里就拿到提前引用——否则它会走到 ⑦，被「创建中」检测拦下。
 2. **第 ⑩ 跳在 ⑪ 之前**：提前暴露必须发生在属性填充之前——早了没有对象可暴露，晚了环已经炸过。
 3. **第 ⑫ 跳内部有四个子步骤，代理出现在最后一个子步骤**：所以「代理何时诞生」这个问题的答案是
    「属性填充之后、初始化回调之后、`getBean` 返回之前」。
@@ -202,7 +202,7 @@ public Object getBean(String name) {
     }
     String beanName = transformedBeanName(name);
     BeanDefinition beanDefinition = this.beanDefinitionMap.get(beanName);
-    Object sharedInstance = getSingleton(beanName);           // ④ 快路径（含早期引用）
+    Object sharedInstance = getSingleton(beanName);           // ④ 快路径（含提前引用）
     if (sharedInstance != null) {
         return getObjectForBeanInstance(sharedInstance, name, beanName, beanDefinition);
     }
@@ -223,7 +223,7 @@ public Object getBean(String name) {
 
 | 签名 | 位置 | 语义 |
 | --- | --- | --- |
-| `getSingleton(String beanName)` | `DefaultSingletonBeanRegistry:189` | 只查，不造。是「快路径 + 拿早期引用」 |
+| `getSingleton(String beanName)` | `DefaultSingletonBeanRegistry:193` | 只查，不造。是「快路径 + 拿提前引用」 |
 | `getSingleton(String, ObjectFactory<?>)` | `:235` | 查不到就**造**，并负责「创建中»登记、加锁、放回池子 |
 
 ### 3.2 `getBeanInstance`：三态分派（:267）
@@ -266,7 +266,7 @@ public Object getSingleton(String beanName, ObjectFactory<?> singletonFactory) {
             finally {
                 afterSingletonCreation(beanName);    // ④ 摘除登记
             }
-            addSingleton(beanName, singletonObject); // ⑤ 放回池子 + 清理早期引用（:159）
+            addSingleton(beanName, singletonObject); // ⑤ 放回池子 + 清理提前引用（:175）
         }
         return singletonObject;
     }
@@ -306,11 +306,11 @@ private Object doCreateBean(String beanName, BeanDefinition beanDefinition) {
 
 五个窗口的顺序就是本章的主结论。这里只强调第 ⑬ 步，因为它是唯一一处「反直觉但必须」的代码：
 
-> 如果这个 Bean 在创建期间被别人（环里的某个 Bean）要过一次早期引用，那么池子里必须放**那个早期引用**
+> 如果这个 Bean 在创建期间被别人（环里的某个 Bean）要过一次提前引用，那么池子里必须放**那个提前引用**
 > （可能已经是代理），而不是这里刚初始化完的裸对象。否则「注入方手里的」和「池子里的」是两个对象。
 
 条件里的 `initializedBean == bean` 是「后处理器在 after 阶段没有换掉对象」的判据：若换了，
-说明代理是 after 阶段造的，那它和早期引用是同一个（`getEarlyBeanReference` 里已经包过），
+说明代理是 after 阶段造的，那它和提前引用是同一个（`getEarlyBeanReference` 里已经包过），
 不需要替换。
 
 ### 3.5 `initializeBeanInternal`：四步，顺序固定（:918）
@@ -373,12 +373,12 @@ private Object initializeBeanInternal(String beanName, Object bean, BeanDefiniti
 | ⑫c 初始化回调 | `invokeInitMethods:1014` | `invokeInitMethods:1863` | 同构（先接口后 `init-method`） |
 | ⑫d BPP after | `:982` | `applyBeanPostProcessorsAfterInitialization:440` | 同构 |
 | 代理诞生 | `AdvisorAutoProxyCreator` | `AbstractAutoProxyCreator#postProcessAfterInitialization:315` → `wrapIfNecessary:354` | 真实多 `earlyProxyReferences` 缓存 |
-| ⑬ 早期引用替换 | `:739-744` | `:593` 起（`earlySingletonExposure`，`:600` 注册工厂、`:616-630` 取早期引用） | 同构 |
+| ⑬ 提前引用替换 | `:739-744` | `:593` 起（`earlySingletonExposure`，`:600` 注册工厂、`:616-630` 取提前引用） | 同构 |
 | ⑭ 销毁登记 | `registerDisposableBeanIfNecessary:841` | `:645` | 同构 |
-| ⑮ 入池 | `addSingleton:159` | `:159` | **同一行号、同一实现**（`putIfAbsent` + 清早期引用） |
+| ⑮ 入池 | `addSingleton:159` | `:159` | **同一行号、同一实现**（`putIfAbsent` + 清提前引用） |
 
 这张表有一处巧合值得指出：`addSingleton` 在真实 Spring 里也是 `:159`。这不是我们抄行号，
-而是两边都在做同一件事——`putIfAbsent` 撞了必须抛、清早期引用、登记到 `registeredSingletons`。
+而是两边都在做同一件事——`putIfAbsent` 撞了必须抛、清提前引用、登记到 `registeredSingletons`。
 
 ---
 

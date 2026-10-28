@@ -4,8 +4,8 @@
 
 > 本章代码：`step-31-concurrency`。测试 **431** 个（净减 5），行覆盖 86.2%（3019/3504）、
 > 分支覆盖 75.4%（1163/1542）。改动集中在一个文件：
-> `DefaultSingletonBeanRegistry`（421 行）——去掉一段锁、把一个 `HashMap` 换成
-> `ConcurrentHashMap`、把早期引用的求值资格交给一次原子操作。
+> `DefaultSingletonBeanRegistry`（425 行）——去掉一段锁、把一个 `HashMap` 换成
+> `ConcurrentHashMap`、把提前引用的求值资格交给一次原子操作。
 
 前面三十章里，容器的所有代码都是在**一个线程**里跑完的。测试全绿，但它们绿在一个很弱的
 前提上：没有第二个线程同时进来。
@@ -74,7 +74,7 @@ GatedBean.release();
 ```java
 registry.addSingletonFactory("alpha", factory);
 assertThat(evaluations.get()).as("注册时不求值").isZero();
-assertThat(registry.getSingleton("alpha")).isNull();          // 不在创建中，不推导早期引用
+assertThat(registry.getSingleton("alpha")).isNull();          // 不在创建中，不推导提前引用
 assertThat(evaluations.get()).isZero();                       // 查成品也不求值
 
 registry.beforeSingletonCreation("alpha");
@@ -84,17 +84,17 @@ assertThat(registry.getSingleton("alpha")).isEqualTo("early");
 assertThat(evaluations.get()).as("工厂只该被执行一次").isEqualTo(1);   // 第二次读二级缓存
 ```
 
-「延迟」在这里有三层，每层都有断言：注册不求值 → 查询成品不求值 → 只有「真的有人要早期引用」
+「延迟」在这里有三层，每层都有断言：注册不求值 → 查询成品不求值 → 只有「真的有人要提前引用」
 才求值，且只求一次。
 
-### 2.3 红一：早期引用查询排队等别人的创建
+### 2.3 红一：提前引用查询排队等别人的创建
 
-一个线程正在创建 `alpha`（于是它手里有创建锁），另一个线程来问：alpha 的早期引用呢？
+一个线程正在创建 `alpha`（于是它手里有创建锁），另一个线程来问：alpha 的提前引用呢？
 
 正确答案是**立刻说不知道**。第 30 章的写法是 `singletonLock.lock()`——排队等。测试把它量化：
 
 ```
-java.lang.AssertionError: 早期引用查询阻塞在别人的创建锁上（第 30 章的 lock() 就是这个后果）
+java.lang.AssertionError: 提前引用查询阻塞在别人的创建锁上（第 30 章的 lock() 就是这个后果）
   Caused by: java.util.concurrent.TimeoutException
     at java.util.concurrent.FutureTask.get(FutureTask.java:204)
 ```
@@ -109,14 +109,14 @@ java.lang.AssertionError: 早期引用查询阻塞在别人的创建锁上（第
 
 ### 2.4 红二（分两步）：去掉锁之后，工厂被执行了两次
 
-红一的直接修法是「早期引用路径不进创建锁」。改完立刻出现第二个问题：
+红一的直接修法是「提前引用路径不进创建锁」。改完立刻出现第二个问题：
 
 ```
 expected: 1
  but was: 2
 ```
 
-`earlyReferenceFactoryIsEvaluatedOnlyOnceUnderRace`：两个线程同时要 `alpha` 的早期引用，
+`earlyReferenceFactoryIsEvaluatedOnlyOnceUnderRace`：两个线程同时要 `alpha` 的提前引用，
 两个都读到了同一个 `ObjectFactory`，于是 `getObject()` 被调了两次——对代理来说就是
 **造出了两个代理**，其中一个被丢弃。丢弃的那个如果已经注册进了某个后处理器的缓存里，
 就是第 29 章场景六那种「两个身份」的变体。
@@ -180,7 +180,7 @@ public Object getSingleton(String beanName, ObjectFactory<?> singletonFactory) {
 | 操作 | 在锁内吗 | 位置 |
 | --- | --- | --- |
 | `put`（登记工厂） | 是 | `doCreateBean` 里，创建线程持锁期间 |
-| `remove`（抢占令牌） | **否** | 早期引用路径，任何线程 |
+| `remove`（抢占令牌） | **否** | 提前引用路径，任何线程 |
 | `remove`（清理痕迹） | 是 | `addSingleton` |
 | `get`（旧写法） | **否** | 已被令牌制取代 |
 
@@ -200,7 +200,7 @@ private final Map<String, ObjectFactory<?>> singletonFactories = new ConcurrentH
 protected Object getSingleton(String beanName, boolean allowEarlyReference) {
     Object singletonObject = this.singletonObjects.get(beanName);            // ① 成品
     if (singletonObject == null && isSingletonCurrentlyInCreation(beanName)) {
-        singletonObject = this.earlySingletonObjects.get(beanName);          // ② 算好的早期引用
+        singletonObject = this.earlySingletonObjects.get(beanName);          // ② 算好的提前引用
         if (singletonObject == null && allowEarlyReference) {
             // 令牌：remove 只有一个线程能拿到非 null 的工厂
             ObjectFactory<?> singletonFactory = this.singletonFactories.remove(beanName);
@@ -222,14 +222,14 @@ protected Object getSingleton(String beanName, boolean allowEarlyReference) {
 1. **`remove` 的返回值就是令牌。** `ConcurrentHashMap#remove` 是原子的：两个线程并发 `remove`
    同一个键，只有一个是非 `null`。谁拿到非 `null`，谁才有资格调 `getObject()`。
    不需要锁，因为**互斥已经被数据结构的原子性提供了**。
-2. **不进创建锁。** 这是红一的修法。早期引用只与「三级缓存这三张表」有关，与「谁的创建过程」无关，
+2. **不进创建锁。** 这是红一的修法。提前引用只与「三级缓存这三张表」有关，与「谁的创建过程」无关，
    把它塞进创建锁里是**锁的范围超过了它保护的数据**。
 3. **④ 分支是一个真实存在（但很窄）的窗口。** 令牌被抢走的线程可能读到 `null`
    （对方还在求值，尚未 `put`）。此时它返回 `null`，调用方会走向「自己创建」。
    这个窗口真实 Spring 用锁 + `tryLock` 关掉了；我们留着，并写进缺陷表。
 
 > 第 3 步和第 4 步之间没有任何睡眠、重试或等待。这是有意的：**「等」在锁内是死锁，
-> 在锁外是浪费。** 早期引用是一条「有就快给、没有就算了」的路，不值得为它等。
+> 在锁外是浪费。** 提前引用是一条「有就快给、没有就算了」的路，不值得为它等。
 
 ### 3.5 代价：一把锁把无关的 Bean 也串行化
 
@@ -299,13 +299,13 @@ getBean("alpha")
             │    └─ doCreateBean → addSingletonFactory（登记三级缓存）
             │         └─ populateBean → 依赖 beta → getBean("beta") …（同线程，锁可重入）
             │              └─ beta 要 alpha → getSingleton("alpha", true)
-            │                   └─ ③④ 令牌制 → 求值 → 交早期引用
+            │                   └─ ③④ 令牌制 → 求值 → 交提前引用
             ├─ afterSingletonCreation（finally）
             └─ addSingleton + 清二、三级
 ```
 
 看点有两个：**锁的可重入性**让同线程的嵌套创建能继续（否则一次依赖注入就自锁），
-**令牌制**让另一个线程不必进创建锁也能拿到早期引用。
+**令牌制**让另一个线程不必进创建锁也能拿到提前引用。
 
 ## 5. 🔍 真实 Spring 里它在哪
 
@@ -321,7 +321,7 @@ getBean("alpha")
 | `singletonsCurrentlyInCreation` | `ConcurrentHashMap.newKeySet(16)` | `:100` |
 | （我们没有） | `lenientCreationLock` / `lenientCreationFinished` | `:106` / `:109` |
 | （我们没有） | `singletonsInLenientCreation` / `currentCreationThreads` | `:112` / `:118` |
-| 早期引用路径的 `lock()` | `tryLock()`，失败 `return null` | `:213-217` |
+| 提前引用路径的 `lock()` | `tryLock()`，失败 `return null` | `:213-217` |
 | 创建路径的单锁 | `tryLock()` + 双模判定 | `:261-263` |
 | （我们没有） | 宽松创建入口（日志 + 登记） | `:268-288` |
 | （我们没有） | 撞上「别人在创建」时等待并复读 | `:315-343` |
@@ -372,7 +372,7 @@ if (!this.singletonLock.tryLock()) {
 }
 ```
 
-一句话说清了一件容易做错的事：**早期引用只该由「正在创建它的那个线程」推导。**
+一句话说清了一件容易做错的事：**提前引用只该由「正在创建它的那个线程」推导。**
 别的线程既没有资格（它不知道创建进行到哪一步），也不该等（等就可能死锁）。
 我们把它做成了「任何线程都能抢令牌」，这在功能上更宽松，在语义上更含糊——缺陷表第 3 条。
 
@@ -423,7 +423,7 @@ if (!this.singletonLock.tryLock()) {
 | 宽松创建（不进锁创建） | `:268-288` | 高并发下我们的吞吐被单锁封顶 |
 | 「别的线程在创建就等它」 | `:315-343`（`lenientCreationFinished`） | 我们把「别人在创建」误判成环异常 |
 | 等待图检测（`checkDependentWaitingThreads`） | `:318-323` | 真死锁时我们只能靠超时暴露 |
-| 「早期引用只由创建线程推导」 | `:213-217` 注释 | 我们允许任何线程抢令牌求值 |
+| 「提前引用只由创建线程推导」 | `:213-217` 注释 | 我们允许任何线程抢令牌求值 |
 | `singletonsCurrentlyInDestruction` 检查 | `:302-309` | 销毁过程中取 Bean 的行为未定义 |
 | 抑制异常收集（`suppressedExceptions`） | `:474-478` | 失败创建的相关异常会丢 |
 

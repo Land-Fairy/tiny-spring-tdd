@@ -510,4 +510,5 @@ public Object proceed() throws Throwable {
 | 4 | `List<BeanPostProcessor>` 的链没有独立的「链对象」 | 容器侧的链是 `for` 循环，AOP 侧的链是 `ReflectiveMethodInvocation`，两处形状不同，读者需要自己对照 |
 | 5 | 没有 Facade 意义上的「`ApplicationContext` 聚合体」抽象 | `ApplicationContext` 直接继承了 4 个接口，而不是持有它们——这是简化，也是「组合优于继承」在这里的缺席 |
 
-下一章 **第 35 章 全链路复盘：从 `getBean` 到销毁**。我们会拿一条完整的调用链，把 34 章的所有零件重新走一遍——那时候你看到的应该不再是一堆类，而是**一串决定了顺序的契约**。
+下一章 **第 35 章 毕业：对照真实 Spring 6.2.x 的 `refresh()`**。我们会把这一章用到的零件逐一点名，
+放回真实 `refresh()` 的十二步里——那时候你看到的应该不再是一堆类，而是**一串决定了顺序的契约**。
