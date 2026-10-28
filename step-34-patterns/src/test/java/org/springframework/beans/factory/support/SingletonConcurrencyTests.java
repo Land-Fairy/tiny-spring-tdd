@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 五个测试分两类：
  * <ul>
  * <li><b>证明做对了</b>：并发只创建一次；{@code ObjectFactory} 只在真的需要时才求值。
- * <li><b>把代价量出来</b>：早期引用查询会不会阻塞在别人的创建上；两个无关 Bean 是不是被串行化。
+ * <li><b>把代价量出来</b>：提前引用查询会不会阻塞在别人的创建上；两个无关 Bean 是不是被串行化。
  * </ul>
  */
 class SingletonConcurrencyTests {
@@ -104,8 +104,8 @@ class SingletonConcurrencyTests {
 		registry.addSingletonFactory("alpha", factory);
 		assertThat(evaluations.get()).as("注册时不求值").isZero();
 
-		assertThat(registry.getSingleton("alpha")).as("不在创建中，早期引用不该被推导").isNull();
-		assertThat(evaluations.get()).as("查询成品也不会顺手求值早期引用").isZero();
+		assertThat(registry.getSingleton("alpha")).as("不在创建中，提前引用不该被推导").isNull();
+		assertThat(evaluations.get()).as("查询成品也不会顺手求值提前引用").isZero();
 
 		registry.beforeSingletonCreation("alpha");
 		assertThat(registry.getSingleton("alpha")).as("第一次要，才求值").isEqualTo("early");
@@ -118,7 +118,7 @@ class SingletonConcurrencyTests {
 	}
 
 	/**
-	 * 两个线程抢同一个早期引用：工厂也只能被执行一次。
+	 * 两个线程抢同一个提前引用：工厂也只能被执行一次。
 	 *
 	 * <p>
 	 * 修法不是加锁，而是把 {@code singletonFactories.remove(beanName)} 的<b>返回值</b>当令牌：
@@ -161,14 +161,14 @@ class SingletonConcurrencyTests {
 	}
 
 	// ------------------------------------------------------------------
-	// 代价 1：早期引用查询会不会阻塞在别人的创建上
+	// 代价 1：提前引用查询会不会阻塞在别人的创建上
 	// ------------------------------------------------------------------
 
 	/**
-	 * 一个线程正在创建 {@code alpha}（所以它手里有创建锁），另一个线程来问 「alpha 的早期引用呢？」。
+	 * 一个线程正在创建 {@code alpha}（所以它手里有创建锁），另一个线程来问 「alpha 的提前引用呢？」。
 	 *
 	 * <p>
-	 * 正确答案是<b>立刻说不知道</b>：早期引用只该由「正在创建它的那个线程」推导出来， 别的线程根本不该为了一个它无权推导的东西去排队。第 30 章用
+	 * 正确答案是<b>立刻说不知道</b>：提前引用只该由「正在创建它的那个线程」推导出来， 别的线程根本不该为了一个它无权推导的东西去排队。第 30 章用
 	 * {@code lock()} 写成了「排队等」， 于是在「创建线程也在等对方」的情况下就是死锁。
 	 *
 	 * <p>
@@ -193,11 +193,11 @@ class SingletonConcurrencyTests {
 
 		Future<Object> lookup = this.pool.submit(() -> registry.getSingleton("alpha", true));
 		try {
-			assertThat(lookup.get(300, TimeUnit.MILLISECONDS)).as("别的线程无权推导早期引用，应当立刻回答「不知道」").isNull();
+			assertThat(lookup.get(300, TimeUnit.MILLISECONDS)).as("别的线程无权推导提前引用，应当立刻回答「不知道」").isNull();
 		}
 		catch (TimeoutException ex) {
 			lookup.cancel(true);
-			throw new AssertionError("早期引用查询阻塞在别人的创建锁上（第 30 章的 lock() 就是这个后果）", ex);
+			throw new AssertionError("提前引用查询阻塞在别人的创建锁上（第 30 章的 lock() 就是这个后果）", ex);
 		}
 		finally {
 			finishCreation.countDown();

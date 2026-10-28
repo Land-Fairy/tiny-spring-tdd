@@ -113,8 +113,10 @@ class ProxyCircularDependencyTests {
 	}
 
 	@Test
-	@DisplayName("第三级缓存只求值一次：之后的早期引用请求走二级缓存")
+	@DisplayName("第三级缓存只求值一次：这一次环里 getEarlyBeanReference 只被调用一遍")
 	void earlyReferenceIsComputedOnlyOnce() {
+		// 诚实声明：本场景只产生一次提前引用请求，所以 count == 1 证明的是「没有重复求值」，
+		// 不是「之后的请求走二级缓存」——后者要有两个注入方才能验证（见第 30 章评审 P0-E）。
 		CountingEarlyReferenceBeanFactory factory = (CountingEarlyReferenceBeanFactory) load(
 				new CountingEarlyReferenceBeanFactory(), new CountingInterceptor());
 		assertThat(factory.getEarlyReferenceCalls()).isEqualTo(1);

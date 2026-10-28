@@ -57,7 +57,7 @@ public abstract class AbstractAutoProxyCreator
 	 *
 	 * <p>
 	 * 存的是<b>原始对象</b>而不是代理——它唯一的用途就是让 after 阶段认出来「这次别再包一层」。 至于「池子里该放哪个对象」，由
-	 * {@code doCreateBean} 用早期引用替换，不归这里管。
+	 * {@code doCreateBean} 用提前引用替换，不归这里管。
 	 *
 	 * <p>
 	 * 真实 Spring 的同一行在 {@code AbstractAutoProxyCreator.java:137}（字段名
@@ -131,7 +131,7 @@ public abstract class AbstractAutoProxyCreator
 			return wrapIfNecessary(bean, beanName);
 		}
 		// 提前暴露阶段已经包过了：这里返回裸对象，「池子里放哪个」交给 doCreateBean 决定
-		// （它会用早期引用替换，从而保证注入方与池子里的是同一个对象）。
+		// （它会用提前引用替换，从而保证注入方与池子里的是同一个对象）。
 		return bean;
 	}
 

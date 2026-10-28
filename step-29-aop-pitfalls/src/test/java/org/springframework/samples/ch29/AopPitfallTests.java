@@ -75,7 +75,7 @@ class AopPitfallTests {
 	}
 
 	@Test
-	@DisplayName("场景六：早期引用拿到的不是代理，增强照样失效")
+	@DisplayName("场景六：提前引用拿到的不是代理，增强照样失效")
 	void anEarlyReferenceIsNotAProxy() {
 		// 手工模拟「三级缓存提前暴露」的效果：Beta 拿到的是 Alpha 的目标，而不是代理。
 		Alpha target = new Alpha();
@@ -85,7 +85,7 @@ class AopPitfallTests {
 		AlphaApi proxy = (AlphaApi) proxyFor(target, "hello");
 
 		proxy.hello(); // 从代理发起 → 被拦
-		beta.getAlpha().hello(); // 从早期引用发起 → 不被拦
+		beta.getAlpha().hello(); // 从提前引用发起 → 不被拦
 
 		assertThat(this.interceptor.getIntercepted()).containsExactly("hello");
 	}

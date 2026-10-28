@@ -120,7 +120,7 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 * </tr>
 	 * <tr>
 	 * <td>{@code singletonFactories}</td>
-	 * <td>第 13 章还没有；第 30 章引入时是纯锁内 {@code HashMap}， 第 31 章早期引用路径移出创建锁后换成
+	 * <td>第 13 章还没有；第 30 章引入时是纯锁内 {@code HashMap}， 第 31 章提前引用路径移出创建锁后换成
 	 * {@link ConcurrentHashMap}</td>
 	 * <td>保护方式跟着「读写是否都在锁内」走，不是跟着字段名字走</td>
 	 * </tr>

@@ -26,7 +26,7 @@ public class Beta {
 	}
 
 	/**
-	 * 对端——注意它可能拿到的是<b>早期引用</b>，未必是最终的代理。
+	 * 对端——注意它可能拿到的是<b>提前引用</b>，未必是最终的代理。
 	 * @return alpha（或它的早期形态）
 	 */
 	public AlphaApi getAlpha() {
