@@ -29,6 +29,9 @@ set -euo pipefail
 REFS_DIR="${SPRING_REFS_DIR:-$HOME/refs/spring-framework-6.2.x}"
 REPO_URL="https://github.com/spring-projects/spring-framework"
 REF_NAME="${SPRING_REFS_REF:-6.2.x}"
+# 本书全部 `@see` 行号与附录 C/E 的基准提交（spring-framework 6.2.x 上的一个固定点）。
+# 校验它是否存在，只用来提醒「行号可能漂移」，绝不是构建闸门。
+SPRING_REFS_PINNED="${SPRING_REFS_PINNED:-daf955157871e4ac6f192e06b71d6cc595eb979b}"
 REFS_DEPTH="${SPRING_REFS_DEPTH:-300}"
 
 # github.com 在本机的 HTTP/2 会断（GnuTLS recv error / unexpected disconnect），
@@ -46,6 +49,7 @@ usage() {
   fetch --history    加深到 SPRING_REFS_DEPTH 个提交，让 git blame / git log 可用
   status             打印路径、commit hash、历史窗口大小、正常/降级状态
   path               只打印参照仓绝对路径
+  verify             校验「本书引用的基准提交」是否存在；缺失只警告，不失败
 
 环境变量:
   SPRING_REFS_DIR    参照仓位置，默认 ~/refs/spring-framework-6.2.x
@@ -79,6 +83,7 @@ cmd_status() {
 	local count
 	count=$(commit_count)
 	echo "[refs] 正常  path=$REFS_DIR  ref=$REF_NAME  commit=$(refs_hash)"
+	echo "[refs] 基准  $SPRING_REFS_PINNED（正文行号以此为准）"
 	if [ "$count" -le 1 ]; then
 		echo "[refs] 历史  1 个提交（浅克隆）；git blame 只会显示边界提交，先跑 fetch --history"
 	else
@@ -135,9 +140,33 @@ cmd_path() {
 	echo "$REFS_DIR"
 }
 
+# 校验基准提交是否在本地。缺失、不匹配都只是警告：
+# 本书的 `mvn verify` 完全不依赖参照仓，把它做成死闸会让无网环境无法构建。
+cmd_verify() {
+	if ! has_refs; then
+		degrade "无参照仓，无法校验基准提交 $SPRING_REFS_PINNED；不阻断构建"
+		return 0
+	fi
+	if git -C "$REFS_DIR" cat-file -e "${SPRING_REFS_PINNED}^{commit}" 2>/dev/null; then
+		local head
+		head=$(refs_hash)
+		if [ "$head" = "$SPRING_REFS_PINNED" ]; then
+			echo "[refs] 基准提交在本地且工作树正指向它  $SPRING_REFS_PINNED"
+		else
+			echo "[refs] 基准提交在本地，但工作树当前指向 ${head:0:12}"
+			echo "[refs] 警告：正文行号按 ${SPRING_REFS_PINNED:0:12} 记录，跨版本对照请以 commit 为准，不要以分支名为准"
+		fi
+		return 0
+	fi
+	echo "[refs] 警告：本地没有基准提交 ${SPRING_REFS_PINNED:0:12}"
+	echo "[refs] 影响：正文与附录里的行号可能对不上；这不阻断构建，核对时请切到该 commit 或改用官方 Javadoc"
+	return 0
+}
+
 case "${1:-status}" in
 fetch) cmd_fetch "${2:-}" ;;
 status) cmd_status ;;
+verify) cmd_verify ;;
 path) cmd_path ;;
 -h | --help | help) usage ;;
 *)

@@ -192,6 +192,8 @@ mvn verify
 | 7 | `scripts/check-propagation.sh` | 第 K 章的修复没传到第 K+1、K+2 章（「回退」与「静默缺失」两种事故指纹） | CI 红 |
 | 8 | `scripts/check-doc-links.sh` | 文件改名后 markdown 里的相对链接失效 | CI 红 |
 
+`scripts/refs.sh`（真实 Spring 参照仓）**不是闸门**：它只核对，缺仓或版本漂移都只警告不失败——见 `docs/CODE-STANDARDS.md`。
+
 ---
 
 ## 术语
