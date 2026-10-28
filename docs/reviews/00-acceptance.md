@@ -15,6 +15,28 @@
 
 这三条对应目标里的「修到 mvn verify / 闸门7 propagation / 闸门8 doc-refs 三者全绿」。
 
+### 补一句「本地绿」不等于「CI 绿」
+
+上面三条都是**本机**实测。查了一遍 GitHub 上的真实运行，当场抓到一次「本地绿、CI 红」：
+2026-10-28 13:34Z 与 13:49Z 的两次 PR 运行（#40697710306、#40700049962）都失败，
+失败的**只有**闸门 13 那一步，报的 6 条全是上游行号：
+
+```
+ERROR 00-issue-drafts.md: `AbstractBeanDefinition.java:433` 超出最长候选文件的行数（272 行，34 份候选）
+ERROR ch03.md: `SingletonBeanRegistry.java:149` 超出最长候选文件的行数（23 行，33 份候选）
+ERROR ch35.md: `AbstractApplicationContext.java:634` 超出最长候选文件的行数（602 行，27 份候选）
+```
+
+原因：闸门 13 当时装在**没有上游源码**的作业里，于是「上游第 433 行」被当成「本仓文件越界」。
+本地跑之所以绿，是因为本机有 `/home/jasen/refs/spring-framework-6.2.x`。
+
+修法两步：① 把闸门 13 挪进已经会克隆上游的 `doc-refs` 作业（上游只取一次，闸门 8 与 13 共用）；
+② 缺上游源码时脚本**退 2（无法判定）**，绝不退 0——否则等于关闸。
+复跑证据：PR #72（run `40702457270`）的 `第 8 道闸门 · 文档引用可验证性` 作业 **1m40s 通过**，
+该作业里 `SPRING_REF` 指向 shallow 克隆的真上游源码。
+
+自己核对：`gh run list --limit 5` 看最近运行，`gh run view <id> --log-failed` 看失败步骤。
+
 ---
 
 ## 二、13 道闸门的分工
