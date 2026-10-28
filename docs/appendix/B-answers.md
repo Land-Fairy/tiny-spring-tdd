@@ -3818,3 +3818,178 @@ BeanDefinition definition = BeanDefinitionBuilder.beanClass(LibraryImpl.class)
 真实 Spring 里确实有 `BeanDefinitionBuilder`，但 `AbstractBeanDefinition` 仍然保留着全套可变 setter，所以它只是「半个 Builder」——这也是一个可以写进正文的真实观察。
 
 第二个候选是**外观（Facade）**：让 `ApplicationContext` 持有一个 `BeanFactory` 而不是继承四个接口，就能把「按类型取 Bean 要两步」（本章缺陷表第 1 条）藏到外观里面。但它与我们 33 章的教学取舍冲突：**继承让读者一眼看见「上下文就是 BeanFactory 加料」，这本身是本章 3.2 节的证据。** 所以推荐 Builder，不推荐 Facade。
+
+## 第 35 章
+
+### B-35-1 `@Value` 与 `@Autowired` 标在同一个字段上，为什么本书也能处理？冲突时谁说了算？
+
+**为什么能处理**：`descriptorFor` 只问两件事——「有没有 `@Autowired`」「有没有 `@Value`」，
+**两个都没有**才返回 `null`（表示这个字段不是注入点）：
+
+```java
+Autowired autowired = field.getAnnotation(Autowired.class);
+boolean annotatedWithValue = field.getAnnotation(Value.class) != null;
+if (autowired == null && !annotatedWithValue) {
+    return null;
+}
+boolean required = (autowired == null) || autowired.required();
+```
+
+只要命中任意一个，就会造出 `DependencyDescriptor`，后面走 `resolveDependency`。
+而 `resolveDependency` 的**第一句**是：
+
+```java
+String suggestedValue = descriptor.getSuggestedValue();
+if (suggestedValue != null) {
+    return resolveValue(beanName, descriptor, suggestedValue);   // 值路线
+}
+return resolveBean(beanName, descriptor);                         // Bean 路线
+```
+
+`@Value` 存在 ⇒ `suggestedValue != null` ⇒ 直接短路进值路线，**Bean 路线根本不走**。
+所以两个注解同时标着不会打架：`@Value` 提供「值从哪来」，`@Autowired` 只补充「必需性」。
+
+**冲突时谁说了算**：**`@Value` 说了算**。理由是顺序上的因果——值路线不查候选，
+所以 `required` 只剩一个作用：当解析结果是 `null` 时是否报错（第 20 章的 `isRequired()`）。
+`@Autowired(required = false)` + `@Value("${missing}")` 且没有对应属性时：
+
+- 如果容器装了**严格**解析器（`PropertySourcesPlaceholderConfigurer`），第一步
+  `resolveEmbeddedValue` 就抛 `IllegalArgumentException`，`required = false` **救不了**它——
+  因为「属性不存在」和「依赖可以缺失」是两回事；
+- 如果没装严格解析器，`${missing}` 原样返回，字段拿到字符串 `"${missing}"`，
+  启动成功、运行期才发现是脏数据（第 20 章 §4.3 那个真红）。
+
+真实 Spring 的次序完全一致：`DefaultListableBeanFactory#doResolveDependency` 里
+`getSuggestedValue()` 的处理在方法最前面，早于任何候选查询。
+
+### B-35-2 `findAdvisorBeans` 为什么只跳过 `BeanCurrentlyInCreationException`？全跳过会怎样？
+
+因为**只有这一种异常是可自愈的**。
+
+`BeanCurrentlyInCreationException` 的含义是「这个 Bean 正在被创建」——它是个**时序事实**，
+不是错误。下一轮查询（下一个 Bean 的后处理阶段）它就已经造好了，届时自然能查到。
+所以跳过它是安全的：**这一次没有 ≠ 永远没有**。
+
+其它 `BeanCreationException` 是**真错**：构造器里抛了 `IllegalStateException("配置缺少 appId")`、
+`@Value` 解析失败、依赖的 Bean 不存在……这些异常不会因为「等一会儿」而消失。
+
+举个例子说明「全跳过」有多糟：
+
+```java
+@Bean
+public Advisor auditAdvisor(AppConfig config) {
+    if (config.getAppId() == null) {
+        throw new IllegalStateException("audit 需要 appId");
+    }
+    return new DefaultPointcutAdvisor(...);
+}
+```
+
+全跳过的话，`refresh()` **成功返回**，容器里少了 auditAdvisor，于是：
+
+- 业务方法一个都没被审计（**权限与合规问题**，不是启动问题）；
+- 没有任何日志说「审计没生效」（因为对一个 advisor 来说「没被注册」是合法的）；
+- 上线三天后才有人发现审计报表是空的，而那时栈信息早没了。
+
+这正是一条通用纪律：**降级只在你能确认「失败原因是暂时性的」时才允许**。
+`continue` 的每一个位置，都要能回答「为什么这个异常可以当作没有」。
+
+### B-35-3 `invokeBeanFactoryPostProcessors` 真实版只有 17 行（我们 29 行），为什么真实代码反而更短？
+
+因为它把活**交给别人了**：
+
+```java
+protected void invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory beanFactory) {
+    PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors(beanFactory, getBeanFactoryPostProcessors());
+    // 后面还有几行：检测 LoadTimeWeaverAware、重置临时类加载器
+}
+```
+
+`PostProcessorRegistrationDelegate` 是 351 行的专职类，`invokeBeanFactoryPostProcessors`
+和 `registerBeanPostProcessors` 两个方法的**全部复杂度**都在那里（分批、排序、去重、
+「内部后处理器最后注册」等等）。
+
+**这说明的设计取向**：上下文类只做**编排（orchestration）**。它已经有 1653 行，
+不可能再装下每个阶段的实现细节，所以每个阶段一旦超过十几行就被抽成专职类。
+对比本书：我们把所有逻辑塞在 `AbstractApplicationContext` 一个类里（602 行），
+读起来顺，但真实工程里这么写会长成一个 5000 行的上帝类。
+
+**对「读源码」的代价**：行号图会**指向另一个文件**。一个 17 行的方法是 351 行的入口；
+你按方法名搜索，找到的是委托点，不是实现。所以读真实源码要养成一个习惯——
+**看到一行委托，立刻跳到被委托的类**，否则会以为「这么简单？」
+
+### B-35-4 没有 `ignoreDependencyInterface` 时，`@Autowired Environment environment;` 会怎样？
+
+沿第 19 章的决策链推：
+
+1. **`@Qualifier` 硬过滤**：字段上没标，跳过这一步（不缩小候选）。
+2. **按类型取候选**：`getBeanNamesForType(Environment.class)`。容器里**没有任何图纸**声明
+   自己是 `Environment` 类型——`StandardEnvironment` 是我们上下文里的一个普通字段，
+   既没注册成单例，也没有 `registerResolvableDependency` 兜底。
+   → **候选数 = 0**。
+3. **`@Primary`**：0 个候选，无从谈起。
+4. **字段名匹配**：容器里没有名叫 `environment` 的 Bean。
+5. **优先级**：0 个候选，无从谈起。
+
+四步全败 → 抛 `NoSuchBeanException`（第 33 章的措辞：`No bean of type [...] is registered`），
+由 `injectFields` 包一层：`BeanCreationException: Could not inject field 'environment' of bean 'xxx' (declared in ...)`。
+
+**更关键的一点**：就算我们照抄了 `registerResolvableDependency(Environment.class, environment)`，
+**没有 `ignoreDependencyInterface` 仍会出别的问题**。因为「按接口注入」时，
+候选匹配会把「实现了该接口的所有 Bean」都算进来：
+
+```java
+@Autowired
+private ApplicationContextAware something;   // 谁算候选？
+```
+
+`ApplicationContextAware` 是个接口，任何实现了它的 Bean 都能被当成候选——你会得到一个
+「随便哪个实现了 Aware 的 Bean」被塞进这个字段。真实 Spring 用
+`ignoreDependencyInterface(ApplicationContextAware.class)` 把这类接口
+**从「可注入类型」名单里摘掉**，于是「按接口注入」对它们一律返回「没有候选」，
+真正的注入由 `ApplicationContextAwareProcessor` 在**更早的阶段**（`postProcessBeforeInitialization`）
+完成。**两个机制是一对**：一个负责「接口不作为注入类型」，一个负责「接口靠回调注入」。
+
+### B-35-5 设计一个能抓住「空安全基座从 JSR-305 换成 JSpecify」的回归测试
+
+关键是：**断言可观察行为（注入成功还是失败），不要断言注解存在。**
+断言注解存在是无效的——注解换了、代码照样绿。
+
+```java
+class NullabilityContractTests {
+
+    // 场景一：字段标了「可空」→ 容器里没有该类型的 Bean → 应该注入成功，字段为 null
+    static class OptionalHolder {
+        @Nullable                     // ← 用项目实际采用的那套注解
+        private Missing missing;
+    }
+
+    // 场景二：同一场景，但不标可空 → 应该启动失败
+    static class RequiredHolder {
+        private Missing missing;
+    }
+
+    @Test
+    void nullableFieldIsAllowedToStayNull() {
+        assertThat(contextWith(OptionalHolder.class).getBean(OptionalHolder.class).missing).isNull();
+    }
+
+    @Test
+    void plainFieldFailsFast() {
+        assertThatThrownBy(() -> contextWith(RequiredHolder.class).refresh())
+            .isInstanceOf(BeanCreationException.class);
+    }
+}
+```
+
+**它为什么能抓住这次升级**：把 `@Nullable` 从 `javax.annotation` 换成
+`org.jspecify.annotations`，两个测试里只有一个会变红——
+`nullableFieldIsAllowedToStayNull` 会在「用了旧基座 + 新容器」时失败（容器不再识别该注解 →
+字段被当成必需 → 抛异常），而 `plainFieldFailsFast` 一直绿，于是**红/绿对比直接把问题指到「注解没被认」**。
+
+三个设计要点：
+
+1. **必须成对**：只有「应该成功」的用例时，注解完全失效也会绿（因为不识别可空 = 保持默认 = 必需 = 抛异常？不，反过来也一样会绿）。一成一败才构成判别式。
+2. **断言 `refresh()` 的结果与字段值**，而不是 `field.getAnnotation(...)`——后者随注解替换一起变，永远追不上。
+3. **把「容器是否识别这个注解」当成外部契约来测**：这类回归不报错、只是行为变了，
+   所以只能靠「行为断言」在 CI 里现形。

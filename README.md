@@ -107,7 +107,7 @@
 | [32](docs/chapters/32-getbean-flow.md) | `getBean` 全链路逐行精读 | 十七跳、五阶段、代理在哪里诞生 |
 | [33](docs/chapters/33-exceptions.md) | 异常体系与排错实战 | `BeanCreationException` 栈怎么读 |
 | [34](docs/chapters/34-patterns.md) | 设计模式总览：Spring 里的 9 种模式 | 从"看懂"到"会设计" |
-| 35 | 对照真实 Spring 6.2.x 的 `refresh()` + 6→7 变更 | 毕业 |
+| [35](docs/chapters/35-graduation.md) | 对照真实 Spring 6.2.x 的 `refresh()` | 毕业：十二步行号图 + 6→7 变更 |
 
 ### 附录
 
