@@ -21,6 +21,8 @@ import org.springframework.util.ErrorHandler;
  * 对应</b>：{@code org.springframework.context.event.SimpleApplicationEventMulticaster} （227
  * 行）。真实版还有 {@code setTaskExecutor}（异步执行）、{@code supportsAsyncExecution} 判定、 以及
  * {@code matchesClassCastMessage} 那段精细的「桥接方法 CCE」判定。
+ *
+ * @see org.springframework.context.event.SimpleApplicationEventMulticaster
  */
 public class SimpleApplicationEventMulticaster extends AbstractApplicationEventMulticaster {
 

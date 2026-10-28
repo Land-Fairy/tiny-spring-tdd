@@ -18,6 +18,7 @@ import java.lang.reflect.AnnotatedElement;
  * <b>真实 Spring 对应</b>：{@code org.springframework.context.annotation.Condition}（52 行）。
  *
  * @see Conditional
+ * @see org.springframework.context.annotation.Condition
  */
 public interface Condition {
 

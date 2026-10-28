@@ -55,6 +55,7 @@ import org.springframework.core.env.Environment;
  * @see Conditional
  * @see Import
  * @see Lazy
+ * @see org.springframework.context.annotation.ConfigurationClassPostProcessor
  */
 public class ConfigurationClassPostProcessor implements BeanFactoryPostProcessor, EnvironmentAware {
 

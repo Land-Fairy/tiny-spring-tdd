@@ -32,6 +32,8 @@ import org.springframework.core.io.Resource;
  * <b>真实 Spring 对应</b>：{@code SimpleMetadataReader}（用 ASM 的 {@code ClassReader} +
  * {@code AnnotationMetadataReadingVisitor}）。真实版还处理内部类、接口、方法注解、 {@code @Conditional}
  * 的嵌套值等；本书只保留「类名 + 类上的注解 + 字符串属性」。
+ *
+ * @see org.springframework.core.type.classreading.SimpleMetadataReader
  */
 public class SimpleMetadataReader implements MetadataReader {
 

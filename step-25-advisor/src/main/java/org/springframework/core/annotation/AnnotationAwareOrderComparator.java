@@ -24,6 +24,8 @@ import org.springframework.core.OrderComparator;
  * <b>真实 Spring
  * 对应</b>：{@code org.springframework.core.annotation.AnnotationAwareOrderComparator} （在
  * {@code core.annotation} 包下），它把「找注解」这件事委托给 {@code OrderUtils}。
+ *
+ * @see org.springframework.core.annotation.AnnotationAwareOrderComparator
  */
 public class AnnotationAwareOrderComparator extends OrderComparator {
 

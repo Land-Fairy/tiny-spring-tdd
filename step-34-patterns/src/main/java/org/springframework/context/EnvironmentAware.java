@@ -14,6 +14,7 @@ import org.springframework.core.env.Environment;
  * <b>真实 Spring 对应</b>：{@code org.springframework.context.EnvironmentAware}（44 行，就一个方法）。
  *
  * @see ApplicationContextAware
+ * @see org.springframework.context.EnvironmentAware
  */
 public interface EnvironmentAware extends Aware {
 

@@ -14,6 +14,8 @@ import org.springframework.core.type.classreading.ClassMetadata;
  * 对应</b>：{@code org.springframework.context.annotation.ScannedGenericBeanDefinition} ——它
  * {@code extends GenericBeanDefinition implements AnnotatedBeanDefinition}，比本书多一层
  * 「注解元数据」接口。
+ *
+ * @see org.springframework.context.annotation.ScannedGenericBeanDefinition
  */
 public class ScannedGenericBeanDefinition extends GenericBeanDefinition {
 

@@ -32,6 +32,8 @@ import org.springframework.core.type.classreading.SimpleMetadataReader;
  * 对应</b>：{@code org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider}
  * （约 600 行：还带 {@code TypeFilter}、{@code @Conditional}、{@code excludeFilters}、jar 扫描、
  * 内部类判定、{@code @Lookup} 判定等）。
+ *
+ * @see org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider
  */
 public class ClassPathScanningCandidateComponentProvider {
 

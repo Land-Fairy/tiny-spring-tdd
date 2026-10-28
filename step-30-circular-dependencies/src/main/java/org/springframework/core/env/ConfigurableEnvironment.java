@@ -12,6 +12,7 @@ package org.springframework.core.env;
  * <b>真实 Spring 对应</b>：{@code org.springframework.core.env.ConfigurableEnvironment}。
  *
  * @see StandardEnvironment
+ * @see org.springframework.core.env.ConfigurableEnvironment
  */
 public interface ConfigurableEnvironment extends Environment {
 

@@ -42,6 +42,8 @@ import org.springframework.util.ClassUtils;
  * {@code TypeConverterDelegate#convertIfNecessary} （处理
  * {@code String}→{@code Enum}、{@code String}→{@code Class}、 数组与集合、以及注册进来的
  * {@code PropertyEditor}/{@code ConversionService}）。
+ *
+ * @see org.springframework.beans.SimpleTypeConverter
  */
 public class SimpleTypeConverter {
 

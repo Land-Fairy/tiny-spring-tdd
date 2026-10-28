@@ -14,6 +14,8 @@ import java.util.EventListener;
  * 行）。 真实版还有 {@code supportsAsyncExecution()}（6.1 新增）与静态工厂 {@code forPayload(...)}，
  * 并且会在多播前用 {@code ResolvableType} 把事件类型<b>预先筛一遍</b>，所以真实的监听器 通常收不到不属于自己的事件——本书没有那套泛型解析（第
  * 34 章会把它列为能力差距）。
+ *
+ * @see org.springframework.context.ApplicationListener
  */
 @FunctionalInterface
 public interface ApplicationListener<E extends ApplicationEvent> extends EventListener {

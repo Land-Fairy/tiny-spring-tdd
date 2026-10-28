@@ -16,6 +16,9 @@ import java.util.Set;
  * <p>
  * <b>真实 Spring 对应</b>：没有直接对应物——Spring 的扫描<b>从不</b>用这条路径。 但 {@code @Configuration}
  * 场景下最终仍会加载类，那时靠的是「先筛后加载」。
+ *
+ * <p>
+ * K5 豁免：上游无同类——本书用它演示「先加载再问」这条被 Spring 弃用的路径， 真实扫描器从不这么做（见本节正文的取舍说明）。
  */
 public class ReflectionMetadataReader implements MetadataReader {
 

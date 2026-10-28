@@ -47,6 +47,8 @@ import org.springframework.beans.factory.support.FactoryMethodInProgress;
  * {@code org.springframework.samples.ch21}）， 而拦截器在我们自己的包里。包私有的话，生成类里那句
  * {@code invokestatic} 会在<b>第一次调用</b>时抛 {@code IllegalAccessError}——不是编译错，是链接错。真实 Spring
  * 的 {@code BeanMethodInterceptor} 同样 public。
+ *
+ * @see org.springframework.context.annotation.ConfigurationClassEnhancer.BeanMethodInterceptor
  */
 public class ConfigMethodInterceptor {
 

@@ -21,6 +21,7 @@ import java.util.Set;
  * 本书不实现默认 profile，记在缺陷表里。
  *
  * @see Profile
+ * @see org.springframework.context.annotation.ProfileCondition
  */
 public class ProfileCondition implements Condition {
 

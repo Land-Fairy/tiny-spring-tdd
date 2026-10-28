@@ -16,6 +16,8 @@ package org.springframework.core;
  *
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.core.PriorityOrdered}（47 行，纯标记接口）。
+ *
+ * @see org.springframework.core.PriorityOrdered
  */
 public interface PriorityOrdered extends Ordered {
 

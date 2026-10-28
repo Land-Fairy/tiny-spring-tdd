@@ -11,6 +11,8 @@ package org.springframework.context.event;
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.context.ApplicationEventPublisher}（90
  * 行）。
+ *
+ * @see org.springframework.context.ApplicationEventPublisher
  */
 @FunctionalInterface
 public interface ApplicationEventPublisher {

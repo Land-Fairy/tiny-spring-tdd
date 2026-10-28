@@ -11,6 +11,8 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistry;
  * 对应</b>：{@code org.springframework.context.annotation.ClassPathBeanDefinitionScanner}
  * ——它 300 行左右，多做的事包括：{@code BeanNameGenerator} 可插拔、重复注册的冲突策略、 默认过滤器（{@code @Component} +
  * JSR-330 {@code @Named}）、{@code registerDefaultFilters()}。
+ *
+ * @see org.springframework.context.annotation.ClassPathBeanDefinitionScanner
  */
 public class ClassPathBeanDefinitionScanner extends ClassPathScanningCandidateComponentProvider {
 

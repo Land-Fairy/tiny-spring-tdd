@@ -15,6 +15,8 @@ package org.springframework.context.event;
  * <p>
  * <b>真实 Spring
  * 对应</b>：{@code org.springframework.context.event.ApplicationEventMulticaster}（133 行）。
+ *
+ * @see org.springframework.context.event.ApplicationEventMulticaster
  */
 public interface ApplicationEventMulticaster {
 

@@ -8,6 +8,8 @@ import org.springframework.context.ApplicationContext;
  * <p>
  * <b>真实 Spring
  * 对应</b>：{@code org.springframework.context.event.ApplicationContextEvent}（47 行）。
+ *
+ * @see org.springframework.context.event.ApplicationContextEvent
  */
 public abstract class ApplicationContextEvent extends ApplicationEvent {
 
