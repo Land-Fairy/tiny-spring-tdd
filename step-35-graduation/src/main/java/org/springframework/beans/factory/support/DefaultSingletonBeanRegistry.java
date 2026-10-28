@@ -59,11 +59,12 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 
 	/**
 	 * 名字 → 成品。它是三级缓存的<b>第一级</b>：成品。第二级（早期引用）与第三级（{@code ObjectFactory}）由<b>第 30
-	 * 章</b>加入，把第三级换成并发容器由<b>第 31 章</b>完成。
+	 * 章</b>加入，而且从这一章起就是并发容器（真实 Spring 同）；第 31 章动的是锁的边界，不是容器类型。
 	 *
 	 * <p>
 	 * {@code 256} 是真实 Spring 的初始容量（{@code DefaultSingletonBeanRegistry.java:85}），
 	 * 不是随手写的：一个中等应用的单例数量通常在这个量级，一开始就给够可以避免启动期扩容。
+	 * <b>为什么是这个容器</b>：锁外快路径要读、锁内要写，读写分处两层，所以必须是并发容器。真实 Spring :85 同。
 	 */
 	private final Map<String, Object> singletonObjects = new ConcurrentHashMap<>(256);
 
@@ -77,6 +78,8 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 * <p>
 	 * 真实 Spring 的同一行在 {@code DefaultSingletonBeanRegistry.java:89}，用的也是
 	 * {@code ConcurrentHashMap.newKeySet(16)}——「判断在不在」这个语义只需要 Set，不需要值。
+	 * <b>为什么是这个容器</b>：判空在锁外查它（{@code getSingleton}
+	 * 的第一段），登记与摘除在锁内，两侧线程共享同一个集合，所以必须是并发容器。真实 Spring :89 同。
 	 */
 	private final Set<String> singletonsCurrentlyInCreation = ConcurrentHashMap.newKeySet(16);
 
@@ -89,6 +92,8 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 *
 	 * <p>
 	 * 真实 Spring 的同一行在 {@code DefaultSingletonBeanRegistry.java:88}。
+	 * <b>为什么是这个容器</b>：本章它被搬到锁外读写（令牌路径的 {@code get} 与 {@code put} 都不持锁），所以必须是并发容器。真实
+	 * Spring :88 同。
 	 */
 	private final Map<String, Object> earlySingletonObjects = new ConcurrentHashMap<>(16);
 
@@ -101,9 +106,10 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 * 我们才知道该交裸对象还是交代理（{@code getEarlyBeanReference} 也只有那时才该被调用）。
 	 *
 	 * <p>
-	 * <b>第 31 章</b>把这里从 {@code HashMap} 换成了 {@link ConcurrentHashMap}：上一章它是纯锁内的，
-	 * 而现在早期引用路径不再进创建锁，{@code remove} 要在锁外被别人看见。真实 Spring 6.2 的同一行
-	 * （{@code DefaultSingletonBeanRegistry.java:88}）也是 {@code ConcurrentHashMap}——原因完全相同。
+	 * <b>为什么是这个容器</b>：本章把早期引用的整段查找挪到了创建锁之外，只留一把「先摘先赢」的锁内
+	 * {@code remove}——锁外有人读、也有人删，所以必须是并发容器。第 30 章起它就已经是 {@link ConcurrentHashMap}（真实
+	 * Spring 6.2 的同一行 {@code DefaultSingletonBeanRegistry.java:88}
+	 * 也是），本章不是换容器，而是让这一行终于名副其实。
 	 */
 	private final Map<String, ObjectFactory<?>> singletonFactories = new ConcurrentHashMap<>(16);
 
@@ -114,7 +120,8 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 * 它和 {@code singletonObjects} 的键集看起来重复，但用途不同：{@link LinkedHashSet} 保序， 而
 	 * {@code ConcurrentHashMap} 的迭代顺序是哈希顺序。真实 Spring 用它在 {@code getSingletonNames()}
 	 * 里给出一份<b>顺序稳定</b>的快照 （{@code DefaultSingletonBeanRegistry.java:97} 声明、{@code :499}
-	 * 使用）， 这样排查问题时日志里的 Bean 顺序才是可复现的。
+	 * 使用）， 这样排查问题时日志里的 Bean 顺序才是可复现的。 <b>为什么是这个容器</b>：保序由 LinkedHashSet 给、并发由
+	 * synchronizedSet 给，两个需求各占一层。真实 Spring :97 同。
 	 */
 	private final Set<String> registeredSingletons = Collections.synchronizedSet(new LinkedHashSet<>(256));
 
@@ -125,7 +132,8 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 * 为什么用 {@link ReentrantLock} 而不是 {@code synchronized (singletonObjects)}？ 因为真实 Spring
 	 * 需要 {@code tryLock}（拿不到就放弃，避免死等），以及把锁暴露给子类
 	 * （{@code SingletonBeanRegistry#getSingletonMutex()}）。本章用不到 {@code tryLock}，
-	 * 但把字段类型先对齐，第 30、31 章才能在同一行上继续加戏。
+	 * 但把字段类型先对齐，第 30、31 章才能在同一行上继续加戏。 <b>为什么是这个容器</b>：它保护的是「判空 → 创建 →
+	 * 放回」这段协议而不是某张表，所以是独立的锁而不是某个容器的监视器。真实 Spring :82 同。
 	 */
 	private final Lock singletonLock = new ReentrantLock();
 
@@ -137,9 +145,10 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 * {@code ConcurrentHashMap} 的迭代顺序是哈希顺序——那样销毁顺序就成了随机的。 真实 Spring 用的是
 	 * {@code Map<String, Object> disposableBeans = new LinkedHashMap<>()}
 	 * （{@code DefaultSingletonBeanRegistry.java:128}），并在 {@code destroySingletons()}
-	 * 里倒着遍历。
+	 * 里倒着遍历。 <b>为什么是这个容器</b>：它的每一次读写都在 synchronized (this.disposableBeans)
+	 * 块里，容器自己不必并发——再裹一层 synchronizedMap 是双重保险，去掉。真实 Spring :128 同。
 	 */
-	private final Map<String, DisposableBean> disposableBeans = Collections.synchronizedMap(new LinkedHashMap<>());
+	private final Map<String, DisposableBean> disposableBeans = new LinkedHashMap<>();
 
 	/**
 	 * 直接把一个已经造好的对象放进池子。

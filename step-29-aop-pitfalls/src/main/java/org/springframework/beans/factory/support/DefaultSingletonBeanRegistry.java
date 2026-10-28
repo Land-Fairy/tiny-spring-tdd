@@ -59,6 +59,7 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 * <p>
 	 * {@code 256} 是真实 Spring 的初始容量（{@code DefaultSingletonBeanRegistry.java:85}），
 	 * 不是随手写的：一个中等应用的单例数量通常在这个量级，一开始就给够可以避免启动期扩容。
+	 * <b>为什么是这个容器</b>：锁外快路径要读、锁内要写，读写分处两层，所以必须是并发容器。真实 Spring :85 同。
 	 */
 	private final Map<String, Object> singletonObjects = new ConcurrentHashMap<>(256);
 
@@ -69,7 +70,8 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 * 它和 {@code singletonObjects} 的键集看起来重复，但用途不同：{@link LinkedHashSet} 保序， 而
 	 * {@code ConcurrentHashMap} 的迭代顺序是哈希顺序。真实 Spring 用它在 {@code getSingletonNames()}
 	 * 里给出一份<b>顺序稳定</b>的快照 （{@code DefaultSingletonBeanRegistry.java:97} 声明、{@code :499}
-	 * 使用）， 这样排查问题时日志里的 Bean 顺序才是可复现的。
+	 * 使用）， 这样排查问题时日志里的 Bean 顺序才是可复现的。 <b>为什么是这个容器</b>：保序由 LinkedHashSet 给、并发由
+	 * synchronizedSet 给，两个需求各占一层。真实 Spring :97 同。
 	 */
 	private final Set<String> registeredSingletons = Collections.synchronizedSet(new LinkedHashSet<>(256));
 
@@ -80,7 +82,8 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 * 为什么用 {@link ReentrantLock} 而不是 {@code synchronized (singletonObjects)}？ 因为真实 Spring
 	 * 需要 {@code tryLock}（拿不到就放弃，避免死等），以及把锁暴露给子类
 	 * （{@code SingletonBeanRegistry#getSingletonMutex()}）。本章用不到 {@code tryLock}，
-	 * 但把字段类型先对齐，第 30、31 章才能在同一行上继续加戏。
+	 * 但把字段类型先对齐，第 30、31 章才能在同一行上继续加戏。 <b>为什么是这个容器</b>：它保护的是「判空 → 创建 →
+	 * 放回」这段协议而不是某张表，所以是独立的锁而不是某个容器的监视器。真实 Spring :82 同。
 	 */
 	private final Lock singletonLock = new ReentrantLock();
 
@@ -92,9 +95,10 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 * {@code ConcurrentHashMap} 的迭代顺序是哈希顺序——那样销毁顺序就成了随机的。 真实 Spring 用的是
 	 * {@code Map<String, Object> disposableBeans = new LinkedHashMap<>()}
 	 * （{@code DefaultSingletonBeanRegistry.java:128}），并在 {@code destroySingletons()}
-	 * 里倒着遍历。
+	 * 里倒着遍历。 <b>为什么是这个容器</b>：它的每一次读写都在 synchronized (this.disposableBeans)
+	 * 块里，容器自己不必并发——再裹一层 synchronizedMap 是双重保险，去掉。真实 Spring :128 同。
 	 */
-	private final Map<String, DisposableBean> disposableBeans = Collections.synchronizedMap(new LinkedHashMap<>());
+	private final Map<String, DisposableBean> disposableBeans = new LinkedHashMap<>();
 
 	/**
 	 * 直接把一个已经造好的对象放进池子。
