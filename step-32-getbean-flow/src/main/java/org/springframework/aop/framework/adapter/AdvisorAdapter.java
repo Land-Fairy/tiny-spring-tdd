@@ -10,6 +10,8 @@ import org.springframework.aop.MethodInterceptor;
  * （{@code void before(...)}）与后置增强（{@code void afterReturning(...)}）的形状都不是它。 真实 Spring
  * 正是这么做的：{@code MethodBeforeAdviceAdapter}、{@code AfterReturningAdviceAdapter}
  * 各把一种旧式增强「翻译」成拦截器，登记在 {@code DefaultAdvisorAdapterRegistry} 里。
+ *
+ * @see org.springframework.aop.framework.adapter.AdvisorAdapter
  */
 public interface AdvisorAdapter {
 

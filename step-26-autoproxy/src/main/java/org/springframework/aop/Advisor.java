@@ -8,6 +8,8 @@ package org.springframework.aop;
  * Advisor。
  * <p>
  * 证据就是本接口的形状：它自己不知道任何「切面类」的存在，只有两样东西 —— 在哪（切点）、做什么（增强）。
+ *
+ * @see org.springframework.aop.Advisor
  */
 public interface Advisor {
 

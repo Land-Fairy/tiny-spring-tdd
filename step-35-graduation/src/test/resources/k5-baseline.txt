@@ -3,35 +3,12 @@
 # 「还剩几个」故意不写死在这里：写死的数字会漂（上一版写 138，实数 137）。要看剩余条数，数非注释行。
 # 补一个就从这里删一行；不在表里的新 public 类型必须有 @see，否则 K5SourceContractTests 失败。
 org.springframework.aop.Advice
-org.springframework.aop.Advisor
-org.springframework.aop.AfterAdvice
-org.springframework.aop.AfterReturningAdvice
-org.springframework.aop.BeforeAdvice
-org.springframework.aop.ClassFilter
 org.springframework.aop.Joinpoint
-org.springframework.aop.MethodBeforeAdvice
-org.springframework.aop.MethodInterceptor
 org.springframework.aop.MethodInvocation
-org.springframework.aop.MethodMatcher
-org.springframework.aop.Pointcut
-org.springframework.aop.PointcutAdvisor
-org.springframework.aop.framework.AdvisedSupport
 org.springframework.aop.framework.AopProxy
 org.springframework.aop.framework.JdkDynamicAopProxy
 org.springframework.aop.framework.ProxyDiagnostics
-org.springframework.aop.framework.ProxyFactory
-org.springframework.aop.framework.ReflectiveMethodInvocation
-org.springframework.aop.framework.adapter.AdvisorAdapter
-org.springframework.aop.framework.adapter.AfterReturningAdviceAdapter
-org.springframework.aop.framework.adapter.AfterReturningAdviceInterceptor
-org.springframework.aop.framework.adapter.DefaultAdvisorAdapterRegistry
-org.springframework.aop.framework.adapter.MethodBeforeAdviceAdapter
-org.springframework.aop.framework.adapter.MethodBeforeAdviceInterceptor
 org.springframework.aop.support.AopProxyUtils
-org.springframework.aop.support.DefaultPointcutAdvisor
-org.springframework.aop.support.NameMatchMethodPointcut
-org.springframework.aop.support.StaticMethodMatcherPointcut
-org.springframework.aop.support.TruePointcut
 org.springframework.beans.SimpleTypeConverter
 org.springframework.beans.factory.BeanDefinitionStoreException
 org.springframework.beans.factory.BeanFactory
@@ -124,4 +101,3 @@ org.springframework.core.type.classreading.SimpleMetadataReader
 org.springframework.util.AntPathMatcher
 org.springframework.util.ErrorHandler
 org.springframework.util.PathMatcher
-org.springframework.util.PatternMatchUtils

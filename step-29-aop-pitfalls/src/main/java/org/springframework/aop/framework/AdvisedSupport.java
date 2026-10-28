@@ -21,6 +21,8 @@ import org.springframework.aop.target.SingletonTargetSource;
  * </ol>
  * 真实 Spring 的同名类有 746 行，多出来的部分主要是 `introduction`、`exposeProxy`、以及「advisor 链的 缓存」—— 而
  * `TargetSource` 是第 27 章才补上的：目标不是一根引用，而是一段拿取协议。
+ *
+ * @see org.springframework.aop.framework.AdvisedSupport
  */
 public class AdvisedSupport {
 

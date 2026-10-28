@@ -10,6 +10,8 @@ import org.springframework.aop.MethodInvocation;
  * 全部逻辑三句：「先 {@code proceed()} 拿到返回值，再把返回值交给增强，最后原样返回」。
  * <b>顺序反过来看更有意思</b>：它是「先往下走」的，所以执行时机在目标方法之后；而前置增强是 「先做事再往下走」，所以时机在之前。**代码里
  * {@code proceed()} 的位置就是执行时机。**
+ *
+ * @see org.springframework.aop.framework.adapter.AfterReturningAdviceInterceptor
  */
 public class AfterReturningAdviceInterceptor implements MethodInterceptor {
 

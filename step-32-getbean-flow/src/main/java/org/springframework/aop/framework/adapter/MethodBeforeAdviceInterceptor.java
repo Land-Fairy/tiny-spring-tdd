@@ -8,6 +8,8 @@ import org.springframework.aop.MethodInvocation;
  * 把前置增强包成拦截器。
  * <p>
  * 全部逻辑就两句：「先执行增强，再 {@code proceed()}」。前置增强之所以「没法阻止调用」， 正是因为它的包装器**无条件**往下走。
+ *
+ * @see org.springframework.aop.framework.adapter.MethodBeforeAdviceInterceptor
  */
 public class MethodBeforeAdviceInterceptor implements MethodInterceptor {
 
