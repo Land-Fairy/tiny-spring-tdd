@@ -9,6 +9,8 @@ import org.springframework.aop.TargetSource;
  * <p>
  * 真实 Spring 同名类 128 行，额外做了 {@code equals}/{@code hashCode} 的「双向相等」语义，以便两个
  * {@code HotSwappableTargetSource} 互换目标后仍能被同一个代理识别。
+ *
+ * @see org.springframework.aop.target.HotSwappableTargetSource
  */
 public class HotSwappableTargetSource implements TargetSource<Object> {
 

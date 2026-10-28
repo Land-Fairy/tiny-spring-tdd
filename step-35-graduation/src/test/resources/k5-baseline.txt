@@ -15,9 +15,7 @@ org.springframework.aop.MethodInvocation
 org.springframework.aop.MethodMatcher
 org.springframework.aop.Pointcut
 org.springframework.aop.PointcutAdvisor
-org.springframework.aop.TargetSource
 org.springframework.aop.framework.AdvisedSupport
-org.springframework.aop.framework.AopContext
 org.springframework.aop.framework.AopProxy
 org.springframework.aop.framework.JdkDynamicAopProxy
 org.springframework.aop.framework.ProxyDiagnostics
@@ -29,16 +27,11 @@ org.springframework.aop.framework.adapter.AfterReturningAdviceInterceptor
 org.springframework.aop.framework.adapter.DefaultAdvisorAdapterRegistry
 org.springframework.aop.framework.adapter.MethodBeforeAdviceAdapter
 org.springframework.aop.framework.adapter.MethodBeforeAdviceInterceptor
-org.springframework.aop.framework.autoproxy.AbstractAutoProxyCreator
-org.springframework.aop.framework.autoproxy.AdvisorAutoProxyCreator
 org.springframework.aop.support.AopProxyUtils
-org.springframework.aop.support.AopUtils
 org.springframework.aop.support.DefaultPointcutAdvisor
 org.springframework.aop.support.NameMatchMethodPointcut
 org.springframework.aop.support.StaticMethodMatcherPointcut
 org.springframework.aop.support.TruePointcut
-org.springframework.aop.target.HotSwappableTargetSource
-org.springframework.aop.target.SingletonTargetSource
 org.springframework.beans.SimpleTypeConverter
 org.springframework.beans.factory.BeanDefinitionStoreException
 org.springframework.beans.factory.BeanFactory

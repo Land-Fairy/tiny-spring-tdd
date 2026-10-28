@@ -18,6 +18,8 @@ package org.springframework.aop.framework;
  * 我们的实现保留这三个特征。唯一的偏离：真实 Spring 的字段名是小写的 {@code currentProxy}， 而本书的 checkstyle 对
  * {@code static final} 强制 {@code ConstantName}（全大写下划线）， 所以这里叫
  * {@link #CURRENT_PROXY}。这类「闸门与真实源码冲突」的取舍在第 5 章也出现过一次。
+ *
+ * @see org.springframework.aop.framework.AopContext
  */
 public abstract class AopContext {
 
