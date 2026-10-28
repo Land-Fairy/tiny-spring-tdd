@@ -2,7 +2,7 @@
 
 > 所有评审角色（Lead / 6 位平台专家 / Spring 源码教学评审官）共用这一份判据。
 > 出现分歧时，以本文件的「§7 裁决顺序」为准；本文件没写的，不许当扣分理由。
-> 生成依据：`code-quality-heuristics-brief.md`（Effective Java 官方目录 / Clean Code 与 Ousterhout 书面交锋 / Spring 官方 Code-Style / Checkstyle 配置）、仓库实测（35 个 step 模块、305 文件、18109 行主代码、446 个 @Test）、用户裁决（四条行为准则 + 教学直白优先）。
+> 生成依据：`docs/reviews/_evidence/code-quality-heuristics-brief.md`（Effective Java 官方目录 / Clean Code 与 Ousterhout 书面交锋 / Spring 官方 Code-Style / Checkstyle 配置）、仓库实测（截至 2026-10-28：35 个 step 模块、311 文件、18605 行主代码、463 个 @Test，全仓 9734 个 @Test）、用户裁决（四条行为准则 + 教学直白优先）。
 
 ---
 
