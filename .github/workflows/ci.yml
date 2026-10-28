@@ -69,7 +69,7 @@ jobs:
       # 脚本会打 INFO 跳过上游引用，本地引用照常检查。
       - name: 取上游 Spring 6.2.x 源码树
         continue-on-error: true
-        run: git clone --depth 1 --branch v6.2.x https://github.com/spring-projects/spring-framework.git .spring-ref
+        run: git clone --depth 1 --branch 6.2.x https://github.com/spring-projects/spring-framework.git .spring-ref
 
       - name: 文档引用可验证性（javadoc 的 {@code X}、正文的 File.java:行、栈帧）
         env:

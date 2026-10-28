@@ -168,6 +168,17 @@ cites_upstream() {
 check_javadoc_refs() {
 	local module="$1"
 	while IFS=$'\t' read -r f l s; do
+		if [ "$SKIP_UPSTREAM" -eq 1 ]; then
+			# 没有上游源码树时，绝大多数 {@code X} 本来就只能在上游找到——
+			# 此时「查不到」不是错，而是「没法核对」。降级为 WARN，并且只打印前 5 条，
+			# 否则一次 CI 会刷出上千行，真正的问题反而被淹没。
+			warns=$((warns + 1))
+			if [ "$warns" -le 5 ]; then
+				printf 'WARN  无法核对 javadoc 引用 {%s}（%s:%s；无上游源码树，本地与 JDK 都没有）\n' \
+					"$s" "${f#"$ROOT"/}" "$l"
+			fi
+			continue
+		fi
 		err "${f#"$ROOT"/}:${l}: javadoc 引用的 {${s}} 在本项目/上游/JDK 都不存在"
 	done < <(find "$module" -name '*.java' -not -path '*/target/*' -print0 |
 		xargs -0 awk -v resolvable="$(resolvable_set)" '
@@ -248,6 +259,14 @@ check_doc_refs() {
 				if [ -z "$path" ]; then
 					if allow_missing "$file"; then
 						note "$doc:$line_no: $file 在 doc-refs-allow-missing.txt 里（文中已声明不是仓库文件）"
+					elif [ "$SKIP_UPSTREAM" -eq 1 ]; then
+						# 这类文件（AbstractBeanFactory、InjectionMetadata……）本来就只在上游存在。
+						# 没有上游源码树时无法核对，降级为 WARN；有上游却找不到才是真错。
+						warns=$((warns + 1))
+						if [ "$warns" -le 5 ]; then
+							printf 'WARN  无法核对 %s（%s:%s；无上游源码树，本项目也没有这个文件）\n' \
+								"$file" "$doc" "$line_no"
+						fi
 					else
 						err "$doc:$line_no: 引用的 $file 在本项目与上游都找不到"
 					fi
@@ -323,6 +342,9 @@ main() {
 	fi
 
 	echo
+	if [ "$SKIP_UPSTREAM" -eq 1 ]; then
+		echo "── 模式: 降级（无上游源码树 SPRING_REF=$SPRING_REF）——上游类名与上游行号一律记 WARN，未做核对"
+	fi
 	echo "── 汇总: ${errors} 个无法解析的引用, ${warns} 个警告"
 	[ "$errors" -eq 0 ]
 }

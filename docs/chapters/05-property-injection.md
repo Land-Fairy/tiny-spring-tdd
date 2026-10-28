@@ -991,7 +991,7 @@ BeanCreationException: Invocation of afterPropertiesSet of bean 'service' failed
 
 | 本书的类 | 真实 Spring 的全限定名 | 真实行数 | 本书行数 |
 | --- | --- | --- | --- |
-| `PropertyValue` | `org.springframework.beans.PropertyValue` | 208 | 77 |
+| `PropertyValue` | `org.springframework.beans.PropertyValue` | 208 | 90 |
 | `PropertyValues` | `org.springframework.beans.PropertyValues` | 100 | 27 |
 | `MutablePropertyValues` | `org.springframework.beans.MutablePropertyValues` | 387 | 71 |
 | `BeanWrapper` | `org.springframework.beans.BeanWrapper` | 91 | 44 |

@@ -534,7 +534,7 @@ public interface ConfigurableBeanFactory extends HierarchicalBeanFactory, Single
 }
 ```
 
-这一层的特征是**有 `set` 了**。前四层全是读，这一层开始出现「改变容器行为」的方法。真实 Spring 的这一层有 35 个方法，绝大多数是这种「设置某个策略」。
+这一层的特征是**有 `set` 了**。前四层全是读，这一层开始出现「改变容器行为」的方法。真实 Spring 的这一层有 41 个方法，绝大多数是这种「设置某个策略」。
 
 本书只留一个真正有意思的：`setParameterNameDiscoverer`。它揭示了一个第 04 章埋下的事实——**构造器参数名不是容器自己知道的，是靠一个可替换的策略问出来的**：
 
