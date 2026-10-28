@@ -468,7 +468,7 @@ if (singletonObject != null) {
 - 它返回的引用一旦非 null，那个对象就是**已经构造完成并安全发布**的：`putIfAbsent` 建立的 happens-before 关系保证了写线程在构造器里做的所有事，对读到它的线程可见。
 - 于是「读到非 null 就直接返回」这个判断不需要锁——它不会读到错的东西。
 
-真实 Spring 的对应注释只有一行，写在同一位置（`DefaultSingletonBeanRegistry.java:211`）：
+真实 Spring 的对应注释只有一行，写在同一位置（`DefaultSingletonBeanRegistry.java:211`，出处 `spring-beans` 6.2.x）：
 
 ```java
 // Quick check for existing instance without full singleton lock.
@@ -503,7 +503,7 @@ try {
 
 结果：T2 的 `getBean` 直接抛异常。**单例变成了「第二个线程启动就崩」**。而如果在 `addSingleton` 里把 `putIfAbsent` 换成 `put`（静默覆盖），就变成 1.2 那个「同名字下面活过两个对象」的缺陷。
 
-所以「进锁后再读一遍」不是防御性编程，是**锁内代码能成立的前提**。真实 Spring 在这里的注释也是一句话，而且用的是同一套推理（`DefaultSingletonBeanRegistry.java:294`）：
+所以「进锁后再读一遍」不是防御性编程，是**锁内代码能成立的前提**。真实 Spring 在这里的注释也是一句话，而且用的是同一套推理（`DefaultSingletonBeanRegistry.java:294`，出处 `spring-beans` 6.2.x）：
 
 ```java
 // Singleton object might have possibly appeared in the meantime.
@@ -528,8 +528,8 @@ if (singletonObject != null) {
 
 本章的用法 `lock()` / `try { } finally { unlock(); }` 用 `synchronized` 也完全能写。选 `ReentrantLock` 的理由在**后面**，不在本章：
 
-1. 真实 Spring 用 `tryLock()`：抢不到锁就先不抢（`DefaultSingletonBeanRegistry.java:263`），避免在「别的线程正在创建另一个 Bean」时死等。
-2. 锁需要暴露出去：`SingletonBeanRegistry` 接口里有一个 `getSingletonMutex()`（`SingletonBeanRegistry.java:149`），让子类能在**同一把锁**上做更大的原子操作（第 30 章的三级缓存要靠它）。
+1. 真实 Spring 用 `tryLock()`：抢不到锁就先不抢（`DefaultSingletonBeanRegistry.java:263`，出处 `spring-beans` 6.2.x），避免在「别的线程正在创建另一个 Bean」时死等。
+2. 锁需要暴露出去：`SingletonBeanRegistry` 接口里有一个 `getSingletonMutex()`（`SingletonBeanRegistry.java:149`，出处 `spring-beans` 6.2.x），让子类能在**同一把锁**上做更大的原子操作（第 30 章的三级缓存要靠它）。
 3. `lockInterruptibly`、条件变量等能力，第 31 章讨论并发模型时会用到。
 
 > 教学上先对齐字段类型，再让读者在后面的章节里看到「为什么当初不用 `synchronized`」——这比一开始就给最终答案更有说服力。这也是第 00 章那个「追一行代码的来历」的方法在本书里的第一次实战应用。
@@ -563,7 +563,7 @@ if (singletonObject != null) {
 
 ### 5.2 真实的 `getSingleton(beanName, ObjectFactory)` 长什么样
 
-我们的版本 15 行就写完了。真实的版本（`DefaultSingletonBeanRegistry.java:257` 起）在开头是这样的：
+我们的版本 15 行就写完了。真实的版本（`DefaultSingletonBeanRegistry.java:257` 起，出处 `spring-beans` 6.2.x）在开头是这样的：
 
 ```java
 public Object getSingleton(String beanName, ObjectFactory<?> singletonFactory) {
@@ -735,4 +735,4 @@ return getSingleton(beanName, () -> createBean(beanName, beanDefinition));
 
 ---
 
-> **本章的实测数据**：`./mvnw -pl step-03-singleton-registry verify` → 52 个测试全绿，行覆盖 97.7%、分支覆盖 95.7%（门槛 80% / 70%，`All coverage checks have been met.`）。并发测试稳定耗时约 1.0 秒（两把 `CountDownLatch` 的等待时间），可重复。
+> **本章的实测数据**：`./mvnw -pl step-03-singleton-registry verify` → 56 个测试全绿，行覆盖 93.7%、分支覆盖 97.7%（门槛 80% / 70%，`All coverage checks have been met.`）。并发测试稳定耗时约 1.0 秒（两把 `CountDownLatch` 的等待时间），可重复。

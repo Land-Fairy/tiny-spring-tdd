@@ -232,7 +232,7 @@ assertThat(NestedExceptionUtils.getRootCause(selfCaused)).isSameAs(selfCaused);
 
 ---
 
-## 3. 实现：六个新类，六处改基类
+## 3. 实现：六个新类，七处改基类
 
 ### 3.1 `NestedExceptionUtils`（74 行）：三个静态方法
 
@@ -430,9 +430,10 @@ return failure;
 
 **第一条进 `cause`（保持「根因链」的单线结构），其余进 `relatedCauses`（并列线索）。** 这个分工是真实 Spring 的做法，也是异常设计里一个通用技巧。
 
-### 3.7 六处改基类
+### 3.7 七处改基类
 
-改完之后，六个已有异常换了父类，全部接进新体系：
+改完之后，七个已有异常换了父类，全部接进新体系（下表共 9 行，另外两行 `NoUniqueBeanDefinitionException`、
+`UnsatisfiedDependencyException` 父类不变，只改了构造器参数或可捕获性）：
 
 | 类 | 原来继承 | 现在继承 |
 | --- | --- | --- |
@@ -460,7 +461,7 @@ void everythingCanBeCaughtAsBeansException() {
 }
 ```
 
-改完后，前 32 章的 426 个测试**一个都没红**。这本身就是个信息：**没有任何测试把「基类是 `IllegalStateException`」当成契约**。如果当初有测试依赖了旧基类，这次重构就会立刻被拦下——测试的价值不只在「验证行为」，还在「保护契约」。
+改完后，前 32 章的 437 个测试**一个都没红**。这本身就是个信息：**没有任何测试把「基类是 `IllegalStateException`」当成契约**。如果当初有测试依赖了旧基类，这次重构就会立刻被拦下——测试的价值不只在「验证行为」，还在「保护契约」。
 
 ---
 
@@ -582,7 +583,7 @@ BeanCreationException（我们的）
 
 注意名字：真实 Spring 叫 `NoSuchBeanDefinitionException`，我们叫 `NoSuchBeanException`。这不是笔误——我们的容器还没有「BeanDefinition 与 Bean 分离」的完整概念（第 02 章起就是这么简化的），名字跟着简化了。
 
-### 5.2 第一章提到的三处「我们和真实 Spring 不一样」
+### 5.2 第 1 节提到的三处「我们和真实 Spring 不一样」
 
 **差异一：`PropertyAccessException` 的分支宽度**
 

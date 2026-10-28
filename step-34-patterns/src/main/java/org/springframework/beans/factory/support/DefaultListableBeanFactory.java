@@ -233,7 +233,7 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 		}
 		String beanName = transformedBeanName(name);
 		BeanDefinition beanDefinition = this.beanDefinitionMap.get(beanName);
-		// 第 30 章：先问一句「这个单例有没有已经存在的实例（含提前暴露的早期引用）」。
+		// 第 30 章：先问一句「这个单例有没有已经存在的实例（含提前暴露的提前引用）」。
 		// 少了这一句，环里的第二次 getBean 会一路走到 getSingleton(name, factory)，
 		// 于是被「创建中」检测拦下——检测是对的，但结论错了：这个环其实能解。
 		Object sharedInstance = getSingleton(beanName);
@@ -741,12 +741,6 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 	}
 
 	/**
-	 * 按图纸造一个对象，然后填属性、调初始化回调。三步的顺序是契约。
-	 * @param beanName Bean 的名字，只用于错误消息
-	 * @param beanDefinition 图纸
-	 * @return 新对象
-	 */
-	/**
 	 * 「如果需要提前暴露，这个 Bean 该以什么面目出现？」<b>第 30 章</b>。
 	 *
 	 * <p>
@@ -770,6 +764,12 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 		return exposedObject;
 	}
 
+	/**
+	 * 按图纸造一个对象，然后填属性、调初始化回调。三步的顺序是契约。
+	 * @param beanName Bean 的名字，只用于错误消息
+	 * @param beanDefinition 图纸
+	 * @return 新对象
+	 */
 	private Object doCreateBean(String beanName, BeanDefinition beanDefinition) {
 		Object bean = createBeanInstance(beanName, beanDefinition);
 		// 第 30 章：实例化之后、填充属性之前——这是唯一能插入「提前暴露」的窗口。
@@ -780,10 +780,10 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 		populateBean(beanName, beanDefinition, bean);
 		Object initializedBean = initializeBeanInternal(beanName, bean, beanDefinition);
 		// 第 30 章：如果这个 Bean 在创建期间被「提前暴露」过（说明有人在环里要过它），
-		// 那么<b>池子里必须放那个早期引用</b>，而不是这里刚初始化完的对象。
+		// 那么<b>池子里必须放那个提前引用</b>，而不是这里刚初始化完的对象。
 		// 两种情形：
 		// 1) 没人要过 → getSingleton(name, false) 为 null → 池子里放 initializedBean（正常路径）；
-		// 2) 有人要过 → 早期引用可能是代理，而 initializedBean 是裸对象（后处理器在
+		// 2) 有人要过 → 提前引用可能是代理，而 initializedBean 是裸对象（后处理器在
 		// getEarlyBeanReference 里已经包过，after 阶段故意不再包）→ 必须换成代理，
 		// 否则注入方手里的和池子里的就是两个不同对象。
 		if (beanDefinition.isSingleton()) {

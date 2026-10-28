@@ -58,7 +58,7 @@ import org.springframework.beans.factory.config.SingletonBeanRegistry;
 public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 
 	/**
-	 * 名字 → 成品。它是三级缓存的<b>第一级</b>：成品。第二级（早期引用）与第三级（{@code ObjectFactory}）由<b>第 30
+	 * 名字 → 成品。它是三级缓存的<b>第一级</b>：成品。第二级（提前引用）与第三级（{@code ObjectFactory}）由<b>第 30
 	 * 章</b>加入，把第三级换成并发容器由<b>第 31 章</b>完成。
 	 *
 	 * <p>
@@ -84,7 +84,7 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 * 二级缓存：提前暴露出去的对象。<b>第 30 章</b>。
 	 *
 	 * <p>
-	 * 它存在的唯一理由是<b>同一个早期引用只该被创建一次</b>：第三级缓存里那个工厂每次调用都会跑一遍
+	 * 它存在的唯一理由是<b>同一个提前引用只该被创建一次</b>：第三级缓存里那个工厂每次调用都会跑一遍
 	 * （对代理来说就是再造一个代理），所以第一次取到结果后就该落到这里，之后的调用都读这里。
 	 *
 	 * <p>
@@ -93,16 +93,16 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	private final Map<String, Object> earlySingletonObjects = new ConcurrentHashMap<>(16);
 
 	/**
-	 * 三级缓存：早期引用的<b>工厂</b>。<b>第 30 章</b>。
+	 * 三级缓存：提前引用的<b>工厂</b>。<b>第 30 章</b>。
 	 *
 	 * <p>
 	 * 它与二级缓存的唯一差别是「什么时候求值」：二级缓存存的是<b>已经算好</b>的对象，三级缓存存的是
-	 * <b>还算得出来的办法</b>。这个「延迟」正是代理场景的分水岭——只有等到「真的有人来要早期引用」时，
+	 * <b>还算得出来的办法</b>。这个「延迟」正是代理场景的分水岭——只有等到「真的有人来要提前引用」时，
 	 * 我们才知道该交裸对象还是交代理（{@code getEarlyBeanReference} 也只有那时才该被调用）。
 	 *
 	 * <p>
 	 * <b>第 31 章</b>把这里从 {@code HashMap} 换成了 {@link ConcurrentHashMap}：上一章它是纯锁内的，
-	 * 而现在早期引用路径不再进创建锁，{@code remove} 要在锁外被别人看见。真实 Spring 6.2 的同一行
+	 * 而现在提前引用路径不再进创建锁，{@code remove} 要在锁外被别人看见。真实 Spring 6.2 的同一行
 	 * （{@code DefaultSingletonBeanRegistry.java:88}）也是 {@code ConcurrentHashMap}——原因完全相同。
 	 */
 	private final Map<String, ObjectFactory<?>> singletonFactories = new ConcurrentHashMap<>(16);
@@ -197,22 +197,28 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	/**
 	 * 池子里没有时，再看一级「提前暴露」。
 	 * <p>
-	 * {@code allowEarlyReference} 存在的理由很具体：<b>只有解析依赖时才该拿早期引用</b>。像
+	 * {@code allowEarlyReference} 存在的理由很具体：<b>只有解析依赖时才该拿提前引用</b>。像
 	 * {@code getBeanNamesForType} 这类「我只是想看一眼有哪些 Bean」的查询必须传 {@code false}，
 	 * 否则一次类型扫描就会把半成品对象提前造出来。
 	 * @param beanName Bean 名字
 	 * @param allowEarlyReference 允许返回还没初始化完的对象吗
-	 * @return 单例、早期引用，或 {@code null}
+	 * @return 单例、提前引用，或 {@code null}
 	 */
 	protected Object getSingleton(String beanName, boolean allowEarlyReference) {
 		Object singletonObject = this.singletonObjects.get(beanName);
 		if (singletonObject == null && isSingletonCurrentlyInCreation(beanName)) {
 			singletonObject = this.earlySingletonObjects.get(beanName);
 			if (singletonObject == null && allowEarlyReference) {
-				// 不进创建锁：早期引用只该由「正在创建它的线程」推导，别的线程无权排队，
-				// 更不该为了一个自己无权推导的东西去等——那个「等」正是第 30 章的死锁源。
+				// 不进创建锁：提前引用只该由「正在创建它的线程」推导，别的线程无权排队，
+				// 更不该为了一个自己无权推导的东西去等。第 30 章曾把这个「等」说成死锁源，
+				// 本章更正：全类只有一把可重入锁，等待图成不了环——它只是把并发变成串行。
 				// 求值资格由一次原子操作裁决：remove 只有一个线程能拿到非 null 的工厂，
 				// 拿到它就是拿到「令牌」，没拿到的线程不重复求值。
+				// 令牌制留下两对已知后果，都写在这里而不藏着：①没拿到令牌的线程可能读到 null
+				// （对方尚未 put），于是它自己走「创建」那条路；②拿到令牌的线程求值期间，对象可能
+				// 已经完工并 addSingleton（同时清掉了二/三级缓存），随后这次求值再把旧提前引用
+				// put 回二级缓存——留下一张永不过期的旧图纸。它读不到（一级缓存已命中，
+				// 且 isSingletonCurrentlyInCreation 已为 false），代价是一处内存残留。
 				ObjectFactory<?> singletonFactory = this.singletonFactories.remove(beanName);
 				if (singletonFactory != null) {
 					singletonObject = singletonFactory.getObject();

@@ -12,7 +12,7 @@
 
 我自己第一次打开真实 Spring 的 `AbstractApplicationContext` 时，迷路了三次：
 
-1. **第一次迷路**：文件 1653 行，`refresh()` 只有 60 行，但里面调的 `prepareBeanFactory` 有 57 行、
+1. **第一次迷路**：文件 1653 行，`refresh()` 只有 71 行，但里面调的 `prepareBeanFactory` 有 57 行、
    `finishBeanFactoryInitialization` 有 60 行。骨架很短，肌肉全在调用的方法里——我一开始盯着
    `refresh()` 找逻辑，找了半小时什么也没找到。
 2. **第二次迷路**：`invokeBeanFactoryPostProcessors` 在这个类里只有 17 行，因为它 `new` 了一个
@@ -187,7 +187,7 @@ beanFactory.addBeanPostProcessor(new AutowiredAnnotationBeanPostProcessor(beanFa
 
 | 步骤 | 本书位置（行数） | 真实位置（行数） | 差在哪 |
 |---|---|---|---|
-| `refresh()` | :128（53 行） | :588（63 行） | 真实多了 `startupShutdownLock` 与 7 个 catch 分支（`BeansException` / `IllegalStateException` / `Error` 分开处理） |
+| `refresh()` | :128（53 行） | :588（71 行） | 真实多了 `startupShutdownLock` / `startupShutdownThread`（可中断启动），异常处理是**一个** `catch (RuntimeException \| Error ex)`，不按异常类型分多支 |
 | `prepareRefresh()` | :181（14） | :664（52） | 真实多：`startupDate`、`closed` 重置、**`initPropertySources()` 钩子**、`getEnvironment().validateRequiredProperties()`、`earlyApplicationEvents = new LinkedHashSet<>()` |
 | `obtainFreshBeanFactory()` | :195（17） | :716（10） | 我们在这里多做了一次 `prepareBeanFactory` 的调用点检查；真实只有 `refreshBeanFactory()` + `getBeanFactory()` 两个调用 |
 | `prepareBeanFactory()` | :212（18） | :726（57） | **差得最多的一段**。真实做 8 件事：`setBeanClassLoader`、`setBeanExpressionResolver(StandardBeanExpressionResolver)`、`addPropertyEditorRegistrar`、`addBeanPostProcessor(ApplicationContextAwareProcessor)`、`ignoreDependencyInterface` ×4、`registerResolvableDependency` ×4、`registerSingleton(environment)` / `systemProperties` / `systemEnvironment`、`addBeanPostProcessor(ApplicationListenerDetector)` |
@@ -232,7 +232,7 @@ beanFactory.addBeanPostProcessor(new AutowiredAnnotationBeanPostProcessor(beanFa
    真实 Spring 6.x 只为兼容保留，新代码应该用第 23 章的 `ConversionService`。
 
 > 这 8 条合起来说明一件事：**`prepareBeanFactory` 是在「装配容器自己」**。
-> 第 03 章的 BeanFactory 只认识图纸和对象；要让它在「应用」里好用，还得把它自己也变成
+> 第 03 章的注册表只认识图纸和对象；要让它在「应用」里好用，还得把它自己也变成
 > 可注入、可感知环境、可求值表达式的东西。这一段我们整体跳过了，跳过的代价是
 > 上面列的 8 条能力差距——它们被集中收进本章 §7 的缺陷表。
 
@@ -422,7 +422,7 @@ if (!optional) {
 |---|---|
 | 它在十二步的哪一步？ | §3 的索引表 |
 | 它对应本书哪一章的最小实现？ | 各章正文的「🔍 真实 Spring 里它在哪」小节 |
-| 它比本书多了什么？ | 本书 11 份缺陷表 |
+| 它比本书多了什么？ | 本书 35 份缺陷表（每章一份） |
 | 7.0 改了吗？ | §5 的三张表 |
 
 如果四个问题都有答案，你就不再是「读源码的人」，而是**能判断源码该不该是这样的人**。

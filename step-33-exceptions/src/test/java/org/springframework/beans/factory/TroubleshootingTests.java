@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
  * 每个测试只做两件事：制造一次真实失败，然后断言「排错需要的三条信息」是否都在—— ①最外层有没有说清是哪个 Bean；②最内层有没有说清根因；③中间的包装有没有把 cause
  * 吞掉。
  */
-@DisplayName("排错实战：三个案例的栈怎么读")
+@DisplayName("排错实战：四个案例的栈怎么读")
 class TroubleshootingTests {
 
 	@Test

@@ -38,7 +38,7 @@ String port = "${app.port}";          // int 字段？NumberFormatException 见
 **答案二：在注解处理器里自己 `new StandardEnvironment()` 解析占位符。**
 
 这会把「谁解析占位符」变成两个互不相干的系统：XML 那边的 `<property value="${x}"/>`
-走一套逻辑（第 08 章的 `PropertySourcesPlaceholderConfigurer`），`@Value` 走另一套。
+走一套逻辑（第 10 章的 `PropertySourcesPlaceholderConfigurer`），`@Value` 走另一套。
 同一个属性、同一个容器，两种行为——其中必有一种是错的。
 
 **答案三：给 `resolveDependency` 再加一个参数。**
@@ -85,7 +85,7 @@ resolveDependency(String beanName, Field field, Autowired autowired, Value v)  /
 
 ### 红二：消息里没有字段名
 
-主代码落盘、测试跑起来，311 个测试里 3 个红。挑最要命的一条：
+主代码落盘、测试跑起来，331 个测试里 3 个红。挑最要命的一条：
 
 ```
 Expecting throwable message:

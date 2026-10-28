@@ -4,7 +4,6 @@
 
 package org.springframework.aop.framework.autoproxy;
 
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,15 +48,22 @@ public abstract class AbstractAutoProxyCreator
 
 	private BeanFactory beanFactory;
 
-	/** 被代理过的 Bean 名字，只为测试与诊断（真实 Spring 用 {@code advisedBeans} 缓存判断结果）。 */
-	private final Set<String> proxiedBeanNames = new LinkedHashSet<>();
+	/**
+	 * 被代理过的 Bean 名字，只为测试与诊断（真实 Spring 用 {@code advisedBeans} 缓存判断结果）。
+	 * <p>
+	 * <b>第 31 章</b>：{@code getEarlyBeanReference} 已经跑到创建锁外面了，这里可能是被多个线程同时写的，
+	 * 所以必须是并发容器——「谁跑到锁外，谁就必须是并发容器」这条规则同样约束框架自己的登记表。 真实 Spring 用的是
+	 * {@code ConcurrentHashMap.newKeySet(16)}。 顺带说明：顺序不保证（{@code Set.copyOf}
+	 * 本身也不保证），旧版注释里「按代理生成的顺序」是句空话。
+	 */
+	private final Set<String> proxiedBeanNames = ConcurrentHashMap.newKeySet(16);
 
 	/**
 	 * 「我已经在提前暴露阶段包过这个 Bean 了」的记录。<b>第 30 章</b>。
 	 *
 	 * <p>
 	 * 存的是<b>原始对象</b>而不是代理——它唯一的用途就是让 after 阶段认出来「这次别再包一层」。 至于「池子里该放哪个对象」，由
-	 * {@code doCreateBean} 用早期引用替换，不归这里管。
+	 * {@code doCreateBean} 用提前引用替换，不归这里管。
 	 *
 	 * <p>
 	 * 真实 Spring 的同一行在 {@code AbstractAutoProxyCreator.java:137}（字段名
@@ -94,7 +100,7 @@ public abstract class AbstractAutoProxyCreator
 	}
 
 	/**
-	 * 已经被代理过的 Bean 名字（按代理生成的顺序）。
+	 * 已经被代理过的 Bean 名字（顺序不保证）。
 	 * @return 不可变副本
 	 */
 	public Set<String> getProxiedBeanNames() {
@@ -131,7 +137,7 @@ public abstract class AbstractAutoProxyCreator
 			return wrapIfNecessary(bean, beanName);
 		}
 		// 提前暴露阶段已经包过了：这里返回裸对象，「池子里放哪个」交给 doCreateBean 决定
-		// （它会用早期引用替换，从而保证注入方与池子里的是同一个对象）。
+		// （它会用提前引用替换，从而保证注入方与池子里的是同一个对象）。
 		return bean;
 	}
 

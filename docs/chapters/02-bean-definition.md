@@ -136,7 +136,7 @@ void registeringDefinitionDoesNotCreateTheObject() {
 Tests run: 31, Failures: 0, Errors: 0, Skipped: 0
 ```
 
-31 个测试里，11 个是第 01 章原封不动搬过来的（容器快照是累积的），10 个图纸测试，9 个容器测试，1 个「上一章容器接不住图纸」的现场记录。
+35 个测试里，10 个图纸测试、9 个容器测试、1 个「上一章容器接不住图纸」的现场记录，其余 15 个是第 01 章连同 4 条架构规则一起搬过来的——容器快照是累积的，每一章的模块都包含前面所有章的测试。
 
 ---
 
@@ -250,7 +250,7 @@ public boolean isPrototype() {
 
 为什么默认值不是干脆写 `"singleton"`？因为**图纸在注册的那一刻，还不知道自己的作用域会不会从父定义继承过来**。用空串表示「未定」，等容器在真正解析时给出答案；在给出答案之前，为了不出现「既不是单例也不是多例」这种没人处理的状态，先按单例算。
 
-而第 4 行的 `null` 是个真坑：`setScope(null)` 会让 `SCOPE_DEFAULT.equals(null)` 为 `false`，于是图纸既不是单例也不是多例。这不是我们编的——真实 Spring 的 `isSingleton()`（`AbstractBeanDefinition.java:547`）就是 `SCOPE_SINGLETON.equals(this.scope) || SCOPE_DEFAULT.equals(this.scope)`，一个字都不差。测试 `nullScopeMakesItNeitherSingletonNorPrototype` 把这个坑钉住了：
+而第 4 行的 `null` 是个真坑：`setScope(null)` 会让 `SCOPE_DEFAULT.equals(null)` 为 `false`，于是图纸既不是单例也不是多例。这不是我们编的——真实 Spring 的 `isSingleton()`（`AbstractBeanDefinition.java:547`，出处 `spring-beans` 6.2.x）就是 `SCOPE_SINGLETON.equals(this.scope) || SCOPE_DEFAULT.equals(this.scope)`，一个字都不差。测试 `nullScopeMakesItNeitherSingletonNorPrototype` 把这个坑钉住了：
 
 ```java
 definition.setScope(null);
@@ -294,7 +294,7 @@ byClass.setBeanClass(EnglishGreeter.class);
 assertThat(byClass.getBeanClassName()).isEqualTo(EnglishGreeter.class.getName());
 ```
 
-真实 Spring 的同一行在 `AbstractBeanDefinition.java:433`：
+真实 Spring 的同一行在 `AbstractBeanDefinition.java:433`（出处 `spring-beans` 6.2.x）：
 
 ```java
 public String getBeanClassName() {
@@ -356,7 +356,7 @@ public class DefaultListableBeanFactory {
 这一行类型声明就是本章的全部成果。类型系统从此不允许把 `Class` 当产品混进来——1.1 节那个失败在编译期就不可能发生了。
 
 **（2）用 `ConcurrentHashMap`，虽然本章还是单线程。**
-真实 Spring 的 `beanDefinitionMap` 也是 `ConcurrentHashMap`（`DefaultListableBeanFactory.java:195`）。注册通常发生在启动阶段、单线程；但一旦多个线程同时 `getBean`，读写同一张表就需要可见性与原子性保证。第 03 章会看到不守这条规矩的代价。
+真实 Spring 的 `beanDefinitionMap` 也是 `ConcurrentHashMap`（`DefaultListableBeanFactory.java:195`，出处 `spring-beans` 6.2.x）。注册通常发生在启动阶段、单线程；但一旦多个线程同时 `getBean`，读写同一张表就需要可见性与原子性保证。第 03 章会看到不守这条规矩的代价。
 
 **（3）只用无参构造器。**
 `Class.forName(name).getDeclaredConstructor().newInstance()` 只认无参构造器。带参构造器要先把「构造器参数名」和「配置里写的名字」对上，那需要编译期保留参数名（`-parameters`）和一整套候选值匹配逻辑——那是第 04 章的全部内容。这里提前拆开的收益是：本章可以完全不谈参数名，把注意力留在「图纸 vs 产品」上。

@@ -87,7 +87,7 @@
 | `BeanFactoryPostProcessorOrderingTests` | 4 | **时序**：后处理器运行时单例还不存在；改过的图纸体现在实例上；只跑一次；程序式先于 Bean 式 |
 | `PlaceholderWiringTests` | 3 | 端到端：XML + 环境 + `refresh()` |
 
-本模块共 **188** 个测试（含前九章累积的 159 个）。
+本模块共 **196** 个测试（含前九章累积的 163 个；下面的红字日志是当时跑出来的 188 个——多出的那 4 个是后来加的架构规则）。
 
 ### 2.2 红 1：编译期 38 个错误
 
@@ -452,7 +452,18 @@ if (!visited.add(name)) {
 }
 ```
 
-没有它，`a=${a}` 会让 `while` 循环永远转下去（**不是栈溢出，是死循环**——更难诊断，因为进程只是变慢而不崩溃）。真实 Spring 用 `Set<String> visitedPlaceholders` 做同一件事，消息也一样。
+没有它，`a=${a}` 会让 `while` 循环永远转下去（**不是栈溢出，是死循环**——更难诊断，因为进程只是变慢而不崩溃）。
+
+但这道闸门有个前提：**「把值解析完」这件事必须发生在「这个名字还在 `visited` 里」的时候**。
+所以取值之后还有一步递归——
+
+```java
+propVal = replacePlaceholders(propVal, placeholderResolver, original, visited);
+```
+
+少了这一步，`a=${a}` 走的是「解析出 `a` → 值又是 `${a}` → 替换回去 → 从头再找一遍」的循环，
+每一趟 `visited` 都在 `finally` 里被清空，闸门永远等不到第二次 `add`——**守卫写对了，位置放错了，照样死循环**。
+真实 Spring 用 `Set<String> visitedPlaceholders` 加同样的递归做同一件事，消息也一样。
 
 ### 4.4 配置器：为什么整份 `PropertyValues` 一起换掉
 
@@ -717,7 +728,7 @@ $ find . -name 'BeanDefinitionRegistryPostProcessor.java'
 **本章验证命令**
 
 ```bash
-./mvnw -pl step-10-bean-factory-post-processor test      # 188 个测试
+./mvnw -pl step-10-bean-factory-post-processor test      # 196 个测试
 ./mvnw -pl step-10-bean-factory-post-processor verify    # 六道闸门
 ./mvnw -q verify                                         # 全仓 35 个模块（本章只关心前 10 个）
 ```

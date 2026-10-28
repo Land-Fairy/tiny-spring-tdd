@@ -5,12 +5,12 @@
 > 本章目标：回答第 25 章结尾留下的那个问题——**谁把目标装进 `ProxyFactory`？**
 > 答案是一个 `BeanPostProcessor`：它在 `postProcessAfterInitialization` 阶段，替容器里的每个 Bean
 > 决定「要不要换成代理」。从这一章起，AOP 不再需要用户写一行装配代码。
-> 本章代码：`step-26-autoproxy`。新增 3 个主类共 329 行、1 个测试类 217 行 + 4 个样本类，模块内 398 个测试全绿，
-> 行覆盖 86.8%、分支覆盖 75.2%。
+> 本章代码：`step-26-autoproxy`。新增 3 个主类共 329 行、1 个测试类 217 行 + 4 个样本类，模块内 413 个测试全绿，
+> 行覆盖 86.6%、分支覆盖 75.8%。
 
 ## 1. 痛点：代理造出来了，可谁来装
 
-第 25 章的两行代码是这样的：
+第 25 章末尾那段代码，放进真实项目里大致长这样（`Library` / `audit()` 是本书其余章节一直在用的例子）：
 
 ```java
 ProxyFactory factory = new ProxyFactory(new LibraryImpl());
@@ -75,10 +75,10 @@ bean = applyBeanPostProcessorsAfterInitialization(bean, beanName);   // ★ 这�
 === 探针 1：不跳过基础设施类 ===
 THROW java.lang.StackOverflowError: null
    at java.base/java/lang/Class.forName(Class.java:413)
-   at ...DefaultListableBeanFactory.resolveBeanClass(DefaultListableBeanFactory.java:666)
-   at ...DefaultListableBeanFactory.doCreateBean(DefaultListableBeanFactory.java:692)
-   at ...DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:176)
-   at ...DefaultListableBeanFactory.getBeansOfType(DefaultListableBeanFactory.java:498)
+   at ...DefaultListableBeanFactory.resolveBeanClass(DefaultListableBeanFactory.java:668)
+   at ...DefaultListableBeanFactory.doCreateBean(DefaultListableBeanFactory.java:743)
+   at ...DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:158)
+   at ...DefaultListableBeanFactory.getBeansOfType(DefaultListableBeanFactory.java:500)
    at ...AdvisorAutoProxyCreator.findCandidateAdvisors(AdvisorAutoProxyCreator.java:50)
    at ...AdvisorAutoProxyCreator.getAdvicesAndAdvisorsForBean(AdvisorAutoProxyCreator.java:35)
    at ...AbstractAutoProxyCreator.wrapIfNecessary(AbstractAutoProxyCreator.java:92)
@@ -293,11 +293,10 @@ refresh()
 
 三个可以直接读出来的结论：
 
-1. **代理是在「属性填充之后」产生的**。所以代理对象自己的字段都是空的——它不需要字段，
-   它的所有字段都是 0 个，状态都在目标里。（第 27 章会看到这条的另一面。）
+1. **代理是在「属性填充之后」产生的**。所以代理对象自己**不声明任何实例字段**——它不需要字段，状态都在目标里。（它继承了 `java.lang.reflect.Proxy` 的 `protected InvocationHandler h`，另有 4 个 `static final Method` 用来缓存要转发的 `Method` 对象，所以「0 个字段」说的是实例字段。）（第 27 章会看到这条的另一面。）
 2. **代理替换对象的时机在 `after` 阶段**。这解释了为什么**自调用**不经过代理：
    `this.foo()` 里的 `this` 是目标对象，不是代理。
-3. **BPP 的注册顺序就是 here 的语义**。第 27 章要用这一点。
+3. **BPP 的注册顺序就是这套「先后」的全部来源**。第 27 章要用这一点。
 
 ## 4. 关键源码逐行
 
@@ -348,7 +347,7 @@ return bean;
 
 我们的版本**每个 Bean 调一次**：100 个 Bean 就查 100 遍「容器里所有 Advisor」。
 真实 Spring 的 `BeanFactoryAdvisorRetrievalHelper` 会把**候选名字**缓存起来
-（`cachedAdvisorBeanNames`，`:71`），因为「容器里有哪些 Advisor」在一个 refresh 周期里不会变。
+（`cachedAdvisorBeanNames`，`:75`），因为「容器里有哪些 Advisor」在一个 refresh 周期里不会变。
 
 这也解释了为什么这个类的真实行数会是 640 行：**正确性靠几条 `if`，性能靠几百行缓存与失效判断**。
 
@@ -382,8 +381,8 @@ protected Object createProxy(String beanName, Object[] specificInterceptors, Obj
 | --- | --- | --- | --- |
 | `AbstractAutoProxyCreator` | `aop/framework/autoproxy/AbstractAutoProxyCreator.java` | **640** | `postProcessAfterInitialization` `:315`、`wrapIfNecessary` `:354`、`isInfrastructureClass` 检查 `:361`、`proxyTypes` 写入 `:252`/`:296` |
 | `AdvisorAutoProxyCreator` | `DefaultAdvisorAutoProxyCreator`（109）+ 父类 `AbstractAdvisorAutoProxyCreator`（204） | 313 | 候选来自 `findCandidateAdvisors` |
-| `findCandidateAdvisors` 的一句 `getBeansOfType` | `BeanFactoryAdvisorRetrievalHelper.findAdvisorBeans` | 125 | `:67` 起，名字缓存 `:71`，跳过创建中 `:84` |
-| `AopUtils.canApply` | `aop/support/AopUtils.java` | 390 | 类级 `:225`、子类重载 `:239`、批量 `:319` |
+| `findCandidateAdvisors` 的一句 `getBeansOfType` | `BeanFactoryAdvisorRetrievalHelper.findAdvisorBeans` | 125 | `:67` 起，名字缓存 `:75`，跳过创建中 `:84` |
+| `AopUtils.canApply` | `aop/support/AopUtils.java` | 390 | 类级 `:225`、子类重载 `:239`、批量 `findAdvisorsThatCanApply` `:319` |
 | — | `BeanNameAutoProxyCreator` | 153 | 按名字匹配，不经切点 |
 | — | `InfrastructureAdvisorAutoProxyCreator` | 49 | 只认基础设施 Advisor |
 | — | `aspectj/autoproxy/AnnotationAwareAspectJAutoProxyCreator` | 153 | 第 25 章 5.3 节的主角 |

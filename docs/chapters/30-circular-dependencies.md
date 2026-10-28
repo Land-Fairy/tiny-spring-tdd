@@ -2,10 +2,10 @@
 
 > 🌿(ch00–ch29) 🕳️
 
-> 本章代码：`step-30-circular-dependencies`。测试 **421** 个（新增 6），行覆盖 86.7%（2979/3436）、
-> 分支覆盖 75.5%（1141/1512）。新增主代码只有 42 行的 `BeanCurrentlyInCreationException` 与 33 行的
+> 本章代码：`step-30-circular-dependencies`。测试 **440** 个（新增 4），行覆盖 86.6%（3050/3523）、
+> 分支覆盖 76.0%（1176/1548）。新增主代码只有 42 行的 `BeanCurrentlyInCreationException` 与 54 行的
 > `SmartInstantiationAwareBeanPostProcessor`，其余全是往三个已有类里加东西：
-> `DefaultSingletonBeanRegistry`（429 行）、`DefaultListableBeanFactory`（1120 行）、
+> `DefaultSingletonBeanRegistry`（433 行）、`DefaultListableBeanFactory`（1170 行）、
 > `AbstractAutoProxyCreator`（204 行）。
 
 第 29 章场景五留下了两个问题：循环依赖在我们的容器里**直接栈溢出**；场景六则说明，就算环解开了，
@@ -77,7 +77,7 @@ org.springframework.beans.factory.BeanCurrentlyInCreationException:
 
 ```
 Expecting value to be true but was false
-  ProxyCircularDependencyTests.threeLevelCacheKeepsTheProxy:86
+  ProxyCircularDependencyTests.threeLevelCacheKeepsTheProxy:89
 ```
 
 断言是 `AopUtils.isAopProxy(beta.getAlpha())`。原因很清楚：提前暴露时我们交出去的是**裸对象**，
@@ -124,14 +124,14 @@ circular reference, but has eventually been wrapped. ...
 
 ```java
 private final Map<String, Object> singletonObjects = new ConcurrentHashMap<>(256);          // 一级：成品
-private final Map<String, Object> earlySingletonObjects = new ConcurrentHashMap<>(16);      // 二级：算好的早期引用
+private final Map<String, Object> earlySingletonObjects = new ConcurrentHashMap<>(16);      // 二级：算好的提前引用
 private final Map<String, ObjectFactory<?>> singletonFactories = new HashMap<>(16);         // 三级：算得出的办法
 private final Set<String> singletonsCurrentlyInCreation = ConcurrentHashMap.newKeySet(16);  // 谁在创建中
 ```
 
 一句话区分二、三级：**二级存对象，三级存「怎么得到对象」**。
 
-- 二级缓存的语义是「**现在**就把早期引用算出来给你」。可 `alpha` 刚实例化完的那一刻，
+- 二级缓存的语义是「**现在**就把提前引用算出来给你」。可 `alpha` 刚实例化完的那一刻，
   「该不该包代理」还没有答案（属性还没填、后处理器还没跑），只能交出裸对象；
 - 三级缓存存的是一个工厂，**等到真的有人来要**才求值。那一刻我们已经在
   `getEarlyBeanReference` 里问过了所有 `SmartInstantiationAwareBeanPostProcessor`，
@@ -167,7 +167,7 @@ private Object doCreateBean(String beanName, BeanDefinition beanDefinition) {
 
 ### 3.3 一条替换规则
 
-早期引用交出去之后，`initializeBean` 会正常跑完并返回一个对象。池子里该放哪个？
+提前引用交出去之后，`initializeBean` 会正常跑完并返回一个对象。池子里该放哪个？
 
 ```java
 if (beanDefinition.isSingleton()) {
@@ -183,7 +183,7 @@ if (beanDefinition.isSingleton()) {
 - `earlySingletonReference != null` —— 说明**确实有人要过**它（否则二级缓存里没有，说明这个 Bean
   根本没参与环，池子里放正常结果就行）；
 - `initializedBean == bean` —— 说明 after 阶段**没有**换过对象（换过就说明正常路径已经包出了代理，
-  而早期引用那一份是另一个对象，此时不该拿旧的覆盖新的）。
+  而提前引用那一份是另一个对象，此时不该拿旧的覆盖新的）。
 
 第二条正是红四的成因：两级缓存实验里 `initializedBean != bean`（after 阶段包了代理），于是不替换，
 池子里放代理、注入方拿裸对象 —— 两个对象。
@@ -206,7 +206,7 @@ protected void afterSingletonCreation(String beanName) {
 这个 Bean 会永远「在创建中」，之后每一次合法创建都会被误判成环。
 
 真正解不开的环（例如构造器注入的环）就会在这里抛出。能解的环根本走不到这里 —— 它们在
-`getSingleton(beanName)` 的早期引用查找里就被满足了。
+`getSingleton(beanName)` 的提前引用查找里就被满足了。
 
 ### 3.5 谁来回话：`SmartInstantiationAwareBeanPostProcessor`
 
@@ -252,19 +252,19 @@ public Object getSingleton(String beanName) {
 }
 ```
 
-`true` 是本章的枢纽。它意味着**任何一次「按名字取单例」都允许拿到早期引用**，而不只是「解析依赖」时。
+`true` 是本章的枢纽。它意味着**任何一次「按名字取单例」都允许拿到提前引用**，而不只是「解析依赖」时。
 少了这个 `true`，环里的第二次 `getBean` 会一路走到 `getSingleton(name, factory)`，被「创建中」检测
 拦下——红一就是这样炸的。
 
 那为什么还要有 `allowEarlyReference=false` 的调用？给「我只是想看一眼，别给我造东西」的查询用：
-`getBeanNamesForType`、`isTypeMatch` 这类探询如果拿早期引用，一次类型扫描就会把半成品对象提前造出来。
+`getBeanNamesForType`、`isTypeMatch` 这类探询如果拿提前引用，一次类型扫描就会把半成品对象提前造出来。
 
 ### 4.2 三级查找的完整顺序
 
 ```java
 Object singletonObject = this.singletonObjects.get(beanName);                 // ① 成品
 if (singletonObject == null && isSingletonCurrentlyInCreation(beanName)) {
-    singletonObject = this.earlySingletonObjects.get(beanName);               // ② 算好的早期引用
+    singletonObject = this.earlySingletonObjects.get(beanName);               // ② 算好的提前引用
     if (singletonObject == null && allowEarlyReference) {
         this.singletonLock.lock();
         try {
@@ -288,7 +288,7 @@ if (singletonObject == null && isSingletonCurrentlyInCreation(beanName)) {
 
 三个细节值得记：
 
-1. **`isSingletonCurrentlyInCreation` 是前置条件**，不是优化。不在创建中却去查早期引用，等于允许
+1. **`isSingletonCurrentlyInCreation` 是前置条件**，不是优化。不在创建中却去查提前引用，等于允许
    「随便什么时候都能拿到半成品」，那就没有边界了。
 2. **进锁后要重读一遍**，因为抢锁期间别的线程可能已经把它造完（①/②都可能变了）。
 3. **求值后立刻搬进二级缓存并删掉工厂**：工厂不能再被执行第二次（否则会造出第二个代理）。
@@ -325,14 +325,14 @@ this.singletonFactories.remove(beanName);
 | `beforeSingletonCreation` / `afterSingletonCreation` | `:542` / `:554` | 成对调用 |
 | `BeanCurrentlyInCreationException` | `BeanCurrentlyInCreationException.java`（48 行） | 消息句式与我们一致 |
 | `addSingletonFactory(...)` 调用点 | `AbstractAutowireCapableBeanFactory.java:600` | 实例化后、`populateBean` 前 |
-| 早期引用替换 | `AbstractAutowireCapableBeanFactory.java:618-647` | 我们只保留核心两个条件 |
+| 提前引用替换 | `AbstractAutowireCapableBeanFactory.java:618-647` | 我们只保留核心两个条件 |
 | 「裸版注入」异常 | `AbstractAutowireCapableBeanFactory.java:630-641` | 消息在 `:634` |
 | `getEarlyBeanReference`（容器侧） | `AbstractAutowireCapableBeanFactory.java:973`（循环 `:977`） | 遍历 `SmartInstantiationAwareBeanPostProcessor` |
-| `SmartInstantiationAwareBeanPostProcessor#getEarlyBeanReference` | `SmartInstantiationAwareBeanPostProcessor.java:106` | 默认返回原对象 |
-| `getEarlyBeanReference`（代理侧） | `AbstractAutoProxyCreator.java:265` | 先记原始对象，再包 |
-| `postProcessAfterInitialization` | `AbstractAutoProxyCreator.java:315` | 包过就返回裸对象 |
-| `getCacheKey` | `AbstractAutoProxyCreator.java:337` | `FactoryBean` 会加 `&` 前缀 |
-| `wrapIfNecessary` | `AbstractAutoProxyCreator.java:354` | 真正的包装 |
+| `SmartInstantiationAwareBeanPostProcessor#getEarlyBeanReference` | `SmartInstantiationAwareBeanPostProcessor.java:106`（出处 `spring-beans` 6.2.x） | 默认返回原对象 |
+| `getEarlyBeanReference`（代理侧） | `AbstractAutoProxyCreator.java:265`（出处 `spring-aop` 6.2.x） | 先记原始对象，再包 |
+| `postProcessAfterInitialization` | `AbstractAutoProxyCreator.java:315`（出处 `spring-aop` 6.2.x） | 包过就返回裸对象 |
+| `getCacheKey` | `AbstractAutoProxyCreator.java:337`（出处 `spring-aop` 6.2.x） | `FactoryBean` 会加 `&` 前缀 |
+| `wrapIfNecessary` | `AbstractAutoProxyCreator.java:354`（出处 `spring-aop` 6.2.x） | 真正的包装 |
 
 ### 5.2 那个 `tryLock`：我们做错的地方
 
@@ -346,8 +346,9 @@ if (!this.singletonLock.tryLock()) {
 ```
 
 注释把这件事故意说破了：**提前引用只应该在「正在创建这个 Bean 的那个线程」里被推导出来**。
-换成 `lock()` 会怎样？另一个线程来要早期引用时会阻塞在锁上，而锁的持有者正是「等着这个线程
-继续往下跑」的创建线程 —— 死锁。
+换成 `lock()` 会怎样？另一个线程来要提前引用时会阻塞在锁上，一直等到创建线程把整条创建链
+走完 —— 这不是死锁，是**串行**（第 31 章 `31-concurrency.md:104` 有正式更正：全类只有一把
+可重入锁，等待图成不了环），代价是等待时间被拉长到整条链。
 
 我们用 `lock()`。这是本章如实记录的缺陷：单线程测试永远发现不了，只有在并发创建 + 循环依赖同时
 出现时才会锁死。
@@ -367,7 +368,7 @@ if (!this.singletonLock.tryLock()) {
 机制的区别只有一条：**「交出去的时机」与「能不能加工」是不是解耦的**。
 
 这条判断还有第三种结局，本节没覆盖、第 [6 节](#6-能力边界async-为什么让三级缓存失效) 专门讲：
-**三级缓存在，但代理晚了一步**——`@Async` 的代理在初始化之后才产生，早期引用只能是裸对象。
+**三级缓存在，但代理晚了一步**——`@Async` 的代理在初始化之后才产生，提前引用只能是裸对象。
 环照样解开，注入方拿到的却是「同步版」。
 
 ### 5.4 与 `@Lazy` 的关系
@@ -428,10 +429,10 @@ sequenceDiagram
 ### 6.2 一句话根因
 
 > **`@Async` 的代理是在初始化之后才创建的（`postProcessAfterInitialization`），
-> 而三级缓存能捎带出去的只有初始化之前求出的早期引用。早的那次它没覆写、给不出代理；
+> 而三级缓存能捎带出去的只有初始化之前求出的提前引用。早的那次它没覆写、给不出代理；
 > 晚的那次没人再回来取。于是环里的注入方永远拿不到异步代理。**
 
-对照组一句话：AOP 代理不炸，是因为 `AbstractAutoProxyCreator` **两个**入口都实现了——早期引用
+对照组一句话：AOP 代理不炸，是因为 `AbstractAutoProxyCreator` **两个**入口都实现了——提前引用
 那一次就把代理造出来（`:265`），after 阶段再从 `earlyProxyReferences` 里取回同一个对象。
 `AsyncAnnotationBeanPostProcessor` 继承自 `AbstractAdvisingBeanPostProcessor`（`:37` 声明了
 `SmartInstantiationAwareBeanPostProcessor`），但整个类**没有**覆写 `getEarlyBeanReference`，
@@ -442,14 +443,14 @@ sequenceDiagram
 | | AOP 代理（`AbstractAutoProxyCreator`） | `@Async` 代理（`AsyncAnnotationBeanPostProcessor`） |
 | --- | --- | --- |
 | 代理在哪个阶段产生 | `getEarlyBeanReference`（`:265`）与 `postProcessAfterInitialization`（`:315`）**两个**入口，先到先包、包过记账 | 只有 `postProcessAfterInitialization`（`AbstractAdvisingBeanPostProcessor:88`）**一个**入口 |
-| 早期引用交出什么 | 代理（`wrapIfNecessary`），并记进 `earlyProxyReferences` | 裸对象（接口默认实现 `:106`） |
+| 提前引用交出什么 | 代理（`wrapIfNecessary`），并记进 `earlyProxyReferences` | 裸对象（接口默认实现 `:106`） |
 | 能不能进三级缓存 | 能 | 不能 |
 | 环里有依赖方时的结果 | 注入方拿到代理，`isSameAs` 成立（第 30 章红二的绿灯） | 注入方拿到裸对象；真实 Spring 在 `:619`/`:622` 判定后于 `:631` 抛 `BeanCurrentlyInCreationException` |
 | 没有环时 | 无差别 | 无差别（异步正常工作） |
 
 两条交叉引用值得顺着读：
 
-- **第 27 章**回答「字段填在谁身上」——早期引用交出去的是**代理**，目标源在代理内部，
+- **第 27 章**回答「字段填在谁身上」——提前引用交出去的是**代理**，目标源在代理内部，
   这是本章三级缓存能成立的物理前提。`@Async` 恰好违反了这条前提。
 - **第 28 章**回答「`this` 不是代理」。`@Async` 上是它的变体：**注入进来的那个也不是代理**。
   两种情况下业务代码写的 `service.doAsync()` 都在同步执行，区别只是你在哪一层被骗。
@@ -496,14 +497,14 @@ factory.preInstantiateSingletons();
 
 ```text
 ── 对照组：AdvisorAutoProxyCreator（AOP 代理，走 getEarlyBeanReference）
-   getEarlyBeanReference(alpha) 调用次数 = 1，交出去的早期引用是代理 = true
+   getEarlyBeanReference(alpha) 调用次数 = 1，交出去的提前引用是代理 = true
    池子里的 alpha 是代理 = true
    beta.getAlpha() 是代理 = true
    两者是同一个对象 = true
    通过注入引用调用 hello() = alpha，增强被调用次数 = 1
 
 ── 实验组：AsyncLikePostProcessor（@Async 那种 only-after 包装）
-   getEarlyBeanReference(alpha) 调用次数 = 1，交出去的早期引用是代理 = false
+   getEarlyBeanReference(alpha) 调用次数 = 1，交出去的提前引用是代理 = false
    池子里的 alpha 是代理 = true
    beta.getAlpha() 是代理 = false
    两者是同一个对象 = false
@@ -511,10 +512,10 @@ factory.preInstantiateSingletons();
 ```
 
 四行数字就是全部故事：同一份 XML、同一个环，换掉一个后处理器，
-**早期引用从「代理」变成「裸对象」**，注入方手里的对象与池子里的对象从「同一个」变成「两个」，
+**提前引用从「代理」变成「裸对象」**，注入方手里的对象与池子里的对象从「同一个」变成「两个」，
 增强被调用次数从 1 变成 0——`beta` 背后那条路彻底绕过异步。
 
-真实 Spring 不会让这种不一致静默存在。它在 `:617` 拿到早期引用、在 `:619` 比较
+真实 Spring 不会让这种不一致静默存在。它在 `:617` 拿到提前引用、在 `:619` 比较
 `exposedObject == bean`，一旦发现「包过一层」就继续往下走，最后在 `:631` 抛异常。
 本章没实现 `hasDependentBean` 与 `allowRawInjectionDespiteWrapping`（见「这一章砍掉了什么」），
 所以只能把那段判定抄成二十行，验证消息长什么样：
@@ -563,7 +564,8 @@ final version of the bean.」——这正是本章红四里引用过、但我们
 1. 为什么「提前暴露」的窗口只能在「实例化之后、填充属性之前」？请给出上界和下界各自的论证，
    并说明为什么这个窗口恰好推出「必须用工厂而不是对象」。
 2. 我们的 `getSingleton(beanName, true)` 在拿不到锁时用 `lock()` 等待，真实 Spring 用 `tryLock()`
-   并返回 `null`。请构造一个能让我们死锁、而真实 Spring 不会死锁的两线程时序。
+   并返回 `null`。请说明这两种做法在「并发创建 + 环」下分别发生什么——为什么我们的版本
+   **不会死锁、只是串行**？串行又会让哪个线程多等多久？（第 31 章与附录 B-30-2 有正式更正。）
 3. 红四里两个 `Alpha@15a902e7` 为什么打印一样却不是同一个对象？如果这个 Bean 的
    `hashCode`/`equals` 被业务重写过，这条 bug 会以什么形式暴露？
 4. `addSingleton` 里如果忘了清 `earlySingletonObjects`，会出现什么现象？请写出一个能复现的
@@ -589,7 +591,7 @@ final version of the bean.」——这正是本章红四里引用过、但我们
 
 | 省略的东西 | 真实 Spring 怎么做 | 影响 |
 | --- | --- | --- |
-| `tryLock` 与「非创建线程不推导早期引用」 | `:213-217` | 并发创建 + 环时我们可能死锁 |
+| `tryLock` 与「非创建线程不推导提前引用」 | `:213-217` | 我们只是**串行**（第 31 章更正：单锁不可能死锁），但等待时间 = 整条创建链 |
 | 「裸版注入」检测 | `:630-641` 抛 `BeanCurrentlyInCreationException` | 我们让不一致静默存在（红四） |
 | `hasDependentBean` / `dependentBeanMap` | `:626` 起依赖登记 | 我们无法判断「谁被注入了裸版」 |
 | `getSingletonMutex()` 对子类暴露 | `SingletonBeanRegistry` | 我们没有 `refresh` 期的一致性协议 |

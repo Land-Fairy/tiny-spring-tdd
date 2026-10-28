@@ -48,6 +48,9 @@ jobs:
       - name: 第 9 道闸门 · 文档相对链接可达性
         run: bash scripts/check-doc-links.sh
 
+      - name: 第 10 道闸门 · 章节交叉引用的主题校验
+        run: python3 scripts/check-chapter-refs.py
+
       - name: 上传测试与覆盖率报告
         if: always()
         uses: actions/upload-artifact@v4

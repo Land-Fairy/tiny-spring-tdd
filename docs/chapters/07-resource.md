@@ -115,7 +115,7 @@ public class UrlXmlReader {
 
 **本章的决定：`getInputStream()` 绝不返回 `null`，找不到就抛 `FileNotFoundException`，消息里必须带「我是谁」。**
 
-真实 Spring 就是这么做的（`ClassPathResource.java:215`）：
+真实 Spring 就是这么做的（`ClassPathResource.java:215`，出处 `spring-core` 6.2.x）：
 
 ```java
 	throw new FileNotFoundException(getDescription() + " cannot be opened because it does not exist");

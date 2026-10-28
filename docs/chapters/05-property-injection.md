@@ -229,7 +229,7 @@ public static class Target {
 > | `BeanWrapper`（本章） | `Introspector` → `PropertyDescriptor` | **不行**，只认 `public` |
 > | `@Autowired`（第 19 章） | `AutowiredAnnotationBeanPostProcessor` 扫类上所有成员 | 能，`ReflectionUtils.makeAccessible(...)` |
 >
-> 真实 Spring 里的证据：`InjectionMetadata.java:271`（字段）与 `:277`（方法）调 `ReflectionUtils.makeAccessible`；`AutowiredAnnotationBeanPostProcessor.java:770` 与 `:852` 同理。而 `CachedIntrospectionResults`（BeanWrapper 用的内省缓存）走的是 `java.beans.Introspector` + `BeanInfoFactory`（`ExtendedBeanInfo`）。
+> 真实 Spring 里的证据：`InjectionMetadata.java:271`（字段）与 `:277`（方法）调 `ReflectionUtils.makeAccessible`；`AutowiredAnnotationBeanPostProcessor.java:770` 与 `:852` 同理（出处 `spring-beans` 6.2.x）。而 `CachedIntrospectionResults`（BeanWrapper 用的内省缓存）走的是 `java.beans.Introspector` + `BeanInfoFactory`（`ExtendedBeanInfo`）。
 >
 > 一句话：**注解注入走反射 + `setAccessible`，属性填充走内省 + 公开 setter。**
 

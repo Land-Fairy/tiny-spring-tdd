@@ -69,4 +69,40 @@ class PropertyPlaceholderHelperTests {
 			.isEqualTo("${db.url}/demo");
 	}
 
+	@Test
+	@DisplayName("自引用：a=${a} 必须报循环引用，而不是转到天荒地老")
+	void selfReferenceIsRejected() {
+		this.properties.put("a", "${a}");
+
+		assertThatExceptionOfType(IllegalArgumentException.class).isThrownBy(() -> resolve("${a}"))
+			.withMessageContaining("Circular placeholder reference 'a'");
+	}
+
+	@Test
+	@DisplayName("间接循环：a=${b}、b=${a} 同样要报循环引用")
+	void indirectCycleIsRejected() {
+		this.properties.put("a", "${b}");
+		this.properties.put("b", "${a}");
+
+		assertThatExceptionOfType(IllegalArgumentException.class).isThrownBy(() -> resolve("${a}"))
+			.withMessageContaining("Circular placeholder reference");
+	}
+
+	@Test
+	@DisplayName("同一趟里出现两次不算循环：${x}-${x}")
+	void repeatedPlaceholderIsNotACycle() {
+		this.properties.put("x", "hi");
+
+		assertThat(resolve("${x}-${x}")).isEqualTo("hi-hi");
+	}
+
+	@Test
+	@DisplayName("值里还藏着占位符：a=${b}、b=hi 要一路解析到底")
+	void valueContainingPlaceholderIsResolvedRecursively() {
+		this.properties.put("a", "${b}");
+		this.properties.put("b", "hi");
+
+		assertThat(resolve("${a}")).isEqualTo("hi");
+	}
+
 }

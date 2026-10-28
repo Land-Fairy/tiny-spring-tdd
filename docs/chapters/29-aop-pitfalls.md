@@ -3,7 +3,7 @@
 > 🌿(ch00–ch28) 🕳️
 
 > 本章代码：`step-29-aop-pitfalls`。**没有新增主代码** —— 这一章把前面几章踩过的失效场景收拢成六个
-> 可运行的测试，并交付一张排障速查表。测试从 415 个涨到 **422** 个（含 1 个探针测试），行覆盖 86.5%（2917/3374）、分支覆盖 75.3%（1107/1470）。
+> 可运行的测试，并交付一张排障速查表。测试从 430 个涨到 **436** 个（含 1 个探针测试），行覆盖 86.3%（2986/3461）、分支覆盖 75.8%（1142/1506）。
 
 前八章我们讲的都是「AOP 怎么工作」。这一章讲「它不工作时你怎么想」。
 
@@ -19,9 +19,9 @@
 
 | 判据 | 问什么 | 不满足时的现象 |
 | --- | --- | --- |
-| **调用是否从代理发起** | 这次调用是 `context.getBean(...)` 拿到的引用发出的，还是目标内部的 `this` 发出的？ | 自调用、早期引用、自己 `new` 出来的对象 |
+| **调用是否从代理发起** | 这次调用是 `context.getBean(...)` 拿到的引用发出的，还是目标内部的 `this` 发出的？ | 自调用、提前引用、自己 `new` 出来的对象 |
 | **方法是否在代理的可见范围内** | 方法在接口里吗？是 `public` 吗？能被覆写吗？ | `private` 方法、`final` 类、静态方法 |
-| **拿到的是不是代理** | 你手上这个引用，`AopUtils.isAopProxy()` 为真吗？ | 循环依赖的早期引用、构造器里泄漏的 `this` |
+| **拿到的是不是代理** | 你手上这个引用，`AopUtils.isAopProxy()` 为真吗？ | 循环依赖的提前引用、构造器里泄漏的 `this` |
 
 第 28 章讲的是第一个判据。本章把三个判据都铺满，每个配一个能跑的测试。
 
@@ -132,10 +132,10 @@ PROBE frames repeating=org.springframework.beans.factory.support.DefaultListable
 这个错误**很吵**（栈溢出），但真实 Spring 面对同样代码是**安静的** —— 它会成功返回两个对象。
 安静的那一半才是本章要讲的坑：
 
-### 场景六：早期引用拿到的不是代理
+### 场景六：提前引用拿到的不是代理
 
 真实 Spring 用三级缓存解决循环依赖：`beta` 需要 `alpha` 时，`alpha` 还没初始化完，于是容器把
-「早期的 alpha」交给 `beta`。如果 `alpha` 需要被代理，这个早期引用通常是**代理或代理的前身** ——
+「早期的 alpha」交给 `beta`。如果 `alpha` 需要被代理，这个提前引用通常是**代理或代理的前身** ——
 但**不一定**，而这正是失效点。
 
 我们手工模拟了最坏情况：
@@ -147,7 +147,7 @@ beta.setAlpha(target);                 // beta 拿到的是目标，不是代理
 AlphaApi proxy = (AlphaApi) proxyFor(target, "hello");
 
 proxy.hello();                         // 从代理发起 → 被拦
-beta.getAlpha().hello();               // 从早期引用发起 → 不被拦
+beta.getAlpha().hello();               // 从提前引用发起 → 不被拦
 assertThat(interceptor.getIntercepted()).containsExactly("hello");   // 只有一次
 ```
 
@@ -176,7 +176,7 @@ but has eventually been wrapped ...
 | 3 ✅ | `private`/包私有方法上的注解不生效 | 不在接口契约里，代理上没有这个方法 | `getClass().getMethod(name)` 取不到 | 把事务/切面边界移到 public 接口方法 |
 | 4 ✅ | 同类内部调用不生效，业务照常执行 | `this` 是目标，不是代理 | 断点里 `this == target` | 拆成另一个 Bean（首选）/ `exposeProxy` + `AopContext` |
 | 5 ✅ | 循环依赖直接 `StackOverflowError` | 没有「创建中」标记，`doCreateBean` 无限递归 | 栈顶反复出现 `doCreateBean` | 改为构造器注入打破环 / 等第 30 章的三级缓存 |
-| 6 ✅ | 循环依赖能启动，但注入进去的那个 Bean 增强失效 | 早期引用是目标（或与最终代理不是同一对象） | `AopUtils.isAopProxy(otherBean.getInjected())` | `getEarlyBeanReference`（真实 Spring）/ 避免环 |
+| 6 ✅ | 循环依赖能启动，但注入进去的那个 Bean 增强失效 | 提前引用是目标（或与最终代理不是同一对象） | `AopUtils.isAopProxy(otherBean.getInjected())` | `getEarlyBeanReference`（真实 Spring）/ 避免环 |
 | 7 | 静态方法上的注解不生效 | 代理只拦实例方法 | 方法是 `static` | 不要给静态方法加事务/切面 |
 | 8 | 构造器里调自己的方法，增强不生效 | 那时代理还没造出来（第 27 章时序图第 3 步） | 调用栈里能看到构造器 | 把逻辑挪到 `afterPropertiesSet` 之后 |
 | 9 | 自己 `new` 出来的对象，注解全不生效 | 它没被容器管理，不存在代理 | `isAopProxy` 为 `false` | 从容器取 Bean |
@@ -259,7 +259,7 @@ public Object getEarlyBeanReference(Object bean, String beanName) {
 ```
 
 注意 `EarlyProxyReferences` 这个「记录已经提前包过谁」的集合：它让 `postProcessAfterInitialization`
-在正常路径上**跳过重复包装**，从而保证「早期引用」和「最终放进单例池的」是同一个代理对象。
+在正常路径上**跳过重复包装**，从而保证「提前引用」和「最终放进单例池的」是同一个代理对象。
 少了这一步，就会出现 5.3 末尾那种「裸版注入、最终被包」的警告 —— 场景六的真实成因。
 
 ### 5.4 与 AspectJ 的关系：为什么织入没有这些坑
@@ -269,7 +269,7 @@ public Object getEarlyBeanReference(Object bean, String beanName) {
 | 自调用 | 失效（`this` 不是代理） | **生效**（字节码里把 `this.foo()` 改写成「先取切面再调」） |
 | `private` 方法 | 失效 | **生效**（织入可以直接改方法体） |
 | `final` 方法 | JDK 生效 / CGLIB 失效 | 生效（方法体被改，不需要覆写） |
-| 循环依赖 | 有坑（早期引用） | 无坑（对象从未被替换，增强是「长在类里」的） |
+| 循环依赖 | 有坑（提前引用） | 无坑（对象从未被替换，增强是「长在类里」的） |
 
 代价那一列在第 28 章 5.3 已经写过：构建链、IDE、调试成本。**代理是「运行时包装」，织入是「编译期改写」**，
 上面这张表就是两种技术路线的分界线。
@@ -282,7 +282,7 @@ public Object getEarlyBeanReference(Object bean, String beanName) {
    并说明为什么「`final` 类不能代理」这条常识**只在 CGLIB 下**成立。
 2. 场景五里我们的容器栈溢出。如果给容器加上「创建中」标记并直接抛 `BeanCurrentlyInCreationException`，
    场景五会变成什么现象？这比栈溢出更好吗？
-3. 场景六的两个对象（早期引用 vs 最终代理）若不是同一个，注入方拿到旧的那个会有什么后果？请举一个
+3. 场景六的两个对象（提前引用 vs 最终代理）若不是同一个，注入方拿到旧的那个会有什么后果？请举一个
    「读到的状态与容器里的不一致」的例子。
 4. 速查表第 11 条「增强执行两次」为什么归到「顺序/嵌套」而不是「失效」？如果两次增强里有一次是
    `@Transactional`，会发生什么？
@@ -307,7 +307,7 @@ public Object getEarlyBeanReference(Object bean, String beanName) {
 | --- | --- | --- |
 | CGLIB 回退 | `ObjenesisCglibAopProxy`（`DefaultAopProxyFactory:71`） | 无接口的类在我们这里直接失败 |
 | 代理类型决策 | `isOptimize()` / `isProxyTargetClass()` / `hasUserSuppliedInterfaces()`（`:61`） | 我们只用接口 |
-| 早期引用 | `getEarlyBeanReference` + `EarlyProxyReferences` | 场景五栈溢出；场景六手工模拟 |
+| 提前引用 | `getEarlyBeanReference` + `EarlyProxyReferences` | 场景五栈溢出；场景六手工模拟 |
 | 「裸版注入」警告 | `AbstractAutowireCapableBeanFactory` 里 `BeanCurrentlyInCreationException` 与警告日志 | 我们没有这条诊断 |
 | AspectJ 织入对照实现 | 独立技术栈 | 只在 5.4 表格里对比 |
 | `ClassUtils.isLambdaClass` 的处理 | lambda 目标走 JDK 代理（`:68`） | 我们的目标只能是普通类 |

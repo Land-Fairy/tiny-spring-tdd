@@ -107,7 +107,7 @@ public final class PropertyValue {
 ## 闸门一览
 
 代码注释里说的「第 N 道闸门」指的就是下面这张表的编号。1–6 在单个模块的 `mvn verify` 里跑；
-7、8 要看整个仓库才能判断，所以放在 CI 里单独跑。
+7–10 要看整个仓库才能判断，所以放在 CI 里单独跑。
 
 | # | 闸门 | 工具 | 阶段 | 违规后果 |
 |---|---|---|---|---|
@@ -120,9 +120,11 @@ public final class PropertyValue {
 | 7 | 跨章回归不变式 | `scripts/check-propagation.sh`（CI 单独跑） | 仓库级 | 退出码 1 |
 | 8 | 文档引用可验证性 | `scripts/check-doc-refs.sh`（CI 单独跑） | 仓库级 | 退出码 1 |
 | 9 | 文档链接可达 | `scripts/check-doc-links.sh`（CI 单独跑） | 仓库级 | 退出码 1 |
+| 10 | 章节交叉引用主题 | `scripts/check-chapter-refs.py`（CI 单独跑） | 仓库级 | 退出码 1 |
 
-一条命令跑 1–6：`mvn verify`；7–9 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、`bash scripts/check-doc-links.sh`
-（前两条查内容对不对，第三条查文件还在不在——两种不同的文档腐败）。
+一条命令跑 1–6：`mvn verify`；7–10 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、
+`bash scripts/check-doc-links.sh`、`python3 scripts/check-chapter-refs.py`
+（7 查代码有没有退化，8–10 查文档的三类腐败：引用解析不了、链接指向空气、链接指错了门）。
 
 ### 闸门 1：格式
 
@@ -543,3 +545,31 @@ git commit -am "fix(step-05): ..."
 
 **上游源码树**：`SPRING_REF` 指向 `spring-framework` 6.2.x checkout。拿不到时脚本不装懂：
 标注「出处：」的引用打 INFO 跳过，本地行号越界降级为 WARN。
+
+### 闸门 10：章节交叉引用的主题校验
+
+**它防的是什么**：文档链接闸门（第 9 道）只查「文件还在不在」。它查不到另一种更隐蔽的腐败——
+链接指到了**错误的章**。一次全书评审里出现过两条活例子：
+
+- 第 03 章写「第 30 章讲代理」——代理是第 24–29 章的事，第 30 章讲三级缓存；
+- 第 22 章写「循环依赖的完整解法要到第 29 章」——讲循环依赖的是第 30 章。
+
+两处都不影响编译、不影响任何测试、链接也都能点开。读者点进第 30 章想找代理，找不到，
+然后开始怀疑自己——这正是本章开头说的「文档腐败比代码 bug 更贵」的那一类。
+
+**判定语义**：抽取形如「第 NN 章 + 的/讲/中……」的名词性短语，去掉 markdown 记号后，
+用来查 `docs/chapter-topics.md` 的关键词表：短语命中了别的章的关键词、却没命中被引用章的关键词，
+就判为「指错」并退出 1。
+
+四条防误报规则（都是被真实误报逼出来的）：
+
+1. **纯 ASCII 关键词要词边界**：`SimpleTypeConverter` 里含 `Converter`，但它不是第 23 章的转换器；
+   `AnnotationAwareOrderComparator` 里含 `Aware`，但它不是第 12 章的感知接口。
+2. **一个从句两个引用时在第二个处截断**：「第 30 章讲代理、第 13 章讲销毁」按「讲代理」判，
+   否则会连累第二个引用。
+3. **`——` 与 `、` 视为从句结束**：破折号后面换话题了。
+4. **短语太泛就不判**，只计数：566 处带主题的引用里，约 476 处是「第 08 章的那一步」这类没法判断的，
+   硬判只会制造噪声。真正的红线是那 0 处「指错」。
+
+**这张词表是可以长大的**：`docs/chapter-topics.md` 一章一行关键词，写在章节主题变化时要同步改。
+它同时也是新人查「这个主题在哪一章」的索引。

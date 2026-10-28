@@ -77,13 +77,15 @@ class ProxyAndDecoratorTests {
 		TargetSource<Object> plain = new SingletonTargetSource(target);
 		HotSwappableTargetSource swappable = new HotSwappableTargetSource(target);
 
-		assertThat(plain).isInstanceOf(TargetSource.class);
-		assertThat(swappable).isInstanceOf(TargetSource.class);
+		// 两个实现的区别不是「是不是 TargetSource」（那是编译期事实，断言它永远为真），
+		// 而是「目标能不能换」：换完之后同一个 TargetSource 交出另一个对象。
+		assertThat(swappable.getTarget()).isSameAs(target);
 
 		Object other = new HiGreeter();
 		swappable.swap(other);
 
 		assertThat(swappable.getTarget()).isSameAs(other);
+		// 对照组：SingletonTargetSource 没有 swap，它永远交出同一个对象。
 		assertThat(plain.getTarget()).isSameAs(target);
 	}
 

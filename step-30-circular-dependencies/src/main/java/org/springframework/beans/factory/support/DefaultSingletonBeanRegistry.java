@@ -59,7 +59,7 @@ import org.springframework.beans.factory.config.SingletonBeanRegistry;
 public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 
 	/**
-	 * 名字 → 成品。它是三级缓存的<b>第一级</b>：成品。第二级（早期引用）与第三级（{@code ObjectFactory}）由<b>第 30
+	 * 名字 → 成品。它是三级缓存的<b>第一级</b>：成品。第二级（提前引用）与第三级（{@code ObjectFactory}）由<b>第 30
 	 * 章</b>加入，把第三级换成并发容器由<b>第 31 章</b>完成。
 	 *
 	 * <p>
@@ -85,7 +85,7 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	 * 二级缓存：提前暴露出去的对象。<b>第 30 章</b>。
 	 *
 	 * <p>
-	 * 它存在的唯一理由是<b>同一个早期引用只该被创建一次</b>：第三级缓存里那个工厂每次调用都会跑一遍
+	 * 它存在的唯一理由是<b>同一个提前引用只该被创建一次</b>：第三级缓存里那个工厂每次调用都会跑一遍
 	 * （对代理来说就是再造一个代理），所以第一次取到结果后就该落到这里，之后的调用都读这里。
 	 *
 	 * <p>
@@ -94,11 +94,11 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	private final Map<String, Object> earlySingletonObjects = new ConcurrentHashMap<>(16);
 
 	/**
-	 * 三级缓存：早期引用的<b>工厂</b>。<b>第 30 章</b>。
+	 * 三级缓存：提前引用的<b>工厂</b>。<b>第 30 章</b>。
 	 *
 	 * <p>
 	 * 它与二级缓存的唯一差别是「什么时候求值」：二级缓存存的是<b>已经算好</b>的对象，三级缓存存的是
-	 * <b>还算得出来的办法</b>。这个「延迟」正是代理场景的分水岭——只有等到「真的有人来要早期引用」时，
+	 * <b>还算得出来的办法</b>。这个「延迟」正是代理场景的分水岭——只有等到「真的有人来要提前引用」时，
 	 * 我们才知道该交裸对象还是交代理（{@code getEarlyBeanReference} 也只有那时才该被调用）。
 	 *
 	 * <p>
@@ -197,12 +197,12 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 	/**
 	 * 池子里没有时，再看一级「提前暴露」。
 	 * <p>
-	 * {@code allowEarlyReference} 存在的理由很具体：<b>只有解析依赖时才该拿早期引用</b>。像
+	 * {@code allowEarlyReference} 存在的理由很具体：<b>只有解析依赖时才该拿提前引用</b>。像
 	 * {@code getBeanNamesForType} 这类「我只是想看一眼有哪些 Bean」的查询必须传 {@code false}，
 	 * 否则一次类型扫描就会把半成品对象提前造出来。
 	 * @param beanName Bean 名字
 	 * @param allowEarlyReference 允许返回还没初始化完的对象吗
-	 * @return 单例、早期引用，或 {@code null}
+	 * @return 单例、提前引用，或 {@code null}
 	 */
 	protected Object getSingleton(String beanName, boolean allowEarlyReference) {
 		Object singletonObject = this.singletonObjects.get(beanName);

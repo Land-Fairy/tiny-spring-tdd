@@ -4,7 +4,7 @@
 
 > 本章目标：亲手用 `Proxy.newProxyInstance` 造出一个代理对象、拦住每一次方法调用，然后把 JVM 生成的那个类
 > 从磁盘上扒下来，用 `javap` 一行一行看清楚。
-> 本章代码：`step-24-jdk-proxy`。新增 4 个主类共 260 行、2 个测试类共 262 行，模块内 361 个测试全绿。
+> 本章代码：`step-24-jdk-proxy`。新增 4 个主类共 260 行、2 个测试类共 262 行，模块内 376 个测试全绿。
 
 ## 1. 痛点：日志、事务、权限，为什么不该长在业务方法里
 
@@ -173,7 +173,7 @@ if (interfaces.length == 0) {
 
 同一个 JVM 里我们还见到了 `<user.dir>/com/sun/proxy/jdk/proxy1/$Proxy2.class` —— JDK 在拼路径时把旧的
 `com/sun/proxy/` 前缀又接了一次。**结论：不要假设路径，从代理类自己的 `getPackageName()`
-反推**（第 4.4 节的 `expectedDumpFile` 就是干这个的）。
+反推**（第 3.4 节的 `expectedDumpFile` 就是干这个的）。
 
 **坑二：属性必须作为 JVM 启动参数传进去。** 我们先把属性写进 surefire 的 `<systemPropertyVariables>`，
 测试里 `Boolean.getBoolean(...)` 明明读到 `true`，文件却始终不出现。真凶在 dump 目录里：
@@ -402,10 +402,13 @@ directory.resolve(packageName.replace('.', File.separatorChar))
 java -Djdk.proxy.ProxyGenerator.saveGeneratedFiles=true -cp ... YourMain
 
 # 2. 落盘位置从代理类名反推（本机 JDK 21 实测）
-#    <user.dir>/org/springframework/aop/framework/$Proxy10.class
+#    注意 CWD 不是模块根目录：pom.xml:42 把 surefire 的 workingDirectory 设成了
+#    target/proxy-dump-root，所以实际文件在
+#    step-24-jdk-proxy/target/proxy-dump-root/org/springframework/aop/framework/$Proxy12.class
 
 # 3. 反编译
-javap -p -c 'org/springframework/aop/framework/$Proxy10.class'
+cd target/proxy-dump-root                      # 见上一行的 workingDirectory
+javap -p -c 'org/springframework/aop/framework/$Proxy12.class'
 ```
 
 ### 5.2 类的骨架（`javap -p` 原文）
@@ -438,27 +441,32 @@ final class org.springframework.aop.framework.$Proxy10 extends java.lang.reflect
    代理类把「要传给 handler 的那个 `Method` 对象」缓存成静态字段，避免每次调用都 `Class.getMethod`。
 4. **每个方法都是 `public final`** —— `final` 意味着 CGLIB 那种「生成子类再覆写」的做法对代理类无效
    （不过没人会去代理一个代理）。
-5. **`proxyClassLookup`** —— JDK 17 之后加的：让代理类能被同包的代码通过 `MethodHandles` 访问。
+5. **`proxyClassLookup`** —— 新版 JDK 给代理类补的静态方法：让同模块的代码能用一个 `MethodHandles.Lookup` 换到「以代理类为查找上下文」的 `Lookup`，从而访问它（代理类由 `java.lang.reflect` 动态定义，正常拿不到它的 `Lookup`）。
 
 ### 5.3 静态初始化：`m0..m3` 从哪来
 
 ```
 static {};
   Code:
-     0: ldc           #2      // class org/springframework/aop/framework/$Proxy10
+     0: ldc           #2      // class org/springframework/aop/framework/$Proxy12
      2: invokevirtual #79     // Method java/lang/Class.getClassLoader:()Ljava/lang/ClassLoader;
+     5: astore_0
      6: ldc           #81     // String java.lang.Object
      8: iconst_0
      9: aload_0
     10: invokestatic  #85     // Method java/lang/Class.forName:(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
     13: ldc           #86     // String hashCode
+    15: iconst_0              // 空参数数组的长度
+    16: anewarray     #75     // class java/lang/Class
     19: invokevirtual #90     // Method java/lang/Class.getMethod:(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;
     22: putstatic     #26     // Field m0:Ljava/lang/reflect/Method;
    ...（equals、toString、greet 同理）
 ```
 
-两处细节：
+三处细节：
 
+- `5: astore_0` 把刚才拿到的 `loader` 存进**局部变量槽 0**。所以后面每处 `aload_0` 都是取这个 `loader` ——
+  静态初始化块里没有 `this`，`aload_0` 在这里指的是局部变量，不是对象引用（这正是读字节码最容易看错的地方）。
 - 用的是 `Class.forName(name, false, loader)` —— **第二个参数 `false` 表示「不要初始化」**。代理类只需要
   `Method` 对象，不需要触发接口的静态初始化块（那可能有副作用）。
 - 方法查找用的是 `getMethod`（public 方法），所以**接口里的方法必须是 public 的** —— 接口方法天生如此，
@@ -533,7 +541,7 @@ public final java.lang.String greet(java.lang.String);
 | --- | --- | --- | --- |
 | `AopProxy` | `aop/framework/AopProxy.java` | 64 | `getProxy()`、`getProxy(ClassLoader)` |
 | `JdkDynamicAopProxy` | `aop/framework/JdkDynamicAopProxy.java` | 360 | `:70` 类声明、`:115` `getProxy()`、`:124` `Proxy.newProxyInstance`、`:167` `invoke`、`:190`/`:216` 反射调目标、`:329` 算接口 |
-| `AopProxyUtils.allInterfaces` | `aop/support/AopProxyUtils.java` | 281 | `:146`/`:163` `completeProxiedInterfaces` |
+| `AopProxyUtils.allInterfaces` | `aop/framework/AopProxyUtils.java` | 281 | `:146`/`:163` `completeProxiedInterfaces` |
 | ——（我们没有） | `aop/framework/DefaultAopProxyFactory.java` | 78 | 决定用 JDK 还是 CGLIB |
 | ——（我们没有） | `aop/framework/CglibAopProxy.java` | 919 | 子类方案，本章的对照物 |
 
@@ -555,7 +563,7 @@ public final java.lang.String greet(java.lang.String);
 前三件我们在红一里撞到了第一、二件；后两件的意思是「如果调用的是 Spring 自己的管理接口
 （`Advised#getAdvisors` 之类），那是在问代理的配置，不该转发给业务对象」。
 
-紧接着 `:195` 才轮到 `exposeProxy`（第 27 章的主题），`:216` 才是真正的 `invokeJoinpointUsingReflection`。
+紧接着 `:195` 才轮到 `exposeProxy`（第 28 章的主题），`:216` 才是真正的 `invokeJoinpointUsingReflection`。
 
 ### 6.3 `DefaultAopProxyFactory`：这份代码解释了整章
 
@@ -644,7 +652,7 @@ public AopProxy createAopProxy(AdvisedSupport config) throws AopConfigException 
 | --- | --- | --- |
 | 只有一个 `InvocationHandler` 字段 | 无法叠加多个拦截器 | `Advisor` 链 + `ReflectiveMethodInvocation` |
 | 不实现 `Advised` 接口 | 拿不到「这个代理上有哪些切面」 | `completeProxiedInterfaces` 补进 `Advised`/`SpringProxy` |
-| 不处理 `exposeProxy` | 自调用问题无法解决 | 第 27 章 |
+| 不处理 `exposeProxy` | 自调用问题无法解决 | 第 28 章 |
 | 接口收集每次重算 | 同一个类被代理多次时重复反射 | `ProxiedInterfacesCache` |
 | 没有 `TargetSource` 抽象 | 目标对象固定，无法做池化/热替换 | `TargetSource` 体系（`SingletonTargetSource` 99 行） |
 | 不处理 `ClassLoader` 参数 | 无法为「接口在另一个加载器里」的场景造代理 | `getProxy(ClassLoader)` |
