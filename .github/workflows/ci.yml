@@ -36,6 +36,11 @@ jobs:
 
       # 跨章回归不变式：35 个章节模块是同一份代码的快照，第 K 章的修复必须传到 K+1、K+2。
       # 这一条不属于任何单个模块（要横着比），所以放在 CI 里单独跑，见 scripts/check-propagation.sh。
+      - name: 脚本自检（--help 可跑，防止改坏参数解析）
+        run: |
+          bash scripts/check-propagation.sh --help > /dev/null
+          bash scripts/propagate.sh --help > /dev/null
+
       - name: 跨章回归不变式（propagation）
         run: bash scripts/check-propagation.sh
 

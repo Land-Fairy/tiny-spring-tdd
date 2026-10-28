@@ -26,6 +26,12 @@
 
 set -u -o pipefail
 
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+	sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//'
+	exit 0
+fi
+
+
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "${REPO_ROOT}" || exit 1
 

@@ -27,8 +27,30 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
 
+usage() {
+	cat <<'USAGE'
+用法：bash scripts/check-propagation.sh [--stat|--dry-run|--help]
+
+  （无参数）  检查跨章回归不变式；有回退或缺失则退出码 1
+  --stat      只打印统计，不逐条列
+  --dry-run   只报告不判死：列全问题但仍然退出 0（本地探索 / 报告用）
+  --help      显示本帮助
+
+判据（两条互补，见 docs/CODE-STANDARDS.md「向后传播」）：
+  REVERT  文件在 K 与 K+2 相同、与 K+1 不同 → 第 K+2 章的改动被后面覆盖丢了
+  MISSING 相邻模块之间某个文件整体缺失 → 复制前进时漏了
+USAGE
+}
+
 STAT_ONLY=0
-[[ "${1:-}" == "--stat" ]] && STAT_ONLY=1
+REPORT_ONLY=0
+case "${1:-}" in
+	--help|-h) usage; exit 0 ;;
+	--stat) STAT_ONLY=1 ;;
+	--dry-run) REPORT_ONLY=1 ;;
+	"") ;;
+	*) echo "未知参数：$1（用 --help 看用法）" >&2; exit 2 ;;
+esac
 
 PATHS=("src/main/java" "src/test/java")
 mapfile -t MODULES < <(printf '%s\n' step-*/ | sed 's#/##' | sort -V)
@@ -127,6 +149,11 @@ done
 
 if [[ $STAT_ONLY -eq 1 ]]; then
 	printf 'modules=%d files=%d reverts=%d missing=%d\n' "$COUNT" "$files_checked" "$reverts" "$deletions"
+fi
+
+if [[ $((reverts + deletions)) -gt 0 && $REPORT_ONLY -eq 1 ]]; then
+	printf '\n[dry-run] 共 %d 处问题，仅报告不判死（去掉 --dry-run 即为 CI 判据）。\n' "$((reverts + deletions))"
+	exit 0
 fi
 
 if [[ $((reverts + deletions)) -gt 0 ]]; then
