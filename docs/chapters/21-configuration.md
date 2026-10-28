@@ -309,7 +309,7 @@ public @interface Bean {
 }
 ```
 
-真实 Spring 的 `destroyMethod` 默认值不是空串，而是 `AbstractBeanDefinition.INFER_METHOD`（`Bean.java:340`），也就是字符串 `(inferred)`：容器会自动去找 `close()` 或 `shutdown()` 方法。本章不做推断，默认就是「没有销毁方法」——这条差异记在章末缺陷表里。
+真实 Spring 的 `destroyMethod` 默认值不是空串，而是 `AbstractBeanDefinition.INFER_METHOD`（`Bean.java:340`，出处 `spring-context` 6.2.x），也就是字符串 `(inferred)`：容器会自动去找 `close()` 或 `shutdown()` 方法。本章不做推断，默认就是「没有销毁方法」——这条差异记在章末缺陷表里。
 
 `@Bean` 的 `@Target` 里带上 `ANNOTATION_TYPE`，是为了让第三方能写组合注解（`@MyRepositoryBean`）。这一点在本章的 `findBeanMethods` 里没有实现元注解查找，属于已知简化。
 

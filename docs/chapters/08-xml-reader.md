@@ -299,7 +299,7 @@ public class TypedStringValue {
 
 **二、同一份图纸可以被复用。** 因为图纸没有持有对象，同一个 `BeanDefinition` 可以用来创建任意多个原型实例；如果它持有对象，就无法复用。
 
-**三、`toString()` 值得一写。** `"<greeter>"` 这个形式在真实 Spring 里一模一样（`RuntimeBeanReference.java:149`）——它的唯一用途是出现在错误消息里，比如：
+**三、`toString()` 值得一写。** `"<greeter>"` 这个形式在真实 Spring 里一模一样（`RuntimeBeanReference.java:149`，出处 `spring-beans` 6.2.x）——它的唯一用途是出现在错误消息里，比如：
 
 ```
 Cannot resolve reference to bean 'nope' while setting greeter
@@ -518,7 +518,7 @@ Content is not allowed in prolog.
 	}
 ```
 
-于是同一份坏 XML 只产生**一条**我们能控制的异常，消息里带着资源描述。真实 Spring 也是这么做的：`XmlBeanDefinitionReader` 把 `errorHandler` 交给 `DocumentLoader`（`XmlBeanDefinitionReader.java:440` 那一行的第三个参数就是它）。
+于是同一份坏 XML 只产生**一条**我们能控制的异常，消息里带着资源描述。真实 Spring 也是这么做的：`XmlBeanDefinitionReader` 把 `errorHandler` 交给 `DocumentLoader`（`XmlBeanDefinitionReader.java:440` 那一行的第三个参数就是它，出处 `spring-beans` 6.2.x）。
 
 **这条经验值得记住：底层库的默认行为会往 stderr 直接打印，框架的责任是把它们收编成异常。** 凡是「日志里出现不知道谁打的字」，第一反应应该是去找哪一层没接管输出。
 

@@ -328,11 +328,11 @@ this.singletonFactories.remove(beanName);
 | 提前引用替换 | `AbstractAutowireCapableBeanFactory.java:618-647` | 我们只保留核心两个条件 |
 | 「裸版注入」异常 | `AbstractAutowireCapableBeanFactory.java:630-641` | 消息在 `:634` |
 | `getEarlyBeanReference`（容器侧） | `AbstractAutowireCapableBeanFactory.java:973`（循环 `:977`） | 遍历 `SmartInstantiationAwareBeanPostProcessor` |
-| `SmartInstantiationAwareBeanPostProcessor#getEarlyBeanReference` | `SmartInstantiationAwareBeanPostProcessor.java:106` | 默认返回原对象 |
-| `getEarlyBeanReference`（代理侧） | `AbstractAutoProxyCreator.java:265` | 先记原始对象，再包 |
-| `postProcessAfterInitialization` | `AbstractAutoProxyCreator.java:315` | 包过就返回裸对象 |
-| `getCacheKey` | `AbstractAutoProxyCreator.java:337` | `FactoryBean` 会加 `&` 前缀 |
-| `wrapIfNecessary` | `AbstractAutoProxyCreator.java:354` | 真正的包装 |
+| `SmartInstantiationAwareBeanPostProcessor#getEarlyBeanReference` | `SmartInstantiationAwareBeanPostProcessor.java:106`（出处 `spring-beans` 6.2.x） | 默认返回原对象 |
+| `getEarlyBeanReference`（代理侧） | `AbstractAutoProxyCreator.java:265`（出处 `spring-aop` 6.2.x） | 先记原始对象，再包 |
+| `postProcessAfterInitialization` | `AbstractAutoProxyCreator.java:315`（出处 `spring-aop` 6.2.x） | 包过就返回裸对象 |
+| `getCacheKey` | `AbstractAutoProxyCreator.java:337`（出处 `spring-aop` 6.2.x） | `FactoryBean` 会加 `&` 前缀 |
+| `wrapIfNecessary` | `AbstractAutoProxyCreator.java:354`（出处 `spring-aop` 6.2.x） | 真正的包装 |
 
 ### 5.2 那个 `tryLock`：我们做错的地方
 

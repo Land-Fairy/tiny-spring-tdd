@@ -427,7 +427,7 @@ return autowireConstructor(beanName, mbd, null, null);
 **但真实 Spring 不是这么做的。** 真实 Spring 按**类型**解析：
 
 ```java
-// ConstructorResolver.java:901-919（真实 Spring）
+// ConstructorResolver.java:901-919（出处：真实 Spring 6.2.x，`spring-beans`）
 Object resolveAutowiredArgument(DependencyDescriptor descriptor, Class<?> paramType, String beanName, ...) {
 	try {
 		return this.beanFactory.resolveDependency(descriptor, beanName, autowiredBeanNames, typeConverter);
@@ -439,7 +439,7 @@ Object resolveAutowiredArgument(DependencyDescriptor descriptor, Class<?> paramT
 
 那参数名在真实 Spring 里有什么用？三个用途，都很具体：
 
-1. **多候选时的消歧线索**：`DependencyDescriptor#getDependencyName()` 返回参数名（`DependencyDescriptor.java:359-361`，字段用字段名、方法用参数名），`AutowireCandidateResolver` 拿它去和 Bean 名字/`@Qualifier` 比对；
+1. **多候选时的消歧线索**：`DependencyDescriptor#getDependencyName()` 返回参数名（`DependencyDescriptor.java:359-361`，出处 `spring-beans` 6.2.x；字段用字段名、方法用参数名），`AutowireCandidateResolver` 拿它去和 Bean 名字/`@Qualifier` 比对；
 2. **`@ConstructorProperties`**：`ConstructorResolver` 里有个私有内部类 `ConstructorPropertiesChecker`（`:1402`）读这个注解，这是 JavaBeans 时代留下的「显式声明参数名」通道；
 3. **XML 的 `<constructor-arg name="...">`**：按名字匹配，和本书的做法最接近。
 
@@ -568,7 +568,7 @@ AbstractAutowireCapableBeanFactory#createBeanInstance                     :1186
 
 ### 5.3 那段「咽下去、试下一个」的原文
 
-`ConstructorResolver.java:225-262`（摘录）：
+`ConstructorResolver.java:225-262`（摘录，出处 `spring-beans` 6.2.x）：
 
 ```java
 argsHolder = createArgumentArray(beanName, mbd, resolvedValues, bw, paramTypes, paramNames,
