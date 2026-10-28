@@ -3585,3 +3585,139 @@ Spring 参考文档的「Lifecycle Callbacks」一节把这五条按此顺序列
   日志条数取决于注册了多少个。
 
 判断方法：**问「换个实现还能不能保证」。** 能保证的是契约；只有当前这份代码能保证的是巧合。
+
+## 第 33 章
+
+### B-33-1 `FatalBeanException` 与「可恢复异常」的边界在哪？
+
+**边界不在「严重程度」，而在「换一份输入、再跑一次，结果会不会变」。**
+
+- `FatalBeanException` 管的是**同一份代码 + 同一份配置再跑一次仍然失败**的错：图纸里的类不存在、属性没有 setter、XML 语法错。这类错的修复动作是**改代码或改配置**，重试是没有意义的。
+- 非 fatal 的错，修复动作可能发生在**程序之外**：`TypeMismatchException` 可能来自运维改错了一个环境变量、也可能来自外部请求参数；`NoSuchBeanException` 可能来自某个 profile 没激活。
+
+两个具体例子：
+
+1. **`BeanDefinitionStoreException`（fatal）该被重试逻辑忽略吗？** 就异常本身而言——是，它不该被重试。但注意区分**异常的责任归属**与**外层动作的重试策略**：如果图纸来自远程配置中心，外层「重新拉取配置」是合法动作，重试的是「拉取」这个动作，不是「重新解释同一份坏文本」。**fatal 描述的是「谁的错」，不是「能不能重试」。**
+2. **反例：`NoSuchBeanException`。** 我们刻意让它直接继承 `BeansException` 而不是 `FatalBeanException`——因为第 20 章的 `ObjectProvider` / `@Autowired(required = false)` 把「没有这个 Bean」当成**正常路径**。把它标成 fatal，等于把一条正常的控制流塞进「致命错误」的类别里。见 B-33-2。
+
+### B-33-2 如果 `NoSuchBeanException` 也继承 `FatalBeanException`，会发生什么？
+
+两个后果，一个是调用方的、一个是语义的。
+
+**后果一：`catch (FatalBeanException)` 失去分辨力。** 调用方写这个 `catch` 是为了「启动期的配置错误一律 Fail Fast 并打一条告警」。如果「可选依赖缺失」也被算作 fatal，那么每次正常的可选依赖缺席都会触发一条致命告警——**告警很快就会被忽略，于是真正的致命错误也被忽略**。这是异常分类最常见的失败模式：分类太粗，使用者就会放弃分类。
+
+**后果二：语义倒挂。** `NoSuchBeanException` 回答的是「**这一次查询没有结果**」；`FatalBeanException` 回答的是「**程序本身写错了**」。这两句话的主语不同：前者说的是「查询」，后者说的是「程序」。
+
+看第 20 章 `ObjectProvider` 的实现就明白了：
+
+```java
+@Override
+public T getIfAvailable() {
+	try {
+		return getObject();
+	}
+	catch (NoSuchBeanException ex) {   // 我们「预期」这个异常会出现
+		return null;
+	}
+}
+```
+
+这段代码读起来是通顺的：**「允许没有」是我预期的一种结果，所以我在本地消化掉它。** 如果 `NoSuchBeanException` 是 fatal，这段代码就变成「我在本地消化一个致命异常」——读代码的人会停下来问「致命错误也能吞掉？」，而这恰恰是本章第 1 节「错误答案一」的翻版。
+
+### B-33-3 「我们的 → 普通的 → 我们的」交替三层，`contains` 会漏吗？
+
+**不会漏，但会让 `relatedCauses` 里的东西漏掉——那是另一件事。**
+
+手推一遍 `outer.contains(X)`（`outer` 是 `NestedRuntimeException`）：
+
+| 步骤 | 代码位置 | 发生什么 |
+| --- | --- | --- |
+| 1 | `exceptionType.isInstance(this)` | 先查自己 |
+| 2 | `cause instanceof NestedRuntimeException` | `plain` 是普通异常 → 不成立 |
+| 3 | `while (cause != null)` | 检查 `plain`，然后 `cause = plain.getCause()` = `inner`（我们的） |
+| 4 | 循环里继续 | 对 `inner` 只做 `isInstance` 检查，**不递归它的 `contains`** |
+| 5 | `inner.getCause()` | 继续往下，直到 `null` 或自指闸门 |
+
+关键在第 4 步：**`while` 循环对「我们的异常」只做 `instanceof`，不递归**。为什么不影响正确性？因为 `NestedRuntimeException.contains` 本身也只是沿同一条 `getCause()` 链走，两条路径看到的是同一条链——递归只是省了手写循环，不是多查了一层。
+
+**真正会漏的是 `relatedCauses`。** 我们的 `contains` 完全不看它：
+
+```java
+// 我们的实现：只查 cause 链
+public boolean contains(Class<?> exceptionType) { ... }
+```
+
+而真实 Spring 的 `BeanCreationException` 专门覆写了 `contains()`（`:201-215`），把 `relatedCauses` 也遍历一遍：
+
+```java
+@Override
+public boolean contains(@Nullable Class<?> exClass) {
+	if (super.contains(exClass)) {
+		return true;
+	}
+	if (this.relatedCauses != null) {
+		for (Throwable relatedCause : this.relatedCauses) {
+			if (relatedCause instanceof NestedRuntimeException nested && nested.contains(exClass)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+```
+
+于是同一句 `failure.contains(SomeException.class)`，在真实 Spring 里能查到「其余候选为什么也不行」，在我们的实现里查不到——这叫**假阴性**，已写进本章缺陷表第 5 条。**交替三层不会让你漏，`relatedCauses` 会。**
+
+### B-33-4 为什么 `getRootCause()` 返回 `null`，而 `getMostSpecificCause()` 返回自身？
+
+从**调用方场景**倒推，两个方法的用户根本不是同一类人。
+
+`getRootCause()` 的典型用法是**判断**：
+
+```java
+Throwable root = failure.getRootCause();
+if (root != null && root instanceof XxxException) { ... }   // 「我有没有被包过？」
+```
+
+如果它返回自身，那么 `root != null` 永远成立，「有没有 cause」这个判断就**失去了表达能力**——你不得不再补一句 `root != this`，而这句判断在真实代码里几乎没人写对。**返回 `null` 是在保护「有没有」这个信息。**
+
+`getMostSpecificCause()` 的典型用法是**取用**：
+
+```java
+log.error("根因", failure.getMostSpecificCause());   // 我就要一个能打出来的异常
+```
+
+调用方不想写 `rootCause == null ? failure : rootCause`（这行三元表达式在日志里会被复制一千遍）。所以让它兜底成自身。**返回自身是在保护「调用方少写一行」。**
+
+结论：**两个方法返回类型相同、语义不同，所以不能合并。** 合并成任意一方，都会让另一方的调用方受损——这正是「同一份数据、两种问法」的典型例子，和本章第 3.2 节 `contains` 的双形态是同一种设计直觉。
+
+### B-33-5 `relatedCauses` 与 `cause` 的边界该划在哪？
+
+**`cause` 是线性的「因果链」，`relatedCauses` 是平级的「并列线索」。**
+
+| | `cause` | `relatedCauses` |
+| --- | --- | --- |
+| 关系 | A 因为 B 失败 | A、B、C 各自独立失败 |
+| 结构 | 链表，每个节点最多一个后继 | 集合，顺序无关 |
+| 能回答 | 「根因是谁」 | 「还有谁也不行」 |
+| 遍历方式 | `getRootCause()` / `contains()` | 手动遍历（或覆写 `contains()`） |
+
+如果把「多个候选都失败」也串进 `cause` 链（候选 A 的 cause 是候选 B，候选 B 的 cause 是候选 C），**`getRootCause()` 会给出一个错误结论**：
+
+```
+getRootCause() == 候选 C 的失败     ← 看起来「根因是 C」
+```
+
+但实际上三个候选是**平级**的，谁都不是谁的根因。更糟的是，「谁在链底」完全取决于 `ConstructorResolver` 遍历候选的**顺序**：换个注册顺序，报出来的「根因」就换一个。**一个会随无关顺序变化的「根因」，不是根因。**
+
+所以判据只有一条：**信息之间是否存在「因为」关系。** 有，就进 `cause`；没有，就只能进 `relatedCauses`。这也是本章 3.6 节那段接线代码的形状：
+
+```java
+UnsatisfiedDependencyException failure = new UnsatisfiedDependencyException(beanName, message.toString(),
+		causes.isEmpty() ? null : causes.get(0));   // 第一条当 cause：保持链的单线结构
+for (int i = 1; i < causes.size(); i++) {
+	failure.addRelatedCause(causes.get(i));         // 其余是并列线索
+}
+```
+
+**第一条进 `cause` 是个折中**：`cause` 只容一条，而「链」这个结构本身是有用的（能问「最深的问题」）。真实 Spring 也是这么折中的——只不过它顺手把 `contains()` 覆写成也查 `relatedCauses`，把这个折中的代价补掉了（见 B-33-3）。

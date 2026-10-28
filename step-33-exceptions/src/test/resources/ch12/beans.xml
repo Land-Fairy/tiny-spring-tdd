@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+    <bean id="greeter" class="org.springframework.samples.ch12.HelloGreeter"/>
+
+    <bean id="probe" class="org.springframework.samples.ch12.AwareProbe">
+        <property name="label" value="ch12"/>
+    </bean>
+
+</beans>

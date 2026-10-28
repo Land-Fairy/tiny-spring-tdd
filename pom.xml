@@ -98,6 +98,7 @@
 		<module>step-30-circular-dependencies</module>
 		<module>step-31-concurrency</module>
 		<module>step-32-getbean-flow</module>
+		<module>step-33-exceptions</module>
 	</modules>
 
 	<dependencyManagement>

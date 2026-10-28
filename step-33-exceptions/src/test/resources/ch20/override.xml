@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+	<bean id="overrideService" class="org.springframework.samples.ch20.XmlOverrideService">
+		<property name="greeting" value="from-xml"/>
+	</bean>
+
+	<bean id="autowiredProcessor"
+		  class="org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor"/>
+
+</beans>
