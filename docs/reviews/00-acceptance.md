@@ -142,3 +142,31 @@ bash    scripts/check-propagation.sh           # 约 1 分 20 秒：35 模块副
 （第 21–29 章有，被后来重写 javadoc 时抹掉了）。已补 6 份。
 
 一句话：**规范是代码，判据也要过闸门。**
+
+---
+
+## 九、术语表审计（2026-10-28，第 13 轮）
+
+`GLOSSARY.md` 自称「术语在这里统一，正文与代码不得偏离」。这一轮把它当被审对象，量了三件事。
+
+| 量的是什么 | 实测 | 结论 |
+| --- | --- | --- |
+| 术语条目总数 | **75** 条（`^\*\*X\*\*$` 形式的标题） | —— |
+| 条目在正文+代码里一次都没出现 | **13** 条 | 其中 9 条属「教学专用词汇」小节（`对照点`、`历史快照`、`形状对齐`、K1/K2/K6……），是给作者用的元语言，不是读者术语——可以接受，但**这 9 条里只有 4 条在规范/ADR 里真的用过** |
+| 36 个章节 md 里提到 `GLOSSARY.md` | **0**（只有 `README.md:213` 指了它） | 读者读到第 25 章遇到新词，没有任何路径连回术语表。已在 `00-methodology.md` 加一条「用词以 GLOSSARY 为准」的入口 |
+
+**三条真错（已修）**：
+
+1. `JoinPoint` —— 拼错了。AOP Alliance 的根接口是小写 p 的 `org.aopalliance.intercept.Joinpoint`，
+   而本书的 `MethodInvocation` 正是 `extends Joinpoint`。顺带把 AspectJ 那个**大写 P** 的
+   `org.aspectj.lang.JoinPoint` 区分开（两个不同接口，容易混）。
+2. `解析顺序（ConfigurationClassPostProcessor）` —— 原文写「先 `@Import`、再 `@Bean`、最后 `@ComponentScan`」。
+   真实 `ConfigurationClassParser#processConfigurationClass` 的顺序是：成员类 `:310` → `@PropertySource` `:318`
+   → **`@ComponentScan` `:348` → `@Import` `:363`** → `@Bean` 方法 `:378`。**`@ComponentScan` 在 `@Import` 之前**，
+   原文把最后两名的次序说反了。这条尤其要紧：它解释「扫出来的类里再写 `@Import`，为什么晚一轮生效」。
+3. `Ant 路径匹配` —— 这个条目名里的「Ant」在第 18 章正文里**一次都没出现**（正文只说「通配」）。
+   条目改名为「通配路径匹配（Ant 风格 glob）」，第 18 章首次出现处补了一句「这套写法在 Spring（和 Ant）里叫
+   Ant 风格通配」。
+
+**没动的**：`对照点`、`形状对齐`、`BeanDefinition 的 value 与 ref` 三条在全书（正文/评审/ADR/规范）零命中，
+留着是因为它们是作者元语言。要不要删，留给作者决定。

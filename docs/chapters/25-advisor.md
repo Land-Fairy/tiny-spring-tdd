@@ -6,6 +6,10 @@
 > Spring AOP 的基本单元是 **Advisor**（切点 + 增强），不是「切面类」。
 > 本章代码：`step-25-advisor`。新增 27 个主类共 989 行、新增 6 个测试类共 589 行，模块内 406 个测试全绿，
 > 行覆盖 86.5%、分支覆盖 75.8%。
+>
+> **一个词先交代清楚**：AOP 的根接口是 AOP Alliance 的 `Joinpoint`（"能插入切面的那个点"，Spring AOP 只有
+> 方法执行这一种）。它拼写是**小写 p** 的 `Joinpoint`，不是 `JoinPoint`。本书第 26 章那个
+> `MethodInvocation extends Joinpoint` 就是从它继承的，`proceed()` 也来自它。
 
 ## 1. 痛点：代理只会「全拦」，可业务要的是「按条件拦」
 
@@ -428,7 +432,7 @@ public DefaultAdvisorAdapterRegistry() {
 对比真实 Spring 的同一段代码（`DefaultAdvisorAdapterRegistry:43-52`）：它的列表初始容量写死成 3
 （`new ArrayList<>(3)`），因为默认注册三个适配器——`MethodBeforeAdviceAdapter`、
 `AfterReturningAdviceAdapter`、`ThrowsAdviceAdapter`。我们少了 `ThrowsAdvice`，
-因为「异常通知」需要 `try/catch/finally` 三段语义，本章不想让读者同时处理两件事。
+因为「异常增强」需要 `try/catch/finally` 三段语义，本章不想让读者同时处理两件事。
 
 ### 4.2 `MethodBeforeAdviceInterceptor`：`proceed()` 之前做事
 
@@ -462,7 +466,7 @@ public Object invoke(MethodInvocation invocation) throws Throwable {
 ```
 
 方法里没有 `try`。所以：**目标抛异常 = `proceed()` 抛异常 = `afterReturning` 不会执行**。
-这正是「后置通知」和「最终通知」的区别：想在异常时也干活，得用 `@AfterThrowing` 或
+这正是「返回增强」和「最终增强」的区别：想在异常时也干活，得用 `@AfterThrowing` 或
 `try/finally`（我们都没有）。
 
 `AdviceTests.afterReturningAdviceDoesNotRunWhenTheTargetThrows` 就是钉这条语义的。
@@ -552,10 +556,10 @@ public Object invoke(Object proxy, Method method, Object[] args) throws Throwabl
 
 1. **拦截只需要两个信息**：「这次调用该不该拦」和「拦了做什么」。切面类是这两条信息的**容器**，
    不是**语义**。容器可以被拆开，语义不行。
-2. **一个切面里可以有多个通知方法，但它们的目标不同**。同一个 `AuditAspect` 里，`@Before` 可能拦
+2. **一个切面里可以有多个增强方法，但它们的目标不同**。同一个 `AuditAspect` 里，`@Before` 可能拦
    `book*`，`@AfterReturning` 可能拦 `report*`。它们只能被拆成两个 Advisor，否则没法分别匹配。
 3. **排序发生在 Advisor 层面，不在切面层面**。`@Order` 排的是「谁先进入链」，一条链里可以混着
-   来自十个切面的 Advisor。如果基本单元是「切面」，就得回答「同一个切面里的两个通知谁先」——
+   来自十个切面的 Advisor。如果基本单元是「切面」，就得回答「同一个切面里的两个增强谁先」——
    这个问题在 Advisor 层面反而消失了（因为它们本来就是两个元素）。
 
 一句话：**切面是给人看的组织方式，Advisor 是给框架吃的执行单元。**
@@ -572,7 +576,7 @@ public Object invoke(Object proxy, Method method, Object[] args) throws Throwabl
    遍历容器里所有带 `@Aspect` 的单例 Bean，结果按 Bean 名缓存进 `advisorsCache`（`:55` / `:118`）。
    ——**注意缓存粒度：一个切面类算一次，不是每个目标 Bean 算一次。**
 4. **每个切面类被拆开**：`ReflectiveAspectJAdvisorFactory.getAdvisors()`（`:125`）遍历类里的所有方法，
-   跳过 `@Pointcut` 方法，给每个通知方法（`@Before` / `@After` / `@AfterReturning` /
+   跳过 `@Pointcut` 方法，给每个增强方法（`@Before` / `@After` / `@AfterReturning` /
    `@AfterThrowing` / `@Around`）造**一个** Advisor（`:217`）。
 5. **每个 Advisor 由两半拼成**：一半是 `AspectJExpressionPointcut`（`InstantiationModelAwarePointcutAdvisorImpl:54`），
    里面装着 `execution(* com.acme.Library.book*(..))` 这种字符串，真正的匹配工作交给
@@ -638,7 +642,7 @@ boolean isRuntime();                                                    // 我�
 
 **6.5** 本章的 `Advisor` 只承诺 `getAdvice()`，也就是**一个 Advisor 一个增强**。如果允许一个 Advisor
 带多个增强，`AdvisorAdapterRegistry` 的签名要怎么改？然后回答：为什么真实 Spring 反而选择
-「一个通知方法 = 一个 Advisor」，而不是把同一个切面下的通知打包成一个多增强的 Advisor？
+「一个增强方法 = 一个 Advisor」，而不是把同一个切面下的增强打包成一个多增强的 Advisor？
 （从「可排序」和「可缓存」两个角度回答。）
 
 ## 7. 小结

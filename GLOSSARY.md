@@ -112,14 +112,26 @@ A 依赖 B、B 依赖 A。Spring 用**三级缓存**解决其中的 setter 注�
 **AOP**
 把横切关注点（日志、事务、权限）从业务代码里抽出来。实现手段是动态代理。
 
-**JoinPoint**
-程序执行中可以插入切面的点。Spring AOP 只支持**方法执行**这一个 JoinPoint。
+**Joinpoint**（注意是小写 `p`）
+程序执行中可以插入切面的点。Spring AOP 只支持**方法执行**这一个 Joinpoint。
+拼写就是 `org.aopalliance.intercept.Joinpoint`——AOP Alliance 的接口，**小写 p**。
+别和 AspectJ 注解里那个 `org.aspectj.lang.JoinPoint`（**大写 P**）混为一谈：两个不同的接口，
+前者是 Spring AOP 的根接口，后者只在 `@Aspect` 语法里出现；
+本书的 `MethodInvocation` 直接 `extends Joinpoint`，`proceed()` 就是从它继承来的。
+2026-10-28 审计发现原条目拼成 `JoinPoint` 且正文从未出现这个词，已改拼写并在第 25 章补了一句交代。
 
 **Pointcut**
-"在哪些 JoinPoint 上生效"的表达式。`execution(* com.x..*Service.*(..))`。
+"在哪些 Joinpoint 上生效"的表达式。`execution(* com.x..*Service.*(..))`。
 
 **Advice**
-"在 JoinPoint 处做什么"。分 Before / After / AfterReturning / AfterThrowing / Around。
+"在 Joinpoint 处做什么"。分 Before / After / AfterReturning / AfterThrowing / Around。
+
+中文一律写**增强**（`MethodBeforeAdvice` = 前置增强、`AfterReturningAdvice` = 返回增强……），
+**不写「通知」**：本书里「通知」只用于事件（`publishEvent` 那一套），一词两用会让 AOP 章与事件章互相污染。
+2026-10-28 审计发现第 25 章有 8 处写成「通知」，已改。
+
+另注：**「增强」在 `@Configuration` 章节还有第二个意思**——`ConfigurationClassEnhancer` 生成的**增强子类**。
+两者毫无关系（一个是方法级回调，一个是子类重写方法），写 `@Configuration` 时必须写全「增强子类」。
 
 **Advisor**
 Pointcut + Advice 的组合体。这是 Spring AOP 的**基本单元**，
@@ -149,7 +161,11 @@ Pointcut + Advice 的组合体。这是 Spring AOP 的**基本单元**，
 在配置类里声明"这个方法产出一个 Bean"。
 
 **解析顺序（ConfigurationClassPostProcessor）**
-配置类之间的处理顺序：先解析 `@Import`，再处理 `@Bean`，最后才是 `@ComponentScan`。
+配置类之间的处理顺序，在 `ConfigurationClassParser#processConfigurationClass` 里是**写死的四条**：
+处理成员类（`:310`）→ `@PropertySource`（`:318`）→ `@ComponentScan`（`:348`）→ `@Import`（`:363`）→
+最后才收 `@Bean` 方法（`:378`）。
+**`@ComponentScan` 排在 `@Import` 之前**——这条最反直觉：先扫出来的组件会先被注册，
+所以扫出来的类里再写 `@Import`，它会晚一轮才处理。
 
 ## 教学专用词汇
 
@@ -191,9 +207,11 @@ XML 里 `<property value="...">` 存的是字符串，`ref="..."` 存的是"另�
 支持 `classpath*:` + Ant 通配的批量定位：`classpath*:com/acme/**/*.class` 一次取出全部匹配资源。
 `classpath:` 只取第一个（把它当 URL 用），`classpath*:` 扫全部 classpath（含 jar）——差一个星号。
 
-**Ant 路径匹配**
+**通配路径匹配（Ant 风格 glob）**
 `**` 匹配任意层目录、`*` 匹配单层内的任意字符、`?` 匹配单个字符。与正则不同：
 它不以 `/` 为特殊语义的通配边界，所以「整条转成正则」是错的（第 18 章的错误答案之一）。
+这种写法在 Spring 与 Ant 里同名，但**第 18 章正文一次都没提「Ant」**，只写「通配」——
+2026-10-28 审计记下这条术语与正文脱钩，正文已补首次交代。
 
 **包扫描（classpath scanning）**
 按包路径找出候选类并注册 BeanDefinition。底层**不加载类**，用 ASM 读 `.class` 的元数据

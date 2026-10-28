@@ -160,6 +160,9 @@ public interface ResourcePatternResolver extends ResourceLoader {
 
 ### 3.2 三条通配语义，和一个必须的算法
 
+这套写法在 Spring（和 Ant）里叫 **Ant 风格通配**。名字不重要，重要的是它**不是正则**——
+下面三条语义各有一条边界，写错一条就会「多匹配」而不报错。
+
 | 模式 | 匹配 | 不匹配 |
 |---|---|---|
 | `*` | 同一层里的任意字符（含空） | 跨 `/` |
