@@ -256,9 +256,15 @@ public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 			singletonObject = this.earlySingletonObjects.get(beanName);
 			if (singletonObject == null && allowEarlyReference) {
 				// 不进创建锁：提前引用只该由「正在创建它的线程」推导，别的线程无权排队，
-				// 更不该为了一个自己无权推导的东西去等——那个「等」正是第 30 章的死锁源。
+				// 更不该为了一个自己无权推导的东西去等。第 30 章曾把这个「等」说成死锁源，
+				// 本章更正：全类只有一把可重入锁，等待图成不了环——它只是把并发变成串行。
 				// 求值资格由一次原子操作裁决：remove 只有一个线程能拿到非 null 的工厂，
 				// 拿到它就是拿到「令牌」，没拿到的线程不重复求值。
+				// 令牌制留下两对已知后果，都写在这里而不藏着：①没拿到令牌的线程可能读到 null
+				// （对方尚未 put），于是它自己走「创建」那条路；②拿到令牌的线程求值期间，对象可能
+				// 已经完工并 addSingleton（同时清掉了二/三级缓存），随后这次求值再把旧提前引用
+				// put 回二级缓存——留下一张永不过期的旧图纸。它读不到（一级缓存已命中，
+				// 且 isSingletonCurrentlyInCreation 已为 false），代价是一处内存残留。
 				ObjectFactory<?> singletonFactory = this.singletonFactories.remove(beanName);
 				if (singletonFactory != null) {
 					singletonObject = singletonFactory.getObject();

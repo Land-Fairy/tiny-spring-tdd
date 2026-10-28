@@ -85,7 +85,7 @@ resolveDependency(String beanName, Field field, Autowired autowired, Value v)  /
 
 ### 红二：消息里没有字段名
 
-主代码落盘、测试跑起来，327 个测试里 3 个红。挑最要命的一条：
+主代码落盘、测试跑起来，331 个测试里 3 个红。挑最要命的一条：
 
 ```
 Expecting throwable message:

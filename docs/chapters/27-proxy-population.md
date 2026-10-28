@@ -4,7 +4,7 @@
 
 > 本章代码：`step-27-proxy-population`。新增 `TargetSource` / `SingletonTargetSource` / `HotSwappableTargetSource`，
 > 改写 `AdvisedSupport` 与 `JdkDynamicAopProxy`，并给 `AbstractAutoProxyCreator` 补上 `Ordered`。
-> 测试从 409 个涨到 **418** 个，行覆盖 86.5%、分支覆盖 75.6%。
+> 测试从 413 个涨到 **422** 个，行覆盖 86.5%、分支覆盖 75.7%。
 
 上一章的结尾有个问题被我一笔带过：代理是在 `postProcessAfterInitialization` 里造出来的。也就是说，
 容器**先**把属性填进 `LibraryImpl`、跑完 `afterPropertiesSet()`，**然后**才用一层壳把对象包起来。

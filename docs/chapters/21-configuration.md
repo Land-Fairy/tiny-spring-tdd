@@ -668,7 +668,7 @@ enhancer.setUseFactory(false);   // :182
 
 ### 5.5 覆盖率故事
 
-本章 345 个测试，行覆盖 88.0%、分支覆盖 79.7%。有意思的是覆盖率是怎么上去的：
+本章 349 个测试，行覆盖 88.0%、分支覆盖 79.8%。有意思的是覆盖率是怎么上去的：
 
 - 生成器有大量「按类型分支」的代码（`loadOpcode`、`returnOpcode`、`boxTypeName`、`unboxMethodName`、`descriptor` 各一条 switch）。这些分支**不可能**全部由「配置类里的 `@Bean` 方法」覆盖——用户不会写一个返回 `short` 的 `@Bean`。
 - 所以 `ConfigurationClassEnhancerTests` 直接对生成类做测试：一个 `Shapes` 样本类，8 种基本类型、数组、`void`、protected/包私有方法、五个 `long` 参数各一个方法，再加一个 `RecordingInterceptor`（继承 `ConfigMethodInterceptor` 覆写 `doInvoke`）把生成类的行为与容器解耦。

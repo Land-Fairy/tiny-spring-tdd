@@ -476,6 +476,30 @@ Dependency annotations: {@org.springframework.beans.factory.annotation.Autowired
 
 ---
 
+### 5.6 本章顺手做的一件事：构造器候选
+
+消歧的目的是「从多个候选里选一个」，而**构造器本身也是候选**。所以本章除了
+`determineCandidateConstructors` 之外，还给 `SmartInstantiationAwareBeanPostProcessor`
+补上了这个方法（`config/SmartInstantiationAwareBeanPostProcessor.java:42`），
+由 `AutowiredAnnotationBeanPostProcessor` 实现
+（`annotation/AutowiredAnnotationBeanPostProcessor.java:114` 起）。
+
+它的语义逐条对齐真实 Spring 的 `:365`：
+
+1. 扫全部构造器，挑出带 `@Autowired` 的；
+2. 带 `required=true` 的构造器最多一个，且不能与其它带注解的构造器并存，否则抛
+   `BeanCreationException`（两条消息与真实 Spring `:415` / `:423` 一字不差）；
+3. 有带注解的构造器就**只用**它们；`required=false` 的那条凑不齐时允许退回无参构造器，
+   所以把无参构造器垫在候选末尾；
+4. 没有带注解的构造器、但类只有**一个带参构造器**——没得选，就是它；
+5. 其余情况返回 `null`。
+
+第 5 条有一处**已知差异**，写在这里而不是藏起来：真实 Spring 拿到 `null` 之后走
+`instantiateBean`（只认无参构造器），本书拿到 `null` 之后交回第 04 章的
+`ConstructorResolver`（参数多的优先）。第 04 章那条规矩不动，它的测试在
+`ConstructorInjectionTests` 里钉着——两章各自的契约都保住了，代价是「多构造器且都没标」
+这个边角场景跟真实 Spring 不同。
+
 ## 6. 思考题
 
 先自己写，再看 [`../appendix/B-answers.md#第-19-章`](../appendix/B-answers.md#第-19-章)。

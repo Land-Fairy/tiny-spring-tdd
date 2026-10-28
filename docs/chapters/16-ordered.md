@@ -122,13 +122,13 @@ public class TaggingPostProcessor implements BeanPostProcessor, PriorityOrdered 
 }
 ```
 
-`javac` 立刻回答：
+`javac` 立刻回答下面 15 条里的前 8 条（摘录，不是全部）：
 
 ```
 [ERROR] .../samples/ch16/MarkingPostProcessor.java:[4,32] 找不到符号
   符号:   类 Ordered
   位置: 程序包 org.springframework.core
-[ERROR] .../samples/ch16/MarkingPostProcessor.java:[18,65] 找不到符号
+[ERROR] .../samples/ch16/MarkingPostProcessor.java:[17,65] 找不到符号
   符号:   类 Ordered
   位置: 程序包 org.springframework.core
 [ERROR] .../samples/ch16/OrderedListener.java:[5,32] 找不到符号
@@ -146,12 +146,14 @@ public class TaggingPostProcessor implements BeanPostProcessor, PriorityOrdered 
 [ERROR] .../samples/ch16/TaggingPostProcessor.java:[4,32] 找不到符号
   符号:   类 PriorityOrdered
   位置: 程序包 org.springframework.core
-[ERROR] .../samples/ch16/TaggingPostProcessor.java:[19,65] 找不到符号
+[ERROR] .../samples/ch16/TaggingPostProcessor.java:[18,65] 找不到符号
   符号:   类 PriorityOrdered
   位置: 程序包 org.springframework.core
 ```
 
-一共 8 个错误。注意一件事：**样本是「我要按顺序跑」这个意图的载体**，接口还不存在；这正是本章要补的东西。
+一共 **15** 个错误，分两种：**10 条「找不到符号」**（5 个样本各 2 处：类头声明 + `@Override` 位置）、以及 **5 条「方法不会覆盖或实现超类型的方法」**——`@Override public int getOrder()` 这时候还无主可覆。第二种才是真正值钱的提示：它说的是「你写的这个方法和任何超类型都对不上」，比「找不到符号」更贴病因。
+
+注意一件事：**样本是「我要按顺序跑」这个意图的载体**，接口还不存在；这正是本章要补的东西。
 
 ### 2.2 红二：只分组、不排序
 
@@ -164,13 +166,13 @@ public class TaggingPostProcessor implements BeanPostProcessor, PriorityOrdered 
 org.opentest4j.AssertionFailedError:
 expected: "hello [tag] [audit] [stamp]"
  but was: "hello [tag] [stamp] [audit]"
-	at ...PostProcessorOrderingTests.java:37
+	at ...PostProcessorOrderingTests.java:36
 
 [ERROR] PostProcessorOrderingTests.orderedGroupIsSortedByOrderValue -- <<< FAILURE!
 org.opentest4j.AssertionFailedError:
 expected: "hello [tag] [audit] [stamp]"
  but was: "hello [tag] [stamp] [audit]"
-	at ...PostProcessorOrderingTests.java:64
+	at ...PostProcessorOrderingTests.java:63
 ```
 
 看清楚了：`tag` 确实第一个跑（分组生效了），但组内的 `stamp` 和 `audit` 仍然是声明顺序。**分组解决了「组间」，没解决「组内」。** 这是本章第一个容易忽略的分工：`instanceof` 分组和 `sort` 是两件事，谁也替不了谁。

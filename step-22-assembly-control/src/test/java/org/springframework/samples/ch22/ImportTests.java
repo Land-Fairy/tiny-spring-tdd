@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.beans.factory.support.GenericBeanDefinition;
 import org.springframework.context.support.GenericApplicationContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,17 +45,23 @@ class ImportTests {
 	}
 
 	@Test
-	@DisplayName("重复导入同一个类只登记一次")
+	@DisplayName("重复导入同一个类只登记一次：第二次导入不能覆盖已登记的图纸")
 	void repeatedImportsAreIdempotent() {
-		try (GenericApplicationContext context = Ch22Contexts.standard(ImportingConfiguration.class)) {
-			long count = 0;
-			for (String beanName : ((DefaultListableBeanFactory) context.getBeanFactory()).getBeanDefinitionNames()) {
-				if ("plainImportedBean".equals(beanName)) {
-					count++;
-				}
-			}
+		try (GenericApplicationContext context = Ch22Contexts.create(ImportingConfiguration.class)) {
+			// 先塞一张「有特征」的图纸：被导入的类本身不是 lazy，所以 lazy 标记只能来自这里。
+			GenericBeanDefinition sentinel = new GenericBeanDefinition();
+			sentinel.setBeanClass(PlainImportedBean.class);
+			sentinel.setLazyInit(true);
+			((DefaultListableBeanFactory) context.getBeanFactory()).registerBeanDefinition("plainImportedBean",
+					sentinel);
 
-			assertThat(count).isEqualTo(1);
+			context.refresh();
+
+			// 幂等靠的是「名字已在图纸表里就早退」，而不是 Map.put 的覆盖。
+			// 把那个早退删掉，这里会读到一张新建的图纸（lazy=false），测试立刻红。
+			assertThat(((DefaultListableBeanFactory) context.getBeanFactory()).getBeanDefinition("plainImportedBean")
+				.isLazyInit()).isTrue();
+			assertThat(context.getBean("plainImportedBean", PlainImportedBean.class).hello()).isEqualTo("plain");
 		}
 	}
 

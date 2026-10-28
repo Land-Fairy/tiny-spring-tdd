@@ -3,7 +3,7 @@
 > 🌿(ch00–ch27) 🕳️
 
 > 本章代码：`step-28-expose-proxy`。新增 `AopContext`（63 行），给 `AdvisedSupport` 加 `exposeProxy` 开关，
-> `JdkDynamicAopProxy` 增加「挂—取—还」。测试从 418 个涨到 **426** 个，行覆盖 86.3%、分支覆盖 75.7%。
+> `JdkDynamicAopProxy` 增加「挂—取—还」。测试从 422 个涨到 **430** 个，行覆盖 86.4%、分支覆盖 75.8%。
 
 第 27 章的结论可以压缩成一句话：**状态留在目标里，代理只持有「怎么拿到目标」的协议。**
 
