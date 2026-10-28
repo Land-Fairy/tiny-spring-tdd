@@ -733,6 +733,9 @@ AOP 还能实现吗？为什么？
 | 没有排序 | `PriorityOrdered` / `Ordered` 都不生效，只能靠注册顺序 | 第 16 章 |
 | 只认 `required` | `Optional<T>`、`ObjectProvider<T>` 的延迟解析无效 | 第 19 章 |
 
+表格第一行那个「构造器」已经兑现：见 [第 19 章 §6 注解驱动的构造器注入](19-autowire-candidates.md#6-注解驱动的构造器注入)——
+`determineCandidateConstructors` 比本章的 `postProcessProperties` 还早一步，它在一个对象都不存在时就回答了「用哪个构造器」。
+
 ### 下一章
 
 第 12 章补上本章留下的那个自举缺口：**`Aware`**。

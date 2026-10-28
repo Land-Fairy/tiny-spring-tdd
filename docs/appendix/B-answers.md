@@ -2228,6 +2228,22 @@ expected single matching bean but found 2: a, b                  ← 多个候�
 
 项目里该选哪个，取决于你的代码是**被自己人消费**（宽容 + 日志警告）还是**被外部消费**（严格抛错）。
 
+### B-19-6 挑构造器的决定点为什么更早？`required=false` 为什么只能退回无参？
+
+因为回调拿到的参数决定了它能知道什么。`postProcessProperties(PropertyValues, Object bean, String beanName)`
+的第二个参数是一个**已经存在的对象**；而 `determineCandidateConstructors(Class<?> beanClass, String beanName)`
+（真实 Spring `:365`）手里只有一个 `Class`。想让后者先有对象，等于要求它在被调用之前就交出返回值——
+类型上就不成立。所以这个回调只能挂在 `SmartInstantiationAwareBeanPostProcessor`（`:79`）上，
+不能挂在 `InstantiationAwareBeanPostProcessor` 上；后者继承自前者，字段注入那段才一行都不用改。
+
+`required=false` 也就没有「塞个 `null`」这个选项。字段注入里它拿不到就留 `null`（对象已存在，跳过即可），
+但构造器参数不能「跳过」：`new Holder(null)` 会让 `final` 字段保持 `null`，把一次配置错误推迟成运行期 NPE，
+而这正是 `required=false` 想避免的。真实 Spring 的做法是**把无参构造器垫在候选末尾当退路**（`:436-446`），
+凑不齐就换一个构造器，绝不塞假值。
+
+顺带一句差异：本仓拿到 `null` 之后走第 04 章「参数多的优先」，真实 Spring 走 `instantiateBean`（`:1240`，只认无参），
+见 6.4 节。
+
 ## 第 20 章
 
 ### B-20-1 岔口为什么用「注解给没给值」而不是「字段类型是不是 String」？

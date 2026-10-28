@@ -44,7 +44,7 @@ Injection of autowired dependencies failed for bean 'plainHolder'
 十个类需要 `Greeter`，就写十遍 `@Qualifier("englishGreeter")`。而「哪个是默认的」本该由
 **提供方**决定一次。这就是 `@Primary` 存在的理由。
 
-### 于是本章要回答四个问题
+### 于是本章要回答五个问题
 
 | 问题 | 答案 | 位置 |
 |---|---|---|
@@ -52,6 +52,7 @@ Injection of autowired dependencies failed for bean 'plainHolder'
 | 名字为什么排在优先级前面？ | 真实 Spring 的 Step 2a/2b 在 Step 3 之前 | 3.1 节、5.2 节 |
 | `List<T>` / `Map<String,T>` 怎么注入？ | 从字段的**泛型类型**里读出元素类型，再枚举 | 3.3 节 |
 | 「无候选」与「选不出」为什么是两个异常？ | 一个是「找不到」，一个是「找到太多」，处理方式不同 | 3.4 节 |
+| `@Autowired` 怎么指定**构造器**？ | 在对象还不存在时问一次后处理器，它返回候选构造器 | 6 节 |
 
 ---
 
@@ -474,7 +475,166 @@ Dependency annotations: {@org.springframework.beans.factory.annotation.Autowired
 
 ---
 
-## 6. 思考题
+## 6. 注解驱动的构造器注入
+
+> 前五节都在回答「注入哪一个 Bean」，前提是**对象已经造好了**。
+> 这一节回到造对象的那一刻：`@Autowired` 自己指定用哪个构造器。
+> 第 11 章的思考题 11-5 把话放在那里——「构造器执行的时候对象还不存在」——现在轮到兑现它。
+
+### 6.1 为什么这个回调不在 `InstantiationAwareBeanPostProcessor` 上
+
+三个钩子，三个阶段，手里拿到的东西完全不同：
+
+| 接口 | 回调 | 此刻手里有什么 |
+|---|---|---|
+| `BeanPostProcessor` | `postProcessBeforeInitialization` / `...After` | 一个**造好并填好属性**的对象 |
+| `InstantiationAwareBeanPostProcessor` | `postProcessAfterInstantiation` / `postProcessProperties` | 一个**造好但还没填属性**的对象 |
+| `SmartInstantiationAwareBeanPostProcessor` | `determineCandidateConstructors` | 一张**图纸** + 一个 `Class` |
+
+本仓为此新加了一个 46 行的接口（`config/SmartInstantiationAwareBeanPostProcessor.java`），正文只有一个默认方法：
+
+```java
+default Constructor<?>[] determineCandidateConstructors(Class<?> beanClass, String beanName) {
+    return null;                        // 我没意见，容器按自己的规矩挑（:42）
+}
+```
+
+**为什么不能放在 `InstantiationAwareBeanPostProcessor` 里**：那个接口的契约是「给你一个刚造出来的对象」。
+要它在造之前回答问题，等于要求它在被调用之前先交出返回值。这不是风格问题，是类型问题——
+`postProcessProperties(PropertyValues, Object bean, String beanName)` 的第二个参数就写着 `Object`。
+
+`@Autowired` 的作用没变，变的是它**能出现在哪个位置**：字段在对象之后，构造器在对象之前。
+一个类想同时管两头，就只能挂在更早的那个接口上。所以本章的 `AutowiredAnnotationBeanPostProcessor`
+从 `InstantiationAwareBeanPostProcessor` 换到了 `SmartInstantiationAwareBeanPostProcessor`——
+后者继承了前者，于是字段注入那三百行一个字都不用改。
+
+### 6.2 五条语义
+
+`AutowiredAnnotationBeanPostProcessor#determineCandidateConstructors`（`:119-143`）的判定顺序，一条一条对着看：
+
+| # | 语义 | 代码 | 谁钉着它 |
+|---|---|---|---|
+| 1 | 扫全部构造器，挑出带 `@Autowired` 的 | `:124-131` | `autowiredConstructorBeatsTheWiderOne` |
+| 2 | `required=true` 的**至多一个**，与别的带注解构造器并存即抛 | `:156-167` | `twoRequiredConstructorsAreRejected` |
+| 3 | 有带注解的就**只用**它们；可选的那个凑不齐时允许退回无参，所以把无参构造器**垫在候选末尾** | `:177-183` | `optionalConstructorFallsBackToDefault` |
+| 4 | 没有带注解的、但类只有**一个带参构造器**——没得选，就是它 | `:139-141` | `singleConstructorIsUsedWithoutAnnotation` |
+| 5 | 其余返回 `null`：多个构造器一个都没标，或只有一个无参构造器 | `:142` | `returnsNullWhenThereIsNothingToSay` |
+
+三条细节值得单独说：
+
+- **第 2 条的两个分支各对应一种冲突**：`Invalid autowire-marked constructor`（`:159`）说的是「之前**已经**有过必需构造器」，
+  `Invalid autowire-marked constructors`（`:163`）说的是「之前那个是可选的、当前这个是必需的」。两条消息与真实 Spring
+  `:415` / `:423` 一字不差；而测试只断言了 `Invalid autowire-marked constructor` 这个前缀——它恰好是两条消息的共同开头。
+- **第 3 条里没有排序**。`withOptionalFallback` 只做一件事：`candidates.add(defaultConstructor)`——
+  必需的那个在前、退路在后，优先级靠**数组顺序**表达。`ConstructorResolver` 那边照抄了这个约定：
+  `instantiate(beanName, beanClass, candidates)` **不排序**（`:98-99`），传进来什么顺序就按什么顺序试。
+- **第 5 条返回 `null` 而不是空数组**。空数组的语义是「一个候选也没有」，容器会因此直接报错；
+  `null` 的语义是「我不管」。真实 Spring 用一句三元表达式把两者分开
+  （`:467` 的 `candidateConstructors.length > 0 ? candidateConstructors : null`），本书照抄。
+
+五个样本一一对应：`ConstructorHolder`（单构造器）、`AnnotatedConstructorHolder`（注解胜过更宽的那个）、
+`PlainConstructorHolder`（多构造器全未标注）、`OptionalConstructorHolder`（可选 + 退路）、
+`ConflictingConstructorHolder`（两个必需）。
+
+### 6.3 凑不齐的时候，两种 `required` 是两条路
+
+**`required=false`：咽下异常，退回无参。** `OptionalConstructorHolder` 拿到的候选是
+`[OptionalConstructorHolder(Auditor), OptionalConstructorHolder()]`。试第一个时 `ConstructorResolver`
+给出的真实消息是：
+
+```
+Unsatisfied dependency expressed through constructor parameter 0 of bean 'optionalConstructorHolder' ('auditor'):
+No bean named 'auditor' available; required type [org.springframework.samples.ch19.Auditor]
+```
+
+这条异常被 `instantiate` 的 `catch` 咽下去（真实 Spring 的原话注释：`Swallow and try next constructor.`），
+换下一个候选，无参构造器成功，`source()` 返回 `"no-arg"`。
+**注意这条消息还是生成了**，只是没人看见它——「退回」不等于「没出错」。
+
+**`required=true`：没有退路，全部候选失败后一起抛。** `BrokenConstructorHolder` 只有一个必需构造器，
+于是 `buildFailure` 把每条原因串起来：
+
+```
+Could not resolve a constructor for bean 'brokenConstructorHolder' of class [...BrokenConstructorHolder]:
+1 candidate constructor(s) could not be satisfied; Unsatisfied dependency expressed through constructor parameter 0
+of bean 'brokenConstructorHolder' ('auditor'): No bean named 'auditor' available; required type [...Auditor]
+```
+
+**两个名字都在**：`brokenConstructorHolder`（谁要）与 `auditor`（要什么）。少任何一个，排障都得多问一句。
+
+**两个 `required=true` 并存：拒绝，而不是悄悄挑一个。** 抛的是
+
+```
+Invalid autowire-marked constructor: <后遇到的那个构造器>
+  . Found constructor with 'required' Autowired annotation already: <先遇到的那个构造器>
+```
+
+与真实 Spring 一字不差（`:415`）。两点必须记牢：**Bean 名字不在消息里**，而在
+`BeanCreationException#getBeanName()` 里——测试断言的是那个字段，不是消息文本；另外「先/后」由
+`getDeclaredConstructors()` 的顺序决定，**JVM 不保证**，所以别在断言里挑某一个构造器。
+
+### 6.4 一处已知差异：拿到 `null` 之后走哪条路
+
+后处理器说「我没意见」时，两边分道扬镳：
+
+| | 真实 Spring | 本仓 |
+|---|---|---|
+| `null` 之后 | `createBeanInstance`（`:1227` 问、`:1240` 收尾）落到 `instantiateBean`——**只认无参构造器** | `ConstructorResolver#instantiate(..., null)`（`:98`）→ `allConstructorsOf`（`:122`）——**参数多的优先**（第 04 章的老规矩） |
+
+后果不是理论上的。`PlainConstructorHolder` 两个构造器都没标注：真实 Spring 直接走无参构造器；
+本仓先试那个要 `auditor` 的（凑不齐，咽下去），最后也落在无参构造器上。**结果一样，路径不同。**
+
+真正分叉的是另一种类：**两个带参构造器、都没标注、且都凑得齐**。真实 Spring 找不到无参构造器，
+`instantiateBean` 抛 `No default constructor found`；本仓按「参数多的优先」造出一个对象。
+同一个类，一边启动就失败，一边静默选中更宽的那个构造器。
+
+本仓保留这处差异的理由：第 04 章的规矩有一整套测试钉着，改它等于让第 04 章的主人换规矩；
+而这条差异在「留一个无参构造器兜底」的常见写法上不产生可观察的区别。
+写进正文而不是藏进注释，是因为读者总有一天会把一个「真实 Spring 启动就失败、这里却能跑」的类搬过来——
+那时该问的不是「谁对」，而是「这个类本来想让谁去装它」。
+
+### 6.5 🔍 真实 Spring 里它在哪
+
+| 位置 | 行号 |
+|---|---|
+| `annotation/AutowiredAnnotationBeanPostProcessor`（文件） | **1113 行** |
+| class 声明 `implements SmartInstantiationAwareBeanPostProcessor` | `:160` |
+| `determineCandidateConstructors` | **`:365`** |
+| 候选缓存查询 / 同步块 | `:371` / `:373` |
+| `getDeclaredConstructors()` | `:379` |
+| Kotlin 主构造器 `BeanUtils.findPrimaryConstructor` | `:389` |
+| `Invalid autowire-marked constructor:`（必需构造器已存在） | **`:415`** |
+| `Invalid autowire-marked constructors:`（当前这个是必需的，而列表里已有别的带注解构造器） | **`:423`** |
+| 垫上无参退路 | `:436-446` |
+| 「单构造器自动选中」 | `:450` |
+| 主构造器 + 无参构造器两个分支 | `:453` / `:457` |
+| 返回 `null` 的三元表达式 | `:467` |
+| `config/SmartInstantiationAwareBeanPostProcessor`（文件） | **110 行** |
+| `predictBeanType` / `determineCandidateConstructors` / `getEarlyBeanReference` | `:50` / **`:79`** / `:106` |
+| `AbstractAutowireCapableBeanFactory#createBeanInstance` | `:1186` |
+| 问到候选的那一行 | **`:1227`** |
+| `determineConstructorsFromBeanPostProcessors` 定义 | `:1327` |
+| `autowireConstructor` 调用 | `:1230`（定义 `:1390`） |
+| `instantiateBean`（`null` 之后的路） | `:1240`（定义 `:1347`） |
+| `support/ConstructorResolver`（文件） | **1468 行** |
+| `autowireConstructor` / `chosenCtors` 形参 | `:135` / `:167` |
+| 工厂方法参数的注入 `resolveAutowiredArgument` | `:901` |
+
+真实实现比本仓多做的四件事，没有一件是顺手加的：
+
+1. **按 `Class` 缓存候选**（`candidateConstructorsCache`，`:371`）——每个 Bean 都会被问一次，反射扫构造器不便宜。
+   本书每次重扫，与第 11 章字段注入的限制是同一笔账。
+2. **CGLIB 代理类回查父类**（`:399-412`）：`beanClass` 可能是被增强过的子类，注解却写在父类构造器上，
+   于是要 `getUserClass` 之后再用 `getDeclaredConstructor(candidate.getParameterTypes())` 找一次。
+3. **跳过 synthetic 构造器、认主构造器**（`:389`、`:453-459`）：Kotlin 默认参数与 `@JvmOverloads` 会生成一堆合成构造器。
+4. **`checkLookupMethods`**（`:359`）：`@Lookup` 方法不能与 `@Autowired` 构造器混着走，先查一遍再说。
+
+体量：接口 46 行 vs 110 行、`AutowiredAnnotationBeanPostProcessor` 462 行 vs 1113 行、
+`ConstructorResolver` 184 行 vs 1468 行。
+
+---
+
+## 7. 思考题
 
 先自己写，再看 [`../appendix/B-answers.md#第-19-章`](../appendix/B-answers.md#第-19-章)。
 
@@ -489,17 +649,23 @@ Dependency annotations: {@org.springframework.beans.factory.annotation.Autowired
    为什么这个区分对排障很重要？（提示：`expected at least 1` vs `expected single`。）
 5. **本章的 `narrowToPrimary` 在两个 `@Primary` 时选择「当作没标」，真实 Spring 选择「立刻抛」。**
    各举一个「宽容更好」和「严格更好」的场景，并说明你的项目里更该选哪个。
+6. **为什么「挑构造器」的决定点必须比 `postProcessProperties` 早？**
+   `@Autowired(required=false)` 的构造器凑不齐时，为什么只能「退回无参构造器」而**不能**像字段那样
+   「给个 `null`」？（提示：构造器里的 `final` 字段；以及 `determineCandidateConstructors` 手里到底有什么。）
 
 ---
 
-## 7. 小结
+## 8. 小结
 
-三句话：
+四句话：
 
 1. **决策链是有顺序的收窄**：`@Qualifier` 过滤 → `@Primary` → 名字 → 优先级，每步只看上一步的剩余候选。
 2. **名字排在优先级之前**——这条与直觉相反，但真实 Spring 就是如此；写反了会得到「`@Order` 不生效」的假象。
 3. **两个异常对应两种病**：`NoSuchBeanException`（去注册）与 `NoUniqueBeanDefinitionException`（去消歧），
    消息里列出候选名是排查效率的关键。
+4. **决定「怎么造」比「填什么」更早，也更硬**：`determineCandidateConstructors` 是全书唯一在对象存在之前
+   发生的回调，它手里只有一张图纸和一个 `Class`——所以 `required=false` 的唯一退路是**换一个构造器**，
+   而不是「塞个 `null` 进去」。
 
 ### 本章已知的缺陷
 
@@ -512,6 +678,9 @@ Dependency annotations: {@org.springframework.beans.factory.annotation.Autowired
 | 不支持 `@Value`、`ObjectProvider`、`Optional`、`@Lazy` | 只能注入「现成的 Bean」 | 第 20 章起 |
 | 集合注入不支持 `@Order` 排序 | `List` 顺序即注册顺序 | 真实 `resolveMultipleBeans` 会排序 |
 | 集合零候选时返回空集合（真实 Spring `required=true` 直接抛 `NoSuchBeanDefinitionException`） | 配置错误被推迟到运行时 | 真实 `resolveMultipleBeanCollection` 的 `isEmpty() → return null` |
+| 不支持 `@Autowired` 标在 `@Bean` 工厂方法的参数上 | 注入点只有字段与本章的构造器；本仓连 `factory-method` 的实例化路径都还没有（第 21 章才引入 `@Bean`），工厂方法参数无法向容器要依赖 | 真实 `ConstructorResolver#resolveAutowiredArgument`（`:901`） |
+| 先有 `required=true` 构造器、又出现一个 `@Autowired(required=false)` 构造器时，本仓默默把两个都留作候选 | 一个本该被拒绝的声明被放行，实际选中哪个取决于候选顺序 | 真实 `determineCandidateConstructors` 的检查顺序：`:415` 那条判断不看 `required` 标志，见到第二个带注解构造器就抛 |
+| 每次创建都 `getDeclaredConstructors()` 重扫，没有按 `Class` 缓存候选 | 每个 Bean 多一次反射扫描 | 真实 `candidateConstructorsCache`（`:371`） |
 
 ### 下一章
 
