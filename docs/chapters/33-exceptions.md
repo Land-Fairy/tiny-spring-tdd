@@ -583,7 +583,7 @@ BeanCreationException（我们的）
 
 注意名字：真实 Spring 叫 `NoSuchBeanDefinitionException`，我们叫 `NoSuchBeanException`。这不是笔误——我们的容器还没有「BeanDefinition 与 Bean 分离」的完整概念（第 02 章起就是这么简化的），名字跟着简化了。
 
-### 5.2 第一章提到的三处「我们和真实 Spring 不一样」
+### 5.2 第 1 节提到的三处「我们和真实 Spring 不一样」
 
 **差异一：`PropertyAccessException` 的分支宽度**
 

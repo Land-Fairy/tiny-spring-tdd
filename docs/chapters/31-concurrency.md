@@ -139,13 +139,17 @@ public Object getSingleton(String beanName, ObjectFactory<?> singletonFactory) {
         singletonObject = this.singletonObjects.get(beanName);      // ③ 进锁后再读一遍
         if (singletonObject == null) {
             beforeSingletonCreation(beanName);
+            boolean created = false;                                // ④' 先记「还没造出来」
             try {
                 singletonObject = singletonFactory.getObject();     // ④ 创建
+                created = true;
             }
             finally {
                 afterSingletonCreation(beanName);
             }
-            addSingleton(beanName, singletonObject);                // ⑤ 放回
+            if (created) {                                          // ④'' 失败就别放回池子
+                addSingleton(beanName, singletonObject);            // ⑤ 放回
+            }
         }
         return singletonObject;
     }
