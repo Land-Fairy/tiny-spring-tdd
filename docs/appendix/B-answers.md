@@ -7,6 +7,55 @@
 
 ---
 
+## 第 00 章
+
+### B-00-1　`getBean()` 上的断点被命中 300 次，怎么缩小范围？
+
+**别在中转站下断点，去终点下。** 一次 `refresh()` 里 `getBean` 会被框架自己反复调用三百次，但你真正关心的事件只有一个——**某个对象被造出来**。所以往下走：
+
+- `createBean` 入口（只在真的要创建时命中，命中次数直接掉到个位数）；
+- 构造器上（对象只会造一次）；
+- 单例池的 `put` / `addSingleton`（成品入库那一刻）；
+- 或者在 `getBean` 那行加条件断点 `beanName.equals("orderService")`——条件是**字符串**，比数次数便宜得多。
+
+配合 IDEA 的 `Drop Frame`：从深处发现「这次不是我要的那次」时回退到上一层，不必重跑整个容器。
+
+### B-00-2　`Parameter.isNamePresent()` 返回 `false` 说明什么？
+
+说明编译时**没有** `-parameters`，class 文件里没有 `MethodParameters` 属性，参数名已经退化成 `arg0`、`arg1`。
+
+如果框架在这种情况下**静默**退化成按位置匹配，bug 会藏在三个地方：① 有人给构造器**中间**插了一个参数，位置整体错位；② 两个参数**类型相同**（比如两个 `String`），注入错了不会抛任何异常，错误在业务逻辑里才显形；③ 换个编译器/构建工具版本，属性写法变了，行为跟着变却没有 diff。
+
+所以第 4 章的选择是**大声失败**：拿不到参数名就抛 `BeanDefinitionStoreException`，消息里直接给出「加 `-parameters`」的修复提示。可失败的框架比「能跑但偶尔跑错」的框架好得多。
+
+### B-00-3　为什么 `-parameters` 必须配在 `maven-compiler-plugin`，不能放进 surefire 的 `argLine`？
+
+因为两者改的是**不同阶段的东西**：
+
+- `-parameters` 是 **javac 的编译期开关**，作用是让编译器把参数名写进 class 文件（`MethodParameters` 属性）。它必须出现在生成字节码的那一步——`maven-compiler-plugin` 的 `<configuration><parameters>true</parameters></configuration>`。
+- surefire 的 `argLine` 是**运行期 JVM 参数**。到那时候字节码早已生成、参数名早已丢掉，放进去对已经编译好的 class 一点用都没有（而且 `java` 根本不认识 `-parameters` 这个选项）。
+
+一句话判据：**改的是生成物，还是运行环境？**
+
+### B-00-4　把参照仓放进本书仓库，除了体积，还有什么每天都会遇到的麻烦？
+
+**它会污染每一次「看仓库」的动作。** `git status`、`git diff`、`git add .`、IDE 索引、全文搜索、`grep`/`find` 全都会被两万多个不属于本书的文件淹没；更危险的是某次 `git add .` 把参照仓一起提交，diff 体积瞬间爆炸，code review 直接不可用。
+
+所以本书的做法是：参照仓放在**仓库外**（`~/refs/spring-framework-6.2.x`），仓库里只保留取它的脚本 `scripts/refs.sh`。要复现某一章的对照，跑一次脚本即可——**内容不进仓库，能力进仓库**。
+
+### B-00-5　没有 CGLIB，哪个场景**必须**改变设计？丢了什么？
+
+最典型的是 `@Configuration` 的 **full 模式**。真实 Spring 用 CGLIB 生成配置类子类，把每个 `@Bean` 方法覆写成「先问容器有没有、没有再调方法体」，于是配置类内部 `a()` 调 `b()` 拿到的仍然是容器里那个单例。
+
+没有 CGLIB 时只有两条路：
+
+1. **JDK 动态代理**——行不通。配置类通常没有实现任何接口，而 JDK 代理只能代理接口；更致命的是 `b()` 是**类内自调用**，代理根本接不住（第 28 章的失效场景在配置类上重演）。
+2. **改变设计**——本书的选择：给容器加一个「拦截工厂方法调用」的机制，并**手写一个最小的类文件生成器**，只为配置类这一种受控场景生成子类（第 21 章）。生成器只支持「无分支的方法体」这类极窄的子集，换来的是「不引入 CGLIB 依赖、也不需要读者先学 ASM」。
+
+丢掉的是**通用的对象增强能力**：对任意用户类造子类代理这条路没了。后果在第 24 章明说——本书的 AOP 只有 JDK 代理，**没有实现接口的 Bean 无法被增强**（真实 Spring 会退回 CGLIB）；`final` 类、`final` 方法、`private` 方法的失效场景也因此比真实 Spring 更早暴露（第 29 章）。这不是省事，是**把代价写在明处**。
+
+---
+
 ## 第 01 章
 
 ### B-01-1　`register` 改成收 `Class<?>`，容器要多做哪三件事？
@@ -3993,3 +4042,78 @@ class NullabilityContractTests {
 2. **断言 `refresh()` 的结果与字段值**，而不是 `field.getAnnotation(...)`——后者随注解替换一起变，永远追不上。
 3. **把「容器是否识别这个注解」当成外部契约来测**：这类回归不报错、只是行为变了，
    所以只能靠「行为断言」在 CI 里现形。
+
+---
+
+## 附：清单勾对
+
+AC 要求「覆盖全部章节的思考题，无遗漏（有清单逐条勾对）」。下面是机械核对的结果：**逐章统计正文章节里的题目条数，与本章 B 小节数对比**。判定脚本只看结构（题号格式 + 小节标题），不看内容——它不替内容背书，只负责证明「一道题都没漏」。
+
+合计：**36 章、180 题、180 条答案**。
+
+| 章 | 标题 | 思考题 | 答案 | 勾对 |
+| ---: | --- | ---: | ---: | :---: |
+| 00 | 第 00 章　读源码的方法论 + 环境搭建 | 5 | 5 | ✅ |
+| 01 | 第 01 章 从 `new` 到容器 | 5 | 5 | ✅ |
+| 02 | 第 02 章 BeanDefinition | 5 | 5 | ✅ |
+| 03 | 第 03 章 注册表与单例池（含线程安全） | 5 | 5 | ✅ |
+| 04 | 第 04 章 反射实例化 | 5 | 5 | ✅ |
+| 05 | 第 05 章 属性填充与依赖注入 | 5 | 5 | ✅ |
+| 06 | 第 06 章 BeanFactory 的接口分层 | 5 | 5 | ✅ |
+| 07 | 第 07 章 Resource 抽象 | 5 | 5 | ✅ |
+| 08 | 第 08 章 XML 解析与 BeanDefinitionReader | 5 | 5 | ✅ |
+| 09 | 第 09 章 ApplicationContext 与 refresh() | 5 | 5 | ✅ |
+| 10 | 第 10 章 BFPP + Environment + 占位符 | 5 | 5 | ✅ |
+| 11 | 第 11 章 BeanPostProcessor | 5 | 5 | ✅ |
+| 12 | 第 12 章 Aware 感知容器 | 5 | 5 | ✅ |
+| 13 | 第 13 章 初始化与销毁 | 5 | 5 | ✅ |
+| 14 | 第 14 章 作用域与 FactoryBean | 5 | 5 | ✅ |
+| 15 | 第 15 章 容器事件与监听器 | 5 | 5 | ✅ |
+| 16 | 第 16 章 扩展点排序 Ordered / PriorityOrdered | 5 | 5 | ✅ |
+| 17 | 第 17 章 包扫描 | 5 | 5 | ✅ |
+| 18 | 第 18 章 `PathMatchingResourcePatternResolver` | 5 | 5 | ✅ |
+| 19 | 第 19 章 `@Autowired` 与类型匹配决策链 | 5 | 5 | ✅ |
+| 20 | 第 20 章 `@Value` 与 `DependencyDescriptor` | 5 | 5 | ✅ |
+| 21 | 第 21 章 `@Configuration` 与 `@Bean` | 5 | 5 | ✅ |
+| 22 | 第 22 章 条件化装配 | 5 | 5 | ✅ |
+| 23 | 第 23 章 类型转换 | 5 | 5 | ✅ |
+| 24 | 第 24 章 代理 | 5 | 5 | ✅ |
+| 25 | 第 25 章 AOP 的三个基本单元 | 5 | 5 | ✅ |
+| 26 | 第 26 章 织入生命周期 | 5 | 5 | ✅ |
+| 27 | 第 27 章 代理对象的属性填充 | 5 | 5 | ✅ |
+| 28 | 第 28 章 自调用失效、exposeProxy、AopContext | 5 | 5 | ✅ |
+| 29 | 第 29 章 AOP 失效场景合集 | 5 | 5 | ✅ |
+| 30 | 第 30 章 三级缓存与循环依赖 | 5 | 5 | ✅ |
+| 31 | 第 31 章 并发模型 | 5 | 5 | ✅ |
+| 32 | 第 32 章 getBean 全链路逐行精读 | 5 | 5 | ✅ |
+| 33 | 第 33 章 异常设计 | 5 | 5 | ✅ |
+| 34 | 第 34 章 设计模式总览 | 5 | 5 | ✅ |
+| 35 | 第 35 章 毕业 | 5 | 5 | ✅ |
+每章「题数 : 答案数」全等才打 ✅。新增章节时重跑同一统计。
+
+核对脚本（仓库根目录，Python 3）：
+
+```python
+import re, glob, os
+
+# 章节题号有四种历史格式：`1. ` / `**5-1**` / `**6.1**` / `**Q1.**` 或 `**Q1**：`
+PATS = [r'^\d+\.\s', r'^\*\*\d+-\d+', r'^\*\*\d+\.\d+\*\*',
+        r'^\*\*\d+）', r'^\*\*Q\d+\.', r'^\*\*Q\d+\*\*']
+
+def count(body):
+    return sum(1 for line in body.splitlines() if any(re.match(p, line) for p in PATS))
+
+exercises = {}
+for f in sorted(glob.glob('docs/chapters/*.md')):
+    num = os.path.basename(f)[:2]
+    text = open(f).read()
+    m = re.search(r'^## \d+\. 思考题$(.*?)^## ', text, re.M | re.S)
+    exercises[num] = count(m.group(1)) if m else 0
+
+answers = {}
+for m in re.finditer(r'^### B-(\d+)-(\d+)', open('docs/appendix/B-answers.md').read(), re.M):
+    answers[m.group(1)] = answers.get(m.group(1), 0) + 1
+
+assert all(exercises[n] == answers.get(n, 0) for n in exercises), '有章节的题没答案'
+print(sum(exercises.values()), '题全部有答案')
+```

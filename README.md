@@ -112,7 +112,7 @@
 ### 附录
 
 - **A** [类型转换补遗](docs/appendix/A-conversion-supplement.md) —— 集合/数组转换、转换器查找优先级、与 `Formatter` 的关系
-- **B** [思考题答案](docs/appendix/B-answers.md)（**别提前看**）—— 35 章共 175 题
+- **B** [思考题答案](docs/appendix/B-answers.md)（**别提前看**）—— 36 章共 180 题（含清单逐条勾对）
 - **C** [真实 Spring 类 ↔ 本书类 对照总表](docs/appendix/C-class-map.md) —— 203 个框架类、真实行数、引入章节
 - **D** [面试题映射表](docs/appendix/D-interview-map.md) —— 41 道高频题，每题指回章节
 
