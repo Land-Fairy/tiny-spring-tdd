@@ -17,8 +17,8 @@ import org.springframework.beans.factory.support.FactoryMethodInProgress;
  * 它只回答一个问题：<b>这一次调用，是「容器正在造这个 Bean 自己」，还是「别人想要这个 Bean」？</b>
  *
  * <ul>
- * <li>别人想要（配置类里写 {@code repository()}）：先问容器有没有这个 Bean，有就直接返回——
- * <b>这就是 full 模式「互相调用返回同一实例」的全部秘密</b>，没有更玄的东西。</li>
+ * <li>别人想要（配置类里写 {@code repository()}）：先问容器有没有这个 Bean，有就直接返回—— <b>这就是 full
+ * 模式「互相调用返回同一实例」的全部秘密</b>，没有更玄的东西。</li>
  * <li>容器自己在造它（{@code DefaultListableBeanFactory} 正在按图纸调这个工厂方法）：必须<b>真跑</b>方法体，
  * 否则「问容器要」会要到自己，无限递归。</li>
  * </ul>
@@ -30,22 +30,21 @@ import org.springframework.beans.factory.support.FactoryMethodInProgress;
  * <p>
  * <b>真跑方法体这一步有个坑</b>：不能用反射调 {@code method.invoke(this, args)}，因为那样会再次虚分派回
  * 生成类自己的覆写方法，无限递归。必须用 {@code MethodHandles.findSpecial} 拿到「{@code super.} 语义」的
- * 方法句柄——它绕过覆写，直接执行配置类里写的那段方法体，而 {@code this} 仍然是生成类实例，
- * 于是方法体内部的互相调用继续被拦截。
+ * 方法句柄——它绕过覆写，直接执行配置类里写的那段方法体，而 {@code this} 仍然是生成类实例， 于是方法体内部的互相调用继续被拦截。
  *
  * <p>
- * <b>真实 Spring 对应</b>：{@code ConfigurationClassEnhancer.BeanMethodInterceptor}（{@code :233-287}），
- * 它做的判断更多（{@code FactoryBean} 的 {@code &} 前缀、{@code BeanCurrentlyInCreationException} 的宽松处理、
- * 静态方法直接放行）。我们用线程标记把「谁发起的」这个信息显式化了。
+ * <b>真实 Spring
+ * 对应</b>：{@code ConfigurationClassEnhancer.BeanMethodInterceptor}（{@code :233-287}），
+ * 它做的判断更多（{@code FactoryBean} 的 {@code &} 前缀、{@code BeanCurrentlyInCreationException}
+ * 的宽松处理、 静态方法直接放行）。我们用线程标记把「谁发起的」这个信息显式化了。
  *
- * @see ConfigurationClassEnhancer
- */
-/**
  * <p>
  * <b>为什么它必须是 {@code public}</b>：生成类和配置类在同一个包里（比如
  * {@code org.springframework.samples.ch21}）， 而拦截器在我们自己的包里。包私有的话，生成类里那句
  * {@code invokestatic} 会在<b>第一次调用</b>时抛 {@code IllegalAccessError}——不是编译错，是链接错。真实 Spring
  * 的 {@code BeanMethodInterceptor} 同样 public。
+ *
+ * @see ConfigurationClassEnhancer
  */
 public class ConfigMethodInterceptor {
 

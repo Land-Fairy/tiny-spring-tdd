@@ -62,10 +62,16 @@ def find_book_class(module: Path, name: str) -> Path | None:
     return hits[0] if hits else None
 
 
-def find_real_class(name: str) -> Path | None:
+def find_real_class(name: str, hint: str = "") -> Path | None:
     if not SPRING_REF.is_dir():
         return None
     hits = sorted(SPRING_REF.glob(f"*/src/main/java/**/{name}.java"))
+    if len(hits) > 1 and hint:
+        # 表格那一列常写成 `spring-core/src/main/java/...` 或 `core.annotation`，用路径片段消歧
+        for key in (hint, hint.replace("/", "."), hint.replace(".", "/")):
+            narrowed = [h for h in hits if key and key.strip("`") in str(h).replace("\\", "/")]
+            if len(narrowed) == 1:
+                return narrowed[0]
     if len(hits) > 1:
         errors.append(
             f"上游有 {len(hits)} 个 {name}.java："
@@ -86,6 +92,15 @@ def check_table(doc: Path, module: Path, header: list[str], rows: list) -> None:
     name_col = col("类", "接口") if vol_col is None else col("本书")
     book_col = col("本书行数")
     real_col = col("真实行数")
+    real_name_col = None
+    if book_col is None and vol_col is None and ("本书" in header or "我们" in header):
+        # 第三种形状：四列「本书 | 行数 | 真实 Spring | 行数」，表头拆成两格
+        name_col = header.index("本书") if "本书" in header else header.index("我们")
+        book_col = name_col + 1
+        for i, h in enumerate(header):
+            if "真实" in h and i + 1 < len(header) and header[i + 1] == "行数":
+                real_name_col, real_col = i, i + 1
+                break
     if name_col is None:
         errors.append(f"{doc.name}: 体量对照表认不出类名列：{header}")
         return
@@ -97,9 +112,13 @@ def check_table(doc: Path, module: Path, header: list[str], rows: list) -> None:
     for line_no, cells in rows:
         if len(cells) <= max(name_col, book_col, real_col) or is_blank(cells[book_col]):
             continue  # 「本书没有这个类」的行写 —，不是错误
-        name = clean(cells[name_col]).split("/")[0].split("(")[0].strip()
+        name = clean(cells[name_col]).split("/")[-1].split("(")[0].strip()
+        if name.endswith(".java"):
+            name = name[: -len(".java")]
         if not name or name.startswith("*"):
             continue
+        if not name.isascii() or not name.replace("_", "").replace("$", "").isalnum():
+            continue  # 「决策链所在的注入器（全部）」这类叙述性格子，不是类名
 
         book_file = find_book_class(module, name)
         if book_file is None:
@@ -114,7 +133,9 @@ def check_table(doc: Path, module: Path, header: list[str], rows: list) -> None:
                 f"（差 {book_actual - int(book_claim):+d}）"
             )
 
-        real_claim, real_file = clean(cells[real_col]), find_real_class(name)
+        real_claim = clean(cells[real_col])
+        hint = clean(cells[real_name_col]) if real_name_col is not None else ""
+        real_file = find_real_class(name, hint)
         if real_file is None or not real_claim.isdigit():
             continue
         STATS["numbers"] += 1
@@ -228,7 +249,9 @@ def scan(docs: list[Path]) -> None:
             if state["header"] is None:
                 two_col = any("本书行数" in c for c in cells) and any("真实行数" in c for c in cells)
                 one_col = any("体量" in c for c in cells)
-                if two_col or one_col:
+                # 第三种形状：表头拆成「本书 | 行数」两格
+                split_col = any(c in {"本书", "我们"} for c in cells) and any(c == "行数" for c in cells)
+                if two_col or one_col or split_col:
                     state["header"] = cells
             elif all(set(c) <= set("-: ") for c in cells):
                 continue

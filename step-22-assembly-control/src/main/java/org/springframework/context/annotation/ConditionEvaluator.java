@@ -15,7 +15,7 @@ import java.lang.reflect.AnnotatedElement;
  *
  * <p>
  * <b>真实 Spring
- * 对应</b>：{@code org.springframework.context.annotation.ConditionEvaluator}（191 行， 还处理
+ * 对应</b>：{@code org.springframework.context.annotation.ConditionEvaluator}（240 行， 还处理
  * {@code ConfigurationPhase}——区分「解析配置类阶段」与「注册 Bean 阶段」，因为同一个条件在这两个阶段可 能有不同答案）。
  */
 class ConditionEvaluator {

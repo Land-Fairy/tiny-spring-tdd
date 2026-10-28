@@ -457,11 +457,11 @@ private static final Resource[] EMPTY = new Resource[0];
 
 | 本书 | 行数 | 真实 Spring | 行数 | 少做了什么 |
 |---|---|---|---|---|
-| `PathMatcher` | 22 | `org.springframework.util.PathMatcher` | 126 | 模板变量抽取、模式比较器 |
-| `AntPathMatcher` | 239 | 同名类 | **1030** | `{var:regex}` 模板、大小写开关、尾斜杠开关、`extractPathWithinPattern` |
-| `AntPathStringMatcher` | 53 | 同名类 | 142 | `{var:regex}` 解析、变量回填 |
-| `ResourcePatternResolver` | 39 | 同名接口 | 83 | `getResourceLoader()`、文档约定 |
-| `PathMatchingResourcePatternResolver` | 235 | 同名类 | **1342** | 模块路径、VFS、`module:`、可换 `PathMatcher`、缓存清理 |
+| `PathMatcher` | 31 | `org.springframework.util.PathMatcher` | 126 | 模板变量抽取、模式比较器 |
+| `AntPathMatcher` | 222 | 同名类 | **1030** | `{var:regex}` 模板、大小写开关、尾斜杠开关、`extractPathWithinPattern` |
+| `AntPathStringMatcher` | 60 | 同名类 | 142 | `{var:regex}` 解析、变量回填 |
+| `ResourcePatternResolver` | 35 | 同名接口 | 83 | `getResourceLoader()`、文档约定 |
+| `PathMatchingResourcePatternResolver` | 203 | 同名类 | **1342** | 模块路径、VFS、`module:`、可换 `PathMatcher`、缓存清理 |
 
 真实 Spring 的 `AntPathMatcher` 有 1030 行，其中**至少一半是给 Spring MVC 用的**：
 `extractPathWithinPattern`、`extractUriTemplateVariables`、`combine`、`getPatternComparator`。

@@ -151,7 +151,7 @@ public class TaggingPostProcessor implements BeanPostProcessor, PriorityOrdered 
   位置: 程序包 org.springframework.core
 ```
 
-一共 24 个错误（`javac` 对同一个「找不到的符号」会在主源码编译与测试源码编译里各报一遍）。注意一件事：**样本是「我要按顺序跑」这个意图的载体**，接口还不存在；这正是本章要补的东西。
+一共 8 个错误。注意一件事：**样本是「我要按顺序跑」这个意图的载体**，接口还不存在；这正是本章要补的东西。
 
 ### 2.2 红二：只分组、不排序
 

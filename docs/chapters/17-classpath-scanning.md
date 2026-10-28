@@ -344,7 +344,7 @@ JVM 规范里 8 种 `element_value`：
 ```java
 public Set<BeanDefinition> findCandidateComponents(String basePackage) {
     Set<BeanDefinition> candidates = new LinkedHashSet<>();
-    for (Resource resource : findClassFiles(basePackage)) {
+    for (Resource resource : findClassResources(basePackage)) {
         ClassMetadata metadata = new SimpleMetadataReader(resource).getClassMetadata();
         if (isCandidateComponent(metadata)) {
             candidates.add(new ScannedGenericBeanDefinition(metadata));
@@ -354,11 +354,11 @@ public Set<BeanDefinition> findCandidateComponents(String basePackage) {
 }
 ```
 
-`findClassFiles` 用 `ClassLoader.getResources("com/acme/order")` 拿到目录 URL，再递归走子目录。
+`findClassResources` 用 `ClassLoader.getResources("com/acme/order")` 拿到目录 URL，再递归走子目录。
 **这里有个本章解决不了的缺口**：如果类是打在 jar 里的，URL 的协议是 `jar:` 而不是 `file:`，
 `new File(url.toURI())` 直接抛 `IllegalArgumentException`。真实 Spring 靠
 `PathMatchingResourcePatternResolver` 把 `classpath*:` 通配解析成 `jar:` 也能走的 `Resource`——
-那是第 18 章的事。本章只支持目录，且**明确抛出消息说明不支持 jar**，让读者一眼看见边界。
+那是第 18 章的事。本章只支持目录：遇到非 `file:` 协议的资源直接 `continue` 跳过，既不报错也不提示。这是本章的一处硬边界——jar 里的类要到第 18 章换上 `PathMatchingResourcePatternResolver` 才扫得到。
 
 ### 3.7 判候选：元注解递归与防环
 
@@ -485,7 +485,7 @@ private static final int PARSING_OPTIONS =
 
 ### 4.3 扫描的顺序问题
 
-`findClassFiles` 返回的 `List<Resource>` 是按文件系统遍历顺序来的，`LinkedHashSet` 保住这个顺序。
+`findClassResources` 返回的 `List<Resource>` 是按文件系统遍历顺序来的，`LinkedHashSet` 保住这个顺序。
 所以「`getBeanDefinitionNames()` 的顺序」在本章是**文件系统顺序**，不是字母序。
 真实 Spring 用的是 `HashSet` 风格的结果集，顺序更不可依赖——**任何依赖 Bean 定义顺序的代码都是脆的**。
 
@@ -498,7 +498,7 @@ private static final int PARSING_OPTIONS =
 | 本书 | 行数 | 真实 Spring | 行数 | 少做了什么 |
 |---|---|---|---|---|
 | `ClassMetadata` | 47 | `org.springframework.core.type.ClassMetadata` + `AnnotationMetadata` | 122 + 145 | 父类、接口、方法元数据 |
-| `SimpleMetadataReader` | 283 | `org.springframework.core.type.classreading.SimpleMetadataReader` | 83 | 用 ASM `ClassReader`，自己只写 visitor |
+| `SimpleMetadataReader` | 289 | `org.springframework.core.type.classreading.SimpleMetadataReader` | 83 | 用 ASM `ClassReader`，自己只写 visitor |
 | `SimpleClassMetadata` | 47 | `SimpleAnnotationMetadata` + `SimpleClassMetadata` | 180 + 104 | 元注解缓存、`isAbstract`/`isIndependent` |
 | `ClassPathScanningCandidateComponentProvider` | 157 | 同名类 | **593** | include/exclude 过滤器体系、环境判断 |
 | `ClassPathBeanDefinitionScanner` | 57 | 同名类 | 393 | 默认过滤器注册、`doScan`、`@Component` 名字 |
