@@ -51,6 +51,14 @@ jobs:
       - name: 第 10 道闸门 · 章节交叉引用的主题校验
         run: python3 scripts/check-chapter-refs.py
 
+      # 体量表是手抄的，代码会变：抄错一个数字不影响编译，只影响读者对全书体量的判断。
+      - name: 第 11 道闸门 · 章节体量表数字
+        run: python3 scripts/check-doc-tables.py
+
+      # 35 篇评审是分四批写的，判决行曾有三种写法；想横向比较就得先读懂三种语法。
+      - name: 第 12 道闸门 · 评审文档判决行格式
+        run: python3 scripts/check-review-format.py
+
       - name: 上传测试与覆盖率报告
         if: always()
         uses: actions/upload-artifact@v4
