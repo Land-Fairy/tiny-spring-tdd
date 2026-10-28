@@ -35,7 +35,7 @@
 | 9 | check-doc-links | 相对链接 404 | `bash scripts/check-doc-links.sh` | 164 条 / 0 坏链 |
 | 10 | check-chapter-refs | 「详见第 N 章」指向的章其实没讲这事 | `python3 scripts/check-chapter-refs.py` | 301 处带主题 / **0 指错**（另 194 处人工判、65 处仅泛词、30 处靠类名、264 处跳过） |
 | 11 | check-doc-tables | 体量表里的行数是手抄的、会漂 | `python3 scripts/check-doc-tables.py` | 14 表 / 169 数字 / 0 不符 |
-| 12 | check-review-format | 35 篇评审的判决行格式漂移 | `python3 scripts/check-review-format.py` | 35 篇 / 全部合规 |
+| 12 | check-review-format | 35 篇评审的判决行格式漂移 + 三节结构缺失 | `python3 scripts/check-review-format.py` | 35 篇 / 全部合规 |
 
 **为什么后 6 道必须存在**：110 条 P0 里 **B（量化矛盾）+ A（虚构引用）= 69 条，占 63%**。
 这一类缺陷靠人眼审不完——审完第 1 章，第 35 章的数字又漂了。所以判断标准不是「这次审出来了」，
@@ -111,7 +111,7 @@ c79ca22 docs(reviews): 35 篇评审的判决行统一
 ```bash
 cd tiny-spring-tdd
 python3 scripts/check-doc-tables.py            # 3 秒：体量表数字
-python3 scripts/check-review-format.py         # 1 秒：35 篇判决行
+python3 scripts/check-review-format.py         # 1 秒：35 篇判决行 + 矩阵/复核/放弃点三节
 bash    scripts/check-doc-links.sh             # 5 秒：相对链接
 python3 scripts/check-chapter-refs.py          # 10 秒：章节交叉引用
 bash    scripts/check-doc-refs.sh --all        # 约 2 分钟：引用可解析性
