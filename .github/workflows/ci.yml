@@ -39,6 +39,23 @@ jobs:
       - name: 跨章回归不变式（propagation）
         run: bash scripts/check-propagation.sh
 
+  doc-refs:
+    name: 第 8 道闸门 · 文档引用可验证性
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 只为了比对「出处：...java:123」这类上游引用；拿不到就降级：
+      # 脚本会打 INFO 跳过上游引用，本地引用照常检查。
+      - name: 取上游 Spring 6.2.x 源码树
+        continue-on-error: true
+        run: git clone --depth 1 --branch v6.2.x https://github.com/spring-projects/spring-framework.git .spring-ref
+
+      - name: 文档引用可验证性（javadoc 的 {@code X}、正文的 File.java:行、栈帧）
+        env:
+          SPRING_REF: ${{ github.workspace }}/.spring-ref
+        run: bash scripts/check-doc-refs.sh --all
+
       - name: 上传测试与覆盖率报告
         if: always()
         uses: actions/upload-artifact@v4
