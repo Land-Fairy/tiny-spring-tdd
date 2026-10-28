@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-22-assembly-control</artifactId>
-	<name>step-19-autowire-candidates</name>
+	<name>step-22-assembly-control</name>
 	<description>第 22 章 装配控制：@Import / @Conditional / @Profile / @Lazy</description>
 
 	<dependencies>

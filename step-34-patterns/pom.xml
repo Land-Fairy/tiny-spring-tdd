@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-34-patterns</artifactId>
-	<name>step-26-autoproxy</name>
+	<name>step-34-patterns</name>
 	<description>第 34 章 设计模式总览：Spring 里的 9 种模式</description>
 
 	<dependencies>

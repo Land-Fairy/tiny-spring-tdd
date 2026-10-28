@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-21-configuration</artifactId>
-	<name>step-19-autowire-candidates</name>
+	<name>step-21-configuration</name>
 	<description>第 21 章 @Configuration 与 @Bean：full 与 lite</description>
 
 	<dependencies>

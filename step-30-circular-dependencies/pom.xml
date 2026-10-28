@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-30-circular-dependencies</artifactId>
-	<name>step-26-autoproxy</name>
+	<name>step-30-circular-dependencies</name>
 	<description>第 30 章 三级缓存与循环依赖</description>
 
 	<dependencies>

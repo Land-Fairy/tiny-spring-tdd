@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-28-expose-proxy</artifactId>
-	<name>step-26-autoproxy</name>
+	<name>step-28-expose-proxy</name>
 	<description>第 28 章 自调用失效、exposeProxy、AopContext</description>
 
 	<dependencies>

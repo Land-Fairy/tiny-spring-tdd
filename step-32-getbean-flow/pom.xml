@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-32-getbean-flow</artifactId>
-	<name>step-26-autoproxy</name>
+	<name>step-32-getbean-flow</name>
 	<description>第 32 章 getBean 全链路逐行精读</description>
 
 	<dependencies>
