@@ -11,6 +11,9 @@
 
 第 24 章的 `JdkDynamicAopProxy` 有一个不讲道理的地方：只要挂了拦截器，**每个方法**都会被拦。
 
+> 本章代码块里出现的 `Library` / `LibraryImpl` / `recording(calls)` 是测试里的嵌套类型与私有方法，
+> 为了读起来紧凑做了扁平化——它们不在 `src/main` 里，直接粘进 IDE 会编译不过。
+
 ```java
 AdvisedSupport advised = new AdvisedSupport(new LibraryImpl());
 advised.addAdvisor(new DefaultPointcutAdvisor(recording(calls)));
@@ -109,6 +112,9 @@ java.lang.ClassCastException: class java.lang.String cannot be cast to class jav
 .../aop/framework/ReflectiveMethodInvocation.java:45:16: 参数共： 6个，最多：5个。
 ```
 
+（这行是中文 locale 下的 Checkstyle 输出。英文 locale 会看到
+`More than 5 parameters (found 6).`，同一道闸门，只是文案不同。）
+
 `ReflectiveMethodInvocation(proxy, target, method, arguments, targetClass, interceptors)`——
 本来我是照着真实 Spring 抄的，它也确实是六个参数（`:110`）。但我们的闸门只允许 5 个。
 
@@ -135,7 +141,7 @@ JdkDynamicAopProxyTests.toStringGoesThroughTheInterceptorButHashCodeDoesNot
    but was: 12345
 ```
 
-原来是 `objectMethodsGoThroughTheInterceptorToo`：它断言 `hashCode()` 也会走到拦截器、拿回 12345。
+原来是 `objectMethodsReachTheHandlerToo`（`step-24-jdk-proxy/src/test/java/org/springframework/aop/framework/JdkDynamicAopProxyTests.java:137`）：它断言 `hashCode()` 也会走到拦截器、拿回 12345。
 本章给 `hashCode` 加了契约短路之后，这条断言从「正确」变成「错误」。
 
 处理方式不是删测试，而是**把断言改成新契约的表达**：
@@ -222,7 +228,7 @@ public interface Pointcut {
 不能只留 `matches(Class, Method)` 吗？能，但会丢掉两样东西：
 
 1. **粗筛**。类级别的答案与具体方法无关。一个切点如果 `ClassFilter` 就把 `BookService` 排除了，
-   它的 15 个方法连 `matches` 都不必进。真实 Spring 的 `DefaultAdvisorChainFactory:75` 正是先问
+   它的 15 个方法连 `matches` 都不必进。真实 Spring 的 `DefaultAdvisorChainFactory:72` 正是先问
    `getClassFilter().matches(actualClass)`。
 2. **可缓存性**。类级答案是「每个目标类一次」，方法级答案是「类 × 方法」。混在一起写成一个方法，
    调用方就没法只缓存前半段。
@@ -249,7 +255,7 @@ public abstract class StaticMethodMatcherPointcut implements Pointcut, MethodMat
 「自己就是方法匹配器」这个写法值得停一下：`StaticMethodMatcherPointcut` 同时实现 `Pointcut` 和
 `MethodMatcher`，于是 `getMethodMatcher()` 返回 `this`。少一个对象、少一个类，代价是类名有点长。
 
-### 3.4 `Advisor`：17 行的接口，整章的主角
+### 3.4 `Advisor`：20 行的接口，整章的主角
 
 ```java
 public interface Advisor {
@@ -308,7 +314,7 @@ public class AfterReturningAdviceInterceptor implements MethodInterceptor {
 }
 ```
 
-两个类一共 70 行，把「前置/后置」这两个概念**化约**成了「`proceed()` 调在前面还是后面」。
+两个类一共 72 行（35 + 37），把「前置/后置」这两个概念**化约**成了「`proceed()` 调在前面还是后面」。
 这是本章第二个「一个字段解释一个概念」的地方（第一个是适配器里那个 `advice` 字段）。
 
 `DefaultAdvisorAdapterRegistry` 负责挑选：
@@ -530,8 +536,8 @@ public Object invoke(Object proxy, Method method, Object[] args) throws Throwabl
 | `framework/ReflectiveMethodInvocation` | 同名 | **297** | `:86` 字段、`:160` `proceed`、`:195` `invokeJoinpoint` |
 | `framework/AdvisedSupport`（过滤 + 配置） | 同名 | **746** | `:520` / `:529` 链工厂调用与缓存 |
 | `framework/JdkDynamicAopProxy#invoke` 契约短路 | 同名 | 360 | `:175-181`、`:297-298`、`:324-356` |
-| `framework/DefaultAdvisorChainFactory` | 同名（我们没有这个类） | 126 | `:58` 起，类过滤 `:75` |
-| — | `aop/support/AopUtils.java` | 390 | `isEqualsMethod` `:166`、`canApply` `:284`/`:319` |
+| `framework/DefaultAdvisorChainFactory` | 同名（我们没有这个类） | 126 | `:58` 起，类过滤 `:72` |
+| — | `aop/support/AopUtils.java` | 390 | `isEqualsMethod` `:166`、`canApply` `:225`/`:239`/`:284`/`:298`、`findAdvisorsThatCanApply` `:319` |
 
 注意最后一行那个「—」：真实 Spring 把「按类过滤这份 Advisor 列表」做成了一个独立工具类
 `AopUtils`，因为它要服务的不只是一条链——`AbstractAutoProxyCreator` 决定「这个 Bean 要不要代理」
@@ -573,7 +579,7 @@ public Object invoke(Object proxy, Method method, Object[] args) throws Throwabl
    `aspectjweaver` 的 `PointcutExpression`（`AspectJExpressionPointcut:278` / `:314` / `:341`）；
    另一半是把那个方法当回调调用的 `Advice`（`getAdvice` 在 `:248`，按注解类型造
    `AspectJMethodBeforeAdvice` 等）。
-6. **下游只认 Advisor**：`AopUtils.canApply(advisor, targetClass)`（`:284` / `:319`）做类级过滤，
+6. **下游只认 Advisor**：`AopUtils.canApply(advisor, targetClass)`（`:284` / `:298`）做类级过滤，
    `DefaultAdvisorChainFactory:58` 做方法级过滤、取拦截器数组——**这就是我们
    `AdvisedSupport#getInterceptors` 的完整版**。
 

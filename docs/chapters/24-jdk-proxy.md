@@ -173,7 +173,7 @@ if (interfaces.length == 0) {
 
 同一个 JVM 里我们还见到了 `<user.dir>/com/sun/proxy/jdk/proxy1/$Proxy2.class` —— JDK 在拼路径时把旧的
 `com/sun/proxy/` 前缀又接了一次。**结论：不要假设路径，从代理类自己的 `getPackageName()`
-反推**（第 4.4 节的 `expectedDumpFile` 就是干这个的）。
+反推**（第 3.4 节的 `expectedDumpFile` 就是干这个的）。
 
 **坑二：属性必须作为 JVM 启动参数传进去。** 我们先把属性写进 surefire 的 `<systemPropertyVariables>`，
 测试里 `Boolean.getBoolean(...)` 明明读到 `true`，文件却始终不出现。真凶在 dump 目录里：
@@ -402,10 +402,13 @@ directory.resolve(packageName.replace('.', File.separatorChar))
 java -Djdk.proxy.ProxyGenerator.saveGeneratedFiles=true -cp ... YourMain
 
 # 2. 落盘位置从代理类名反推（本机 JDK 21 实测）
-#    <user.dir>/org/springframework/aop/framework/$Proxy10.class
+#    注意 CWD 不是模块根目录：pom.xml:42 把 surefire 的 workingDirectory 设成了
+#    target/proxy-dump-root，所以实际文件在
+#    step-24-jdk-proxy/target/proxy-dump-root/org/springframework/aop/framework/$Proxy12.class
 
 # 3. 反编译
-javap -p -c 'org/springframework/aop/framework/$Proxy10.class'
+cd target/proxy-dump-root                      # 见上一行的 workingDirectory
+javap -p -c 'org/springframework/aop/framework/$Proxy12.class'
 ```
 
 ### 5.2 类的骨架（`javap -p` 原文）
@@ -445,7 +448,7 @@ final class org.springframework.aop.framework.$Proxy10 extends java.lang.reflect
 ```
 static {};
   Code:
-     0: ldc           #2      // class org/springframework/aop/framework/$Proxy10
+     0: ldc           #2      // class org/springframework/aop/framework/$Proxy12
      2: invokevirtual #79     // Method java/lang/Class.getClassLoader:()Ljava/lang/ClassLoader;
      5: astore_0
      6: ldc           #81     // String java.lang.Object
@@ -453,6 +456,8 @@ static {};
      9: aload_0
     10: invokestatic  #85     // Method java/lang/Class.forName:(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;
     13: ldc           #86     // String hashCode
+    15: iconst_0              // 空参数数组的长度
+    16: anewarray     #75     // class java/lang/Class
     19: invokevirtual #90     // Method java/lang/Class.getMethod:(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;
     22: putstatic     #26     // Field m0:Ljava/lang/reflect/Method;
    ...（equals、toString、greet 同理）
