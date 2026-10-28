@@ -195,14 +195,16 @@ mvn verify
 | 5 | `JaCoCo`：行 ≥80%，分支 ≥70% | 构建失败 |
 | 6 | `ArchUnit`：分层依赖单向 | 测试失败 |
 
-另外有**四道仓库级检查**（不在单模块 `verify` 里，跑在 CI）：
+另外有**六道仓库级检查**（不在单模块 `verify` 里，跑在 CI）：
 
 | # | 检查 | 抓什么 | 违规后果 |
 |---|---|---|---|
 | 7 | `scripts/check-propagation.sh` | 第 K 章的修复没传到第 K+1、K+2 章（「回退」与「静默缺失」两种事故指纹） | CI 红 |
-| 8 | `scripts/check-doc-refs.sh` | 正文里的「出处：`X.java:123`」与真实源码对不上 | CI 红 |
+| 8 | `scripts/check-doc-refs.sh` | 正文与附录里的「出处：`<类名>.java:<行号>`」与真实源码对不上 | CI 红 |
 | 9 | `scripts/check-doc-links.sh` | 文件改名后 markdown 里的相对链接失效 | CI 红 |
 | 10 | `scripts/check-chapter-refs.py` | 「第 NN 章」指错了门（短语主题与被引用章对不上） | CI 红 |
+| 11 | `scripts/check-doc-tables.py` | 正文「体量」表里手抄的行数，代码改了数字没跟上 | CI 红 |
+| 12 | `scripts/check-review-format.py` | 35 篇评审的判决行，同一件事三种写法 | CI 红 |
 
 `scripts/refs.sh`（真实 Spring 参照仓）**不是闸门**：它只核对，缺仓或版本漂移都只警告不失败——见 `docs/CODE-STANDARDS.md`。
 
@@ -217,7 +219,7 @@ mvn verify
 
 - [ADR-0001 包名沿用 `org.springframework.*`](docs/adr/0001-package-naming.md)
 - [ADR-0002 完全不使用 CGLIB](docs/adr/0002-no-cglib.md)
-- [ADR-0003 36 个平铺模块作为历史快照](docs/adr/0003-flat-chapter-modules.md)
+- [ADR-0003 35 个平铺模块（第 01–35 章）作为历史快照](docs/adr/0003-flat-chapter-modules.md)
 - [ADR-0004 真实 Spring 对照基线钉在 6.2.x](docs/adr/0004-spring-reference-baseline.md)
 
 ---
