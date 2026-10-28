@@ -99,6 +99,7 @@
 		<module>step-31-concurrency</module>
 		<module>step-32-getbean-flow</module>
 		<module>step-33-exceptions</module>
+		<module>step-34-patterns</module>
 	</modules>
 
 	<dependencyManagement>

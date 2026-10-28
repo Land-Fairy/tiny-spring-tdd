@@ -3721,3 +3721,100 @@ for (int i = 1; i < causes.size(); i++) {
 ```
 
 **第一条进 `cause` 是个折中**：`cause` 只容一条，而「链」这个结构本身是有用的（能问「最深的问题」）。真实 Spring 也是这么折中的——只不过它顺手把 `contains()` 覆写成也查 `relatedCauses`，把这个折中的代价补掉了（见 B-33-3）。
+
+## 第 34 章
+
+### B-34-1 `BeanWrapperImpl` 为什么不算装饰器？
+
+被违反的是 GoF 的**第一条前提**：装饰器与被装饰者必须实现**同一个 Component 接口**，客户端只依赖那个接口。这样装饰器才能在客户端**毫不知情**的情况下替换被装饰者——「透明」是装饰器的全部意义。
+
+我们的两个类：
+
+```java
+public class BeanWrapperImpl implements BeanWrapper { ... }   // 我们的接口
+public static class MutableGreeter { ... }                     // 业务类，和 BeanWrapper 毫无关系
+```
+
+`MutableGreeter` 永远不知道自己被包了，客户端（第 05 章的 `populateBean`）依赖的是 `BeanWrapper` 而不是 `MutableGreeter`。所以它是**包装器（Wrapper）**：给一个对象套上一层新接口。
+
+合格的例子是 Servlet 的 `HttpServletRequestWrapper`——它 `implements HttpServletRequest`，与它包装的请求**同接口**，所以过滤器、监听器都照旧工作。反方向的误叫其实更常见：中文教材里凡是「给对象套一层」几乎都被叫作装饰器，因为**动作长得一样，差别只在接口**。
+
+判据一句话：**能不能把包装后的对象当成原来那个类型的实例传下去？** 能，是装饰器；不能，是包装器。
+
+### B-34-2 模板方法与策略的边界在哪？
+
+边界在**「谁拥有调用时机」**。
+
+| | 策略 | 模板方法 |
+| --- | --- | --- |
+| 算法怎么换 | 调用方注入不同实现 | 子类覆盖钩子 |
+| 谁调用 | **调用方显式调用** `strategy.execute(...)` | **父类在固定位置调用**钩子 |
+| 调用时机归谁 | 调用方 | 框架 |
+
+`AbstractAutoProxyCreator` 只能选模板方法，原因是**它自己不是被谁调用的主动方**：它实现的是 `BeanPostProcessor`，由容器在 `applyBeanPostProcessorsAfterInitialization` 的 `for` 循环里调用。也就是说「什么时候执行」这件事**从来不在它手里**，它没有机会去调一个「策略」。
+
+如果硬做成策略，就得让容器知道「有个 `AdvisorSelector` 策略」——那 第 11 章的 `BeanPostProcessor` 抽象立刻漏了：容器必须为每种后处理器类型补一条调用路径，而不是统一地「挨个调 `postProcess*`」。**继承带来的约束（必须实现容器的接口）恰恰是这里能被插进流程的原因。**
+
+还有一个代码层面的证据：钩子的返回类型是 `Object[]` 而不是 `Advisor[]`：
+
+```java
+protected abstract Object[] getAdvicesAndAdvisorsForBean(Class<?> beanClass, String beanName);
+```
+
+这种「返回值故意放宽」的自由度，只有模板方法给得起——策略接口的签名一旦被调用方依赖，就不容易改了。
+
+### B-34-3 责任链为什么不直接用递归？
+
+手写嵌套（`outer(() -> inner(() -> target()))`）功能上等价，但少了四样东西：
+
+1. **链是数据，可以变。**`List<MethodInterceptor>` 能排序（第 16 章）、能增删（`AdvisedSupport#addAdvisor`）、能按目标类过滤（`AopUtils.findAdvisorsThatCanApply`）。嵌套调用是代码，**没法按配置变化**。
+2. **有统一的下标。**`currentInterceptorIndex` 让「现在走到第几个」成为可观察量——诊断日志、`exposeProxy`、异常定位都靠它。
+3. **短路是运行期决定的。**「不调 `proceed()`」这个动作可以依赖**当次调用的参数**（第 25 章的道具拦截器就是缓存命中才短路）。嵌套写法里「跳不跳过下一层」只能在写代码时决定。
+4. **拿到的是整条链的句柄。**拦截器收到的参数是 `MethodInvocation` 而不是「下一个拦截器」，所以它可以调 `proceed()` **多次**（重试语义）或**零次**（缓存语义）。嵌套写法当然也能调两次，但「重试」这件事得在每个 `Supplier.get()` 处各写一遍。
+
+一句话：**嵌套把「链」编进了代码，责任链把「链」变成了对象。**
+
+### B-34-4 `ApplicationEventPublisher` 与「直接注入一组 `ApplicationListener` 然后挨个调」有什么区别？
+
+差别不在「能不能通知」，而在**发布者要不要知道三件它本不该知道的事**：谁在听、按什么顺序、出错怎么办。
+
+多出来的广播器（`SimpleApplicationEventMulticaster`）正是为了把这三件事从发布者身上拿走：
+
+| 职责 | 没有广播器时 | 有广播器时 |
+| --- | --- | --- |
+| 找订阅者 | 发布者注入 `List<ApplicationListener>` | 广播器按事件类型解析（`getApplicationListeners`） |
+| 排序 | 发布者自己排 | 第 16 章的 `AnnotationAwareOrderComparator` 统一排 |
+| 出错处理 | 一个监听器抛异常，后面的收不到 | `ErrorHandler` 集中处理（第 15 章） |
+| 订阅者的生命周期 | 发布者必须在发布前把它们全创建出来 | 广播器可以「先记名字，用的时候再取」 |
+
+最后一条是第 15 章真正绕不开的那件事：`ContextRefreshedEvent` 要在 `refresh()` 结尾发布，而那时**监听器 Bean 可能还没被创建**。我们的解法是「广播器未就绪就先把事件存起来」（第 15 章），而这件事**发布者不可能知道**——它只该知道「我发布了」。
+
+所以这一层其实是**观察者 + 策略**的组合：结构上是发布/订阅，行为上把「投递策略」抽成了可换的广播器。
+
+### B-34-5 如果让你再加一个模式，加在哪、解决什么「若无它会更糟」的问题？
+
+最合适的候选是**建造者（Builder）**，落点是 `BeanDefinition`。
+
+现在的图纸是「一堆 setter 逐步填」：
+
+```java
+GenericBeanDefinition definition = new GenericBeanDefinition();
+definition.setBeanClass(LibraryImpl.class);
+definition.setPropertyValues(propertyValues);
+definition.setFactoryMethodName("createLibrary");   // 只有 @Bean 方法才设
+```
+
+第 08 章的 XML 解析、第 21 章的 `@Bean` 后处理、第 22 章的 `@Import` 都在手工拼这个对象。**若无 Builder 会更糟**的地方很具体：**非法状态可以被构造出来。** 比如「既有 `factoryMethodName` 又有 `beanClass` 表示工厂方法」这套约定，只有在 `createBean` 里才被解释——写错了要等运行期炸。
+
+Builder 的形状是「每一步返回 `this`，最后 `build()` 才检查」：
+
+```java
+BeanDefinition definition = BeanDefinitionBuilder.beanClass(LibraryImpl.class)
+		.addPropertyValue("name", "city library")
+		.initMethod("warmUp")
+		.build();   // 这里才做一致性校验
+```
+
+真实 Spring 里确实有 `BeanDefinitionBuilder`，但 `AbstractBeanDefinition` 仍然保留着全套可变 setter，所以它只是「半个 Builder」——这也是一个可以写进正文的真实观察。
+
+第二个候选是**外观（Facade）**：让 `ApplicationContext` 持有一个 `BeanFactory` 而不是继承四个接口，就能把「按类型取 Bean 要两步」（本章缺陷表第 1 条）藏到外观里面。但它与我们 33 章的教学取舍冲突：**继承让读者一眼看见「上下文就是 BeanFactory 加料」，这本身是本章 3.2 节的证据。** 所以推荐 Builder，不推荐 Facade。
