@@ -79,11 +79,48 @@ def check_one(path: pathlib.Path) -> list[str]:
     return errors
 
 
+P0_ROW = re.compile(r"^\|\s*([A-E])[0-9]*\s*\|")
+P1_ITEM = re.compile(r"^(?:\d+\.|[-*])\s+\S")
+
+
+def stats(chapters: list[pathlib.Path]) -> int:
+    """数出每篇的 P0（按类别）与 P1 条数。
+
+    刻意不要求 P0 行带序号：早期批次写 `| A1 |`，后期批次写 `| B |`，
+    两种都是有效表达。要机器数得动，先让两种形状都认；要不要统一编号是另一件事。
+    """
+    by_class: dict[str, int] = {}
+    total_p0 = total_p1 = 0
+    for path in chapters:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        head = next((x for x in lines if x.startswith("- **判决**：")), "（缺）")
+        p0 = p1 = 0
+        in_p1 = False
+        for line in lines:
+            if line.startswith("## "):
+                in_p1 = "P1" in line
+                continue
+            m = P0_ROW.match(line)
+            if m:
+                p0 += 1
+                by_class[m.group(1)] = by_class.get(m.group(1), 0) + 1
+            elif in_p1 and P1_ITEM.match(line):
+                p1 += 1
+        total_p0 += p0
+        total_p1 += p1
+        verdict = re.search(r"修后 \*\*([A-Z-]+)\*\*", head)
+        print(f"{path.stem}\tP0={p0}\tP1={p1}\t修后={verdict.group(1) if verdict else '?'}")
+    print(f"── 合计：P0 {total_p0} 条（" + " ".join(f"{k}×{v}" for k, v in sorted(by_class.items())) + f"），P1 {total_p1} 条，{len(chapters)} 篇")
+    return 0
+
+
 def main() -> int:
     if not REVIEWS.is_dir():
         print(f"找不到 {REVIEWS}", file=sys.stderr)
         return 2
     chapters = sorted(REVIEWS.glob("ch*.md"))
+    if "--stats" in sys.argv[1:]:
+        return stats(chapters)
     if "--list" in sys.argv[1:]:
         for path in chapters:
             line = next(

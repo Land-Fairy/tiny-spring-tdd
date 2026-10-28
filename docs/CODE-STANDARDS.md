@@ -137,7 +137,7 @@ K3 真正管的是**类级**的理由数：一个 1120 行的工厂同时管注�
 | 9 | 文档链接可达 | `scripts/check-doc-links.sh`（CI 单独跑） | 仓库级 | 退出码 1 |
 | 10 | 章节交叉引用主题 | `scripts/check-chapter-refs.py`（CI 单独跑） | 仓库级 | 退出码 1 |
 | 11 | 章节体量表数字 | `scripts/check-doc-tables.py`（CI 单独跑） | 仓库级 | 退出码 1 |
-| 12 | 评审文档形状（判决行 + 矩阵/复核/放弃点） | `scripts/check-review-format.py`（CI 单独跑） | 仓库级 | 退出码 1 |
+| 12 | 评审文档形状（判决行 + 矩阵/复核/放弃点） | `scripts/check-review-format.py`（CI 单独跑）；`--stats` 现算 P0/P1 条数，验收记录与总评里的数字一律引它的输出，不手抄 | 仓库级 | 退出码 1 |
 | 13 | 评审文档的引用可解析 | `scripts/check-review-refs.py`（CI 单独跑） | 仓库级 | 退出码 1 |
 
 一条命令跑 1–6：`mvn verify`；7–12 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、
@@ -650,7 +650,7 @@ git commit -am "fix(step-05): ..."
 
 ### 闸门 13：评审文档自己的引用
 
-**它防的是什么**：`docs/reviews/` 是这份评审的交付物，它满篇用 `file:line` 当证据（39 篇共 456 处）。
+**它防的是什么**：`docs/reviews/` 是这份评审的交付物，它满篇用 `file:line` 当证据（39 篇共 462 处）。
 如果评审把行号标到远超一个文件总行数的位置，读者按它去核对会扑空——**评审就犯了它正在指控全文的那个错**。
 这不是假设：闸门建成后第一次跑就抓到 `docs/reviews/ch12.md` 的 C2 条：行号标在了一个约 32 行文件的总行数之外。
 

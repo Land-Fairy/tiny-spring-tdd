@@ -9,17 +9,17 @@
 
 | # | 验收项 | 命令 | 实测（2026-10-28） |
 | --- | --- | --- | --- |
-| 1 | 全仓构建 + 静态检查 + 覆盖率 + 分层 全绿 | `./mvnw -q verify` | **EXIT=0**，9,734+2 个测试全过（新增 `K5SourceContractTests` 2 条），Maven 内置 6 道检查全过 |
-| 2 | 35 个模块的副本没有分叉 | `bash scripts/check-propagation.sh` | **35 个模块、491 个文件一致**，耗时 1m16s，EXIT=0 |
+| 1 | 全仓构建 + 静态检查 + 覆盖率 + 分层 全绿 | `./mvnw -q verify` | **EXIT=0**，9,876 个测试全过（含新增 `K5SourceContractTests` 2 条），Maven 内置 6 道检查全过 |
+| 2 | 35 个模块的副本没有分叉 | `bash scripts/check-propagation.sh` | **35 个模块、492 个文件一致**，EXIT=0 |
 | 3 | 正文引用一条都不能是假的 | `bash scripts/check-doc-refs.sh --all` | **0 个无法解析 / 0 个警告** |
 
 这三条对应目标里的「修到 mvn verify / 闸门7 propagation / 闸门8 doc-refs 三者全绿」。
 
 ---
 
-## 二、12 道闸门的分工
+## 二、13 道闸门的分工
 
-前 6 道是 Maven 内置（`mvn verify` 就全跑），后 6 道是仓库脚本 + CI 步骤。
+前 6 道是 Maven 内置（`mvn verify` 就全跑），后 7 道是仓库脚本 + CI 步骤。
 **分工原则**：机器能判的，一律不给评审意见留余地。
 
 | # | 闸门 | 它到底防什么 | 命令 | 实测 |
@@ -30,15 +30,15 @@
 | 4 | PMD | 空 catch、无用局部变量、可合并 if | `mvn verify` | 通过（10 条规则） |
 | 5 | JaCoCo | 覆盖率塌方 | `mvn verify` | 通过（行 ≥80% / 分支 ≥70%） |
 | 6 | ArchUnit | 分层被破坏 | `mvn verify` | 通过（每模块 4 条规则） |
-| 7 | check-propagation | 改了第 N 章忘了同步第 N+1…35 章 | `bash scripts/check-propagation.sh` | 35 模块 / 491 文件一致 |
+| 7 | check-propagation | 改了第 N 章忘了同步第 N+1…35 章 | `bash scripts/check-propagation.sh` | 35 模块 / 492 文件一致 |
 | 8 | check-doc-refs | 正文/注释里的类名、方法名、行号是**编的** | `bash scripts/check-doc-refs.sh --all` | 0 错 0 警 |
-| 9 | check-doc-links | 相对链接 404 | `bash scripts/check-doc-links.sh` | 164 条 / 0 坏链 |
-| 10 | check-chapter-refs | 「详见第 N 章」指向的章其实没讲这事 | `python3 scripts/check-chapter-refs.py` | 301 处带主题 / **0 指错**（另 194 处人工判、65 处仅泛词、30 处靠类名、264 处跳过） |
+| 9 | check-doc-links | 相对链接 404 | `bash scripts/check-doc-links.sh` | 165 条 / 0 坏链 |
+| 10 | check-chapter-refs | 「详见第 N 章」指向的章其实没讲这事 | `python3 scripts/check-chapter-refs.py` | 480 处带主题 / **0 指错**（另 329 处人工判、99 处仅泛词、31 处靠类名、264 处跳过、1 处按豁免放行） |
 | 11 | check-doc-tables | 体量表里的行数是手抄的、会漂 | `python3 scripts/check-doc-tables.py` | 14 表 / 169 数字 / 0 不符 |
 | 12 | check-review-format | 35 篇评审的判决行格式漂移 + 三节结构缺失 | `python3 scripts/check-review-format.py` | 35 篇 / 全部合规 |
-| 13 | check-review-refs | 评审自己的 `file:line` 指不到东西 | `python3 scripts/check-review-refs.py` | 39 篇 / 456 处引用全部可解析 |
+| 13 | check-review-refs | 评审自己的 `file:line` 指不到东西 | `python3 scripts/check-review-refs.py` | 39 篇 / 462 处引用全部可解析 |
 
-**为什么后 6 道必须存在**：110 条 P0 里 **B（量化矛盾）+ A（虚构引用）= 69 条，占 63%**。
+**为什么后 7 道必须存在**：109 条 P0 里 **B（量化矛盾）+ A（虚构引用）= 68 条，占 62%**。
 这一类缺陷靠人眼审不完——审完第 1 章，第 35 章的数字又漂了。所以判断标准不是「这次审出来了」，
 而是「下次不靠人也不会漏」。
 
@@ -51,9 +51,9 @@
 | 文件 | 作用 |
 | --- | --- |
 | `00-criteria-card.md` | 判据卡 v1.1：判决口径、P0 五分类、六视角、报告结构 |
-| `00-book-summary.md` | 全书总评：110 条 P0 的分布、反复出现的六种形状、给读者的建议路径 |
+| `00-book-summary.md` | 全书总评：109 条 P0 的分布、反复出现的六种形状、给读者的建议路径 |
 | `00-acceptance.md` | 本文件：验收记录 |
-| `00-issue-drafts.md` | 六篇待提交 issue 的完整文本（**尚未提交**） |
+| `00-issue-drafts.md` | 九篇待提交 issue 的完整文本（**尚未提交**） |
 | `ch01.md` … `ch35.md` | 每章一篇，六视角矩阵 + P0/P1 + 「读者会在哪放弃」 + 复核记录 |
 | `_evidence/` | 判据卡的一手材料（Effective Java 条目号纠正、Clean Code 与 Ousterhout 的交锋、Spring 官方 Code-Style） |
 | `_superseded/` | 被判据卡 v1.1 口径取代的旧稿（留档，不删） |
@@ -68,14 +68,15 @@
 修后仍有 28 章是 PASS-WITH-FIXES 而不是 PASS，原因写在各章的 P1 里：
 教学仓允许「刻意简化」，但不允许「说了不做」——P0 清完，P1 是留给读者的知情权。
 
-**110 条 P0 的分布**：B 44 / A 25 / C 20 / E 13 / D 8。
+**109 条 P0 的分布**：B 44 / A 24 / C 20 / E 13 / D 8（数字由
+`python3 scripts/check-review-format.py --stats` 现算，不手抄）。
 
 ---
 
 ## 四、关键提交链（可 `git log` 复核）
 
 ```
-f82a013 docs(reviews): 总评补第六种形状 + 六篇 issue 草稿
+f82a013 docs(reviews): 总评补第六种形状 + issue 草稿
 570398b feat(gates): 第 11、12 道闸门接进 CI
 c79ca22 docs(reviews): 35 篇评审的判决行统一
 5c4fb48 fix(ch16/19/22/31/34): 清掉最后 5 条待修 P0 + 全书总评
@@ -136,7 +137,7 @@ bash    scripts/check-propagation.sh           # 约 1 分 20 秒：35 模块副
 | K5 判定手段 = 「源码契约测试（E5）」 | `E5` 全文未定义，**也不存在**这个测试 | 补齐：真写了 `K5SourceContractTests`（基线 137 个存量逐步销账，新账强制） |
 | K3「方法 ≤30 行」 | `checkstyle.xml` 的 `MethodLength` = **40**；全仓 10 个方法在 31–39 | 文档改成「40 硬线、30 目标」，并写明差集归人工 |
 | K4「自定义异常构造器必须带 beanName」 | 13 个自定义异常，6 个带；`NoSuchBeanException` 只有字符串 | 改成「与单个 bean 相关的要结构化」，欠账进 issue 草稿 8 |
-| 12 道闸门表 | 12 道全部存在且都在 CI 里（`ci.yml` 逐一核对）；`LayeringTests` 35/35 | 无需改，这是全文最实的一段 |
+| 13 道闸门表 | 13 道全部存在且都在 CI 里（`ci.yml` 逐一核对）；`LayeringTests` 35/35 | 无需改，这是全文最实的一段 |
 
 **新闸门不是白写的**：`K5SourceContractTests` 第一次跑就红了，抓到
 `SmartInstantiationAwareBeanPostProcessor` 在第 30–35 章的 6 份副本里**丢了**「真实 Spring 对应」那段
