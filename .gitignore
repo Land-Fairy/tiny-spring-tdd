@@ -1,5 +1,6 @@
-# 构建产物
-target/
+# 构建产物（只忽略模块根下的构建目录：`target/` 会误伤 aop/target 这类源码包）
+/target/
+/*/target/
 *.class
 *.jar
 !.mvn/wrapper/maven-wrapper.jar
