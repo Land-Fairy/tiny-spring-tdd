@@ -281,7 +281,7 @@ public interface SingletonBeanRegistry {           // 只管成品
 
 在写池子之前，先解决一个看起来无关的问题：**`getSingleton` 怎么知道该造什么？**
 
-最直接的想法是让池子自己会造——把 `createBean` 塞进 `DefaultSingletonBeanRegistry`。但那样池子就同时管两件事：图纸怎么变成对象，以及对象的复用。第 30 章讲代理、第 13 章讲销毁时，这个类会被撑爆。
+最直接的想法是让池子自己会造——把 `createBean` 塞进 `DefaultSingletonBeanRegistry`。但那样池子就同时管两件事：图纸怎么变成对象，以及对象的复用。第 26 章讲自动代理、第 13 章讲销毁时，这个类会被撑爆。
 
 真实 Spring 的答案是：**不传对象，也不传类，传「造对象这件事本身」**。
 

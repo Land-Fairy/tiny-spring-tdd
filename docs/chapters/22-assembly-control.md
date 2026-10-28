@@ -650,7 +650,7 @@ private boolean factoryContainsBean(ConfigurableBeanFactory beanFactory, String 
 }
 ```
 
-`isCurrentlyInCreation` 这个标记原本是为**循环依赖**准备的（第 03 章的单例「创建中」登记表；循环依赖的完整解法要到第 29 章）。真实 Spring 把它**复用**成了「这次调用是容器发起的吗」：
+`isCurrentlyInCreation` 这个标记原本是为**循环依赖**准备的（第 03 章的单例「创建中」登记表；循环依赖的完整解法要到第 30 章的三级缓存）。真实 Spring 把它**复用**成了「这次调用是容器发起的吗」：
 
 - `containsBean` 为真 + 不在创建中 → 别人想要 → `getBean`
 - 在创建中 → 就是容器自己在造它 → 跑方法体
