@@ -448,7 +448,7 @@ private boolean isLazy(AnnotatedElement element) {
 
 为什么要判 `value()`？因为 `@Lazy(false)` 的用途是**关掉**组合注解里的设置：某个组合注解标了 `@Lazy`，你在这一个类上想让它立刻创建，就写 `@Lazy(false)`。真实 Spring 的 javadoc 专门讲了这件事。
 
-扫描器那头是另一条路（第 17、18 章那套 `ClassFileMetadataReader` 读的是字节码，拿不到注解的 `value()`）：
+扫描器那头是另一条路（第 17、18 章那套 `SimpleMetadataReader` 读的是字节码，拿不到注解的 `value()`）：
 
 ```java
 beanDefinition.setLazyInit(metadata.getAnnotationTypes().contains(LAZY_ANNOTATION));
@@ -650,7 +650,7 @@ private boolean factoryContainsBean(ConfigurableBeanFactory beanFactory, String 
 }
 ```
 
-`isCurrentlyInCreation` 这个标记原本是为**循环依赖**准备的（第 14 章 `Scope`、单例创建中的状态）。真实 Spring 把它**复用**成了「这次调用是容器发起的吗」：
+`isCurrentlyInCreation` 这个标记原本是为**循环依赖**准备的（第 03 章的单例「创建中」登记表；循环依赖的完整解法要到第 29 章）。真实 Spring 把它**复用**成了「这次调用是容器发起的吗」：
 
 - `containsBean` 为真 + 不在创建中 → 别人想要 → `getBean`
 - 在创建中 → 就是容器自己在造它 → 跑方法体
