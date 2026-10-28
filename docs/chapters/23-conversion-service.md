@@ -39,7 +39,7 @@ if (target == Long.class) {
 
 所以本章的目标可以用一句话说清：**把「转换规则」变成一个可以登记、可以查找、可以问的集合**。
 
-真实 Spring 为此花了一整个 `core.convert` 包（含 `TypeDescriptor` 在内约 5000 行）。我们在 700 行以内拿到它的主干。
+真实 Spring 为此花了一整个 `core.convert` 包（含 `TypeDescriptor` 在内 6124 行）。我们用 887 行拿到它的主干。
 
 ## 2. 先写会红的测试
 

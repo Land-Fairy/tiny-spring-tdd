@@ -460,7 +460,7 @@ bf.registerBeanDefinition("target", new RootBeanDefinition(TextTarget.class));
 | `Value.java` | 63 | `beans/factory/annotation/Value.java` | 66 | 几乎一样（都是注解声明） |
 | `DependencyDescriptor.java` | 167 | `beans/factory/config/DependencyDescriptor.java` | 474 | 方法参数、嵌套层级、`ResolvableType`、Kotlin 可空 |
 | `SimpleTypeConverter.java` | 158 | `beans/SimpleTypeConverter.java` | **40** | 真实只有一个 `convertIfNecessary` 委派；活儿在 `TypeConverterSupport`（91）与 `TypeConverterDelegate`（650） |
-| `AutowiredAnnotationBeanPostProcessor.java` | 437 | 同名文件 | 1113 | 方法/构造器注入、`@Value` 策略、缓存、`ObjectProvider` |
+| `AutowiredAnnotationBeanPostProcessor.java` | 546 | 同名文件 | 1113 | 方法/构造器注入、`@Value` 策略、缓存、`ObjectProvider` |
 | `StringValueResolver.java` | 38 | `spring-core` 的 `util/StringValueResolver.java` | 44 | 包位置不同：真实在 `util`，本书放 `beans.factory.config` |
 
 `SimpleTypeConverter` 那一行是本章最值得看的一处：**真实 Spring 把「委派」和「转换」拆开了**。
@@ -540,15 +540,15 @@ new DependencyDescriptor(optionalStringField, true).isRequired()  →  false
 
 ### 5.5 本章自己的覆盖率故事
 
-跑完六道闸门后看 `jacoco.csv`：整体 **行 87.7% / 分支 77.5%**（门槛 80% / 70%），过了。
+跑完六道闸门后看 `jacoco.csv`：整体 **行 88.0% / 分支 79.4%**（门槛 80% / 70%），过了。
 但拆到新类：
 
 ```
-SimpleTypeConverter: line 27/46 (59%), branch 21/38
-DependencyDescriptor: line 13/15 (87%)
+SimpleTypeConverter: line 43/46 (93%), branch 33/38 (87%)
+DependencyDescriptor: line 11/13 (85%), branch 0/2 (0%)
 ```
 
-`SimpleTypeConverter` 只有 59%——因为测试只用了 `int`/`boolean`/枚举/`Class` 四种，
+补测试之前 `SimpleTypeConverter` 只有 59%——因为最初的测试只用了 `int`/`boolean`/枚举/`Class` 四种，
 `Byte`/`Short`/`Float`/`char`/null-primitive 全没走到。
 
 闸门为什么没拦？因为**覆盖率是聚合的**：一个 158 行的新类在大模块里只占一小块，

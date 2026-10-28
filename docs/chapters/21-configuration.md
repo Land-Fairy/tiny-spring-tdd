@@ -586,8 +586,8 @@ ConstantPool() {
 
 | 我们 | 行数 | 真实 Spring | 行数 |
 |---|---|---|---|
-| `ConfigurationClassEnhancer.java` | 520 | `ConfigurationClassEnhancer.java` | 620 |
-| `ConfigMethodInterceptor.java` | 122 | （内含 `BeanMethodInterceptor`，`:343-620`） | — |
+| `ConfigurationClassEnhancer.java` | 525 | `ConfigurationClassEnhancer.java` | 620 |
+| `ConfigMethodInterceptor.java` | 128 | （内含 `BeanMethodInterceptor`，`:343-620`） | — |
 | `ConfigurationClassPostProcessor.java` | 153 | `ConfigurationClassPostProcessor.java` | 827 |
 | — | — | `ConfigurationClassParser.java` | 1162 |
 | — | — | `ConfigurationClassBeanDefinitionReader.java` | 511 |

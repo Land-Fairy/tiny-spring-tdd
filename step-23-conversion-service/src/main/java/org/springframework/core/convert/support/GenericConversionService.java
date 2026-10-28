@@ -28,7 +28,7 @@ import org.springframework.util.ClassUtils;
  *
  * <p>
  * <b>真实 Spring
- * 对应</b>：{@code org.springframework.core.convert.support.GenericConversionService}（约 1000
+ * 对应</b>：{@code org.springframework.core.convert.support.GenericConversionService}（685
  * 行）。 它把「解析出来的转换器」缓存在一个以「源类型 + 目标类型」为键的映射里，并把类的继承链与接口链都压平成一个列表 （{@code
  * getClassHierarchy}）；本书每次现找、按「离实际类型近的优先」排序，够用且好读。
  */

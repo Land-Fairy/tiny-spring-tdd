@@ -10,7 +10,7 @@ import org.springframework.core.convert.ConverterRegistry;
  * 引擎的改动频率以年计，默认转换器的清单几乎每加一个类型就要动一次。混在一起，任何一次「我要一个只有我自己那三个 转换器的服务」都会变成给引擎加开关。
  *
  * <p>
- * <b>真实 Spring 对应</b>：{@code DefaultConversionService}（243 行），它还装配了集合、数组、Map、
+ * <b>真实 Spring 对应</b>：{@code DefaultConversionService}（183 行），它还装配了集合、数组、Map、
  * {@code Stream}、时区、{@code Class}、{@code Charset} 等一大票转换器，并实现了
  * {@code GenericConversionService.ConvertingConverter} 做「转两次」的串联。
  */

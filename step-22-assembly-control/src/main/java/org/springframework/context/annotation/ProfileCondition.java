@@ -16,7 +16,7 @@ import java.util.Set;
  * </ol>
  *
  * <p>
- * <b>真实 Spring 对应</b>：{@code org.springframework.context.annotation.ProfileCondition}（69
+ * <b>真实 Spring 对应</b>：{@code org.springframework.context.annotation.ProfileCondition}（48
  * 行）。真实版本 还会把 {@code getDefaultProfiles()} 算进来（没显式激活任何 profile 时，{@code default} 生效），
  * 本书不实现默认 profile，记在缺陷表里。
  *

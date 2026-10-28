@@ -118,9 +118,9 @@ void defersCreationUntilFirstAccess() {
 }
 ```
 
-跑一遍：**15 个测试全绿。**
+跑一遍：**17 个测试全绿。**
 
-这件事本身值得记一笔：我们写的 15 个测试**全部通过**，而这一章的代码在四个方向上都有真 bug（下面马上看到）。这不是运气好，而是**测试的覆盖面天然偏向「主路径」**——每个注解的最典型用法都是我想清楚了才写的（因为写代码时脑子里就是那个用例），而边界是我想不到的。
+这件事本身值得记一笔：我们写的 17 个测试**全部通过**，而这一章的代码在四个方向上都有真 bug（下面马上看到）。这不是运气好，而是**测试的覆盖面天然偏向「主路径」**——每个注解的最典型用法都是我想清楚了才写的（因为写代码时脑子里就是那个用例），而边界是我想不到的。
 
 所以接下来不是「继续加功能测试」，而是**故意越界**：往几个我认为「应该没事」的地方伸手。三次伸手，三次抓到东西。
 
@@ -665,7 +665,7 @@ private boolean factoryContainsBean(ConfigurableBeanFactory beanFactory, String 
 |---|---|---|---|
 | `ConditionEvaluator` | 54 行 | 240 行 | 1 : 4.4 |
 | `ProfileCondition` | 52 行 | 48 行 | 相当（我们多了解析与注释） |
-| `ConfigurationClassPostProcessor` | 284 行 | 827 行 | 1 : 2.9 |
+| `ConfigurationClassPostProcessor` | 287 行 | 827 行 | 1 : 2.9 |
 | `AnnotationSupport`（找元注解） | 103 行 | `MergedAnnotations` ≈ 600+ 行 | 1 : 6 |
 | 条件阶段 | 1 个 | 2 个 | — |
 | `@Import` 变体 | 1 种 | 3 种 + deferred | — |

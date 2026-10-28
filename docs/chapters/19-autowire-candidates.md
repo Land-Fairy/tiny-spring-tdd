@@ -453,9 +453,9 @@ Dependency annotations: {@org.springframework.beans.factory.annotation.Autowired
 | 本书 | 行数 | 真实 Spring | 行数 | 少做了什么 |
 |---|---|---|---|---|
 | `Primary` | 34 | 同名注解 | 96 | Javadoc 之外无差别（纯标记） |
-| `Qualifier` | 38 | 同名注解 | 44 | 无差别（本书只读 `value`） |
+| `Qualifier` | 39 | 同名注解 | 44 | 无差别（本书只读 `value`） |
 | `NoUniqueBeanDefinitionException` | 58 | 同名类 | 134 | 4 个构造器、`getBeanType` / `getBeanNamesFound` |
-| 决策链所在的注入器（全部） | 349 | `DefaultListableBeanFactory` | **2778** | `@Value`、`ObjectProvider`、`Optional`、`@Lazy` 代理、`@Fallback`、`resolvableDependencies` |
+| 决策链所在的注入器（全部） | 462 | `DefaultListableBeanFactory` | **2778** | `@Value`、`ObjectProvider`、`Optional`、`@Lazy` 代理、`@Fallback`、`resolvableDependencies` |
 | — | — | `AutowiredAnnotationBeanPostProcessor` | 1113 | 构造器/方法注入、元素缓存、`@Value` |
 
 `doResolveDependency` 一个方法就占了 `:1665-1800` 一百三十多行，其中一半在处理
