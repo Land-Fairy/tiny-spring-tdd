@@ -594,7 +594,7 @@ DependencyDescriptor: line 11/13 (85%), branch 0/2 (0%)
 
 三句话：
 
-1. **两条路线，一个岔口**：`@Value` 走「替换 + 转换」，`@Autowired` 走「消歧链」；
+1. **两条路线，一个岔口**：`@Value` 走「替换 + 转换」，`@Autowired` 走「候选 Bean 消歧」（即第 19 章那套决策链）；
    分派依据是「注解给没给值」，不是类型。
 2. **严格性是配置器给的，不是 `@Value` 给的**：同一个 `${app.missing}`，装不装
    `PropertySourcesPlaceholderConfigurer` 决定它是「静默脏字符串」还是「启动失败」。

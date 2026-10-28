@@ -434,6 +434,9 @@ public class ScannedGenericBeanDefinition extends GenericBeanDefinition {
 
 ### 4.1 常量池读取（含 long/double 的双槽位）
 
+为了看清「槽位」规则，下面只保留 utf8 那一列；真实代码把结果打包成 `record ConstantPool`，签名是
+`private ConstantPool readConstantPool(DataInputStream in)`（`SimpleMetadataReader.java:133`）。
+
 ```java
 private String[] readConstantPool(DataInputStream in) throws IOException {
     int count = in.readUnsignedShort();
