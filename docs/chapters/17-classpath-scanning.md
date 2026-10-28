@@ -413,7 +413,11 @@ public class ScannedGenericBeanDefinition extends GenericBeanDefinition {
 
 注意它写的还是**类名字符串**，不是 `Class`。这一点和真实 Spring 完全一致：
 `ScannedGenericBeanDefinition` 从 `MetadataReader` 取类名，工厂到第 04 章的
-`Class.forName` 那一步才加载类。**扫描阶段全程不加载，创建阶段才加载**——这是本章最重要的一句话。
+`Class.forName` 那一步才加载类。
+
+准确的说法要分阶段：**扫描（列文件）与注册（读字节码 → `BeanDefinition`）这两个阶段不加载类；
+到了条件求值阶段（第 22 章的 `@Conditional`）就会加载，创建阶段更是必然加载**。本章只负责前两步，
+所以下面凡说「不加载」，指的都是这两步。四个阶段的完整对照见 [5.6 节](#56-类到底在哪一步进-jvm三栏对照)。
 
 命名规则：类名首字母小写（`GreetingService` → `greetingService`）。真实 Spring 的
 `AnnotationBeanNameGenerator` 还处理 `URLProcessor` 这类连续大写、以及 `@Component("xx")` 显式命名；
@@ -513,7 +517,7 @@ final class SimpleMetadataReader implements MetadataReader {
 }
 ```
 
-**这就是本章和真实 Spring 最本质的差别**：同样的「读字节码不加载类」，我们是手写 283 行解析器，
+**这就是本章和真实 Spring 最本质的差别**：同样的「注册阶段读字节码、不加载类」，我们是手写 283 行解析器，
 它是一行 `accept(visitor, PARSING_OPTIONS)`。手写不是为了替代 ASM，是为了让你知道 ASM 帮你做了什么。
 
 ### 5.2 扫包的真实实现
@@ -618,14 +622,171 @@ protected boolean matchSelf(MetadataReader metadataReader) {
 
 那 ASM 的收益到底是什么？三条，**都不是「每毫秒解析更快」**：
 
-1. **不加载、不链接、不初始化**。这才是关键。扫描阶段你只想看注解，不想触发静态初始化块、
-   不想占永久代（元空间）里那 3000 个类的结构。
+1. **注册阶段不加载、不链接、不初始化**。这才是关键。扫描你只想看注解，不想触发静态初始化块、
+   不想占永久代（元空间）里那 3000 个类的结构。（注意限定词是「注册阶段」：条件求值与创建阶段都会加载，
+   见 [5.6 节](#56-类到底在哪一步进-jvm三栏对照)。）
 2. **能读 jar 里的类，而不必让 `ClassLoader` 去定义它**。有些类是「不该被这个 ClassLoader 看见的」。
 3. **`SKIP_CODE` 带来的内存收益**：不解析方法体，临时对象少得多。
 
 所以正确的说法是：**ASM 的收益是「不做那件有副作用的事」，不是「做得更快」。**
 本章的测试因此只断言「600 次读取之后没有类被初始化」，把耗时当作记录而非断言——写成
 「断言 ASM 更快」的测试会随机器负载随机红，那是在测硬件不是测代码。
+
+### 5.6 类到底在哪一步进 JVM：三栏对照
+
+本章一直说「扫描不加载类」，第 22 章讲 `@Conditional` 时说「条件求值必然加载类」。
+两句话都对，但它们说的是同一条装配链上**不同的两步**。把三个视角摆进一张表，看起来的矛盾就消失了：
+
+| 阶段 | 真实 Spring 的行为 | 第 17 章的说法 | 第 22 章的说法 |
+|---|---|---|---|
+| ① 扫描：定位 class 文件 | **不加载**。`getResources` 只列文件，碰都不碰字节 | 「扫描阶段不加载」 ✓ 成立 | 未涉及 |
+| ② 注册：读字节码 → `BeanDefinition` | **不加载**。ASM 解析 `RuntimeVisibleAnnotations`，只写下类名字符串 | 「不加载」无限定 ⚠ 只在这一步成立 | 未涉及 |
+| ③ 条件求值：`@Conditional` 的 `matches` | **加载 + 初始化**。`Condition#matches` 是实例方法，得先有实例 | 漏了这一步 ✗（本次修订补上） | 「条件求值必然加载」 ✓ 成立 |
+| ④ 创建：`getBean` 造对象 | **加载 + 初始化**。`Class.forName` + 构造器 | 「创建阶段才加载」 ✓ 成立 | 未涉及 |
+
+第 22 章有一张一模一样的表，从条件求值那一侧看同一件事：
+[22-assembly-control.md#57-同一张表从条件求值这一侧看](22-assembly-control.md#57-同一张表从条件求值这一侧看)。
+
+一句话结论：**「不加载」是注册阶段的性质，不是整条扫描流程的性质。** 界线在哪里？只要字节还停在
+`InputStream` / `byte[]` 里，这个类就没进 JVM；一旦你把那个名字交给 `Class.forName`，它就进了。
+`Class.forName(name, false, loader)` 是这条线上的**中间态**：已加载、未初始化——`Class` 对象已经在
+方法区里，静态块却一行都没跑。
+
+#### 先把三个动词分开
+
+日常中文里「加载类」这一个说法，在 JVM 规范里是三个动词，触发条件完全不同：
+
+| 动词 | 干了什么 | 本章哪一步会触发 |
+|---|---|---|
+| 加载（loading） | 把 class 文件字节交给 JVM，产出一个 `Class` 对象 | ①② 不会；③④ 会 |
+| 链接（linking） | 验证 + 准备（给静态字段分配空间）+ 解析符号引用 | 通常由初始化顺带触发，本书不细究 |
+| 初始化（initialization） | 执行 `<clinit>`：静态块 + 静态字段赋值 | 只在「主动使用」时触发，`newInstance` 是最常见的一种 |
+
+JVM 规范把「主动使用」列成有限几条（JVMS §5.5，语言层对应 JLS §12.4.1）：`new` 一个实例、读写非
+`final` 静态字段、调静态方法、`Class.forName(name)`（两参形式默认 `initialize = true`）、初始化子类……
+关键的不对称在这里：**加载只需要一条途径（把字节交给 `defineClass`），初始化却要求命中「主动使用」清单。**
+所以「加载了」不等于「静态块跑了」，这也正是下面两个实验能分开数两个计数器的原因。
+
+#### 实验一：一个计数器，把四个阶段的数字钉死
+
+工具是 `/tmp` 下的探针工程（不进仓库——它测的是 JVM 行为，不是本书的实现）：一个
+`DirLoader extends ClassLoader`，在 `findClass` 里先加计数再 `defineClass`，于是**任何**经它进入 JVM
+的类都会被记一笔；每个被测类的静态块里再给「初始化」加一笔。注册阶段那一步用的则是本书真正的
+`SimpleMetadataReader` + `ByteArrayResource`。
+
+```bash
+javac -cp step-17-classpath-scanning/target/classes -d host-classes  hostsrc/probe/*.java
+javac -cp host-classes                               -d sample-classes samplesrc/probe/*.java
+java  -cp host-classes:step-17-classpath-scanning/target/classes probe.LoadTimingProbe
+```
+
+真实输出（原文见 `/tmp/probe57/run.log`，`累计 加载/初始化`）：
+
+```
+P0   加载 +0  初始化 +0  累计 0/0  基线（什么都没做）
+
+    读了 probe/ConfigClass.class（618 字节）→ 类名 probe.ConfigClass，注解 [probe.Marker, probe.Cond]
+    读了 probe/Widget.class（625 字节）→ 类名 probe.Widget，注解 [probe.Marker]
+P1   加载 +0  初始化 +0  累计 0/0  注册阶段（读字节码 → BeanDefinition，两个类都没进 JVM）
+P2a  加载 +1  初始化 +0  累计 1/0  Class.forName(name, false, loader)：ConfigClass 进了 JVM，但静态块没跑
+    读注解得到条件类 = probe.SecondCondition
+P2b  加载 +3  初始化 +0  累计 4/0  读注解 @Cond.value()：条件类被『解析』成 Class 对象，但静态块还是没跑
+[init] probe.SecondCondition 静态块执行
+    条件实例 = probe.SecondCondition
+P3   加载 +0  初始化 +1  累计 4/1  条件实例化（newInstance）：静态块第一次执行
+P4a  加载 +1  初始化 +0  累计 5/1  Widget 只加载不初始化
+[init] probe.Widget 静态块执行
+    造出对象 = probe.Widget
+P4b  加载 +0  初始化 +1  累计 5/2  Widget 实例化（getBean 里那一步）
+[init] probe.AppSide 静态块执行（Class.forName 两参形式直接初始化）
+P5   加载 +0  初始化 +1  累计 5/3  Class.forName("probe.AppSide")（两参，initialize 默认 true）
+
+   合计：被加载的 sample 类 = [probe.ConfigClass, probe.Cond, probe.Marker, probe.SecondCondition, probe.Widget]
+   合计：累计初始化 3 次
+```
+
+逐行读这张表，四件事被钉住了：
+
+1. **P1 = 注册阶段：0 / 0**。读完了两个类的全部字节、拿到了类名和注解名字符串，JVM 里一个都没有——
+   这就是「扫描不加载」的准确含义。
+2. **P2a = 中间态**。`Class.forName(name, false, loader)` 之后加载 +1、初始化仍是 0：`Class` 对象有了，
+   静态块没跑。「类加载了」和「类初始化了」是两个计数器，缺一个就会把话说错。
+3. **P2b = 读注解也会加载类，但不初始化**。`getAnnotation(Cond.class)` 解析整张
+   `RuntimeVisibleAnnotations` 表，把注解类型 `probe.Marker`、`probe.Cond` 与 `Class` 型属性值
+   `probe.SecondCondition` 都 resolve 成 `Class` 对象——**三个一起 +3，静态块仍然一个没跑**。
+4. **P3 = 条件求值这一步才初始化**。`newInstance()` 触发 `<clinit>`，`[init]` 第一次出现。为什么？
+   因为 `Condition#matches(ConditionContext, AnnotatedElement)` 是**实例方法**：不先造出实例，
+   连方法都调不到（第 22 章 [3.3 节](22-assembly-control.md#33-第三步conditional--condition) 展开）。
+
+P4a/P4b 再补一刀：`getBean` 造对象时同样是「先加载、后初始化」，只是两次紧挨着，平时看不出来。
+P5 是反面参照——两参 `Class.forName` 把加载和初始化一次做完，所以只有初始化 +1（那个类由
+`AppClassLoader` 加载，不在 `DirLoader` 的计数范围里，所以加载计数不动）。
+
+#### 实验二：不信探针？看 JVM 自己的日志
+
+`-Xlog:class+load` 是 JVM 亲口说的话。仓库里的测试可以直接挂上去（`argLine` 与 jacoco 能共存，
+前面的章节已经这么用过）：
+
+```bash
+# ① 只扫不造：跑四个「只读字节码」的测试，避开那个用类字面量造对象的
+D='ClassPathScanningTests#registersComponentsAndDerivedAnnotations'
+D="$D+skipsClassesWithoutAnnotation+scansSubPackagesRecursively+filtersByAnnotationType"
+./mvnw -o -q -pl step-17-classpath-scanning test -Dtest="$D" \
+  -DargLine='-Xlog:class+load=info:file=/tmp/probe57/ch17-classload.log'
+
+# ② 条件求值：第 22 章那条「条件为假就把整个配置类跳过」的测试
+./mvnw -o -q -pl step-22-assembly-control test \
+  -Dtest='ConditionalTests#skipsTheWholeConfigurationClassWhenAnyConditionFails' \
+  -DargLine='-Xlog:class+load=info,class+init=info:file=/tmp/probe57/c22.log'
+```
+
+```bash
+$ grep -c 'class,load' /tmp/probe57/ch17-classload.log
+2827
+$ grep -c 'samples\.ch17' /tmp/probe57/ch17-classload.log
+0
+```
+
+**6 个 `BeanDefinition` 注册成功，`org.springframework.samples.ch17` 名下进 JVM 的类是 0 个。**
+日志里被加载的是容器自己的类（`ClassPathBeanDefinitionScanner`、`SimpleMetadataReader`、
+`PathMatchingResourcePatternResolver` 之类）——工具在跑，被扫的业务类没动。
+
+第 22 章那次的日志把 `class+init` 一并打开，于是「加载」与「初始化」成了两类可以分开数的事件
+（原文照抄，`source:` 里的本机绝对路径用 `…` 省略；`ConditionalTests`、`Ch22Contexts`、lambda
+那几行是测试脚手架，略去）：
+
+```text
+[0.504s][info][class,load] org.springframework.samples.ch22.ConditionalConfiguration source: …/ch22/target/classes/
+[0.515s][info][class,init] 2025 Initializing 'org/springframework/samples/ch22/ConditionalConfiguration'(no method) (0x00007ccf080ef048) by thread "main"
+[0.517s][info][class,load] org.springframework.samples.ch22.AlwaysTrueCondition source: …/ch22/target/classes/
+[0.518s][info][class,load] org.springframework.samples.ch22.AlwaysFalseCondition source: …/ch22/target/classes/
+[0.519s][info][class,init] 2031 Initializing 'org/springframework/samples/ch22/AlwaysTrueCondition'(no method) (0x00007ccf080f8460) by thread "main"
+[0.519s][info][class,init] 2032 Initializing 'org/springframework/samples/ch22/AlwaysFalseCondition'(no method) (0x00007ccf080f8688) by thread "main"
+[0.520s][info][class,load] org.springframework.samples.ch22.TrackedBean source: …/ch22/target/classes/
+```
+
+`TrackedBean` 加载了（`0.520s` 那一行），却**没有**对应的 `Initializing` 行——因为条件为假，
+它从头到尾没被造过（第 22 章那条测试断言的正是 `getBeanNamesForType(TrackedBean.class)` 为空）。
+两个条件类与配置类都有 `Initializing` 行——条件求值必须实例化它们；配置类则是
+`ConfigurationClassPostProcessor#resolveBeanClass` 里的两参 `Class.forName(beanClassName)` 直接
+加载 + 初始化的。
+
+顺带一个坑，也顺便印证了「动词要分开」：同一份日志里还有 1068 对
+`Start class verification for: X` / `End class verification for: X`，它们**同样**挂在 `class,init`
+标签下，但那是**链接**阶段的验证，不是初始化。日志标签不等于生命周期阶段——只有
+`Initializing '…'` 那一种行才对应 `<clinit>`。
+
+> **「扫描时不加载类」和「后续实例化时才加载」的界线在哪？** 在「有没有把 class 文件交给
+> `defineClass`」。这条线之前，你手上只有字节和字符串；这条线之后，JVM 里就多了一个 `Class` 对象，
+> 但它可能还没初始化。容器在注册阶段刻意停在线的左边，到条件求值与创建阶段才跨过去。
+
+#### 这一节的边界
+
+- 探针只统计「经 `DirLoader` 定义的类」与「静态块执行次数」；`-Xlog` 那次只读事件流。
+  链接阶段内部的验证/准备/解析时序没有细分（需要 `-Xlog:class+init=debug` 这类更细的组合，
+  本章没做到那一步，**未核实**）。
+- 探针里「读注解会 +3」依赖 `Class` 型注解属性被解析这一行为（`@Cond(SecondCondition.class)`）。
+  只带字符串/枚举属性的注解，加载数会相应少几个——数字随注解内容变，结论（不初始化）不变。
 
 ---
 
@@ -653,7 +814,7 @@ protected boolean matchSelf(MetadataReader metadataReader) {
 
 1. **扫描 = 列文件 + 读字节码 + 判注解 + 造图纸**。四步，没有一步需要 `Class` 对象。
 2. **元注解是「注解的继承」**。`@Service` 头上标 `@Component`，扫描器递归看穿这一层；防环是硬需求。
-3. **扫描阶段不加载类，创建阶段才加载**。这就是「为什么要手写解析器」的全部理由。
+3. **扫描与注册不加载类，条件求值就加载了，创建时必然加载**。这就是「为什么要手写解析器」的全部理由。
 
 ### 本章已知的缺陷（不是 bug，是刻意的边界）
 
@@ -665,6 +826,7 @@ protected boolean matchSelf(MetadataReader metadataReader) {
 | 没有 `isConcrete`/`isIndependent` 判断 | 内部类、接口、抽象类会被当成组件 | 第 17.7 节讲的真实第二道闸门 |
 | 不跳过 CGLIB 代理类 | 扫到 `$$EnhancerBySpringCGLIB$$` 会炸 | 真实 Spring `scanCandidateComponents` 的一行 `continue` |
 | 只支持单一 include 注解 | 没有 include/exclude 过滤器体系 | 第 21 章 `@Configuration` 的 `@ComponentScan` 全家桶 |
+| 「不加载」只覆盖到注册阶段 | 读者容易读成「整条装配链都不加载」，与条件求值阶段打架 | 第 22 章 [5.7 节](22-assembly-control.md#57-同一张表从条件求值这一侧看) 的三栏对照 |
 
 ### 下一章
 

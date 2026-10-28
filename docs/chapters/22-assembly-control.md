@@ -374,6 +374,22 @@ boolean shouldSkip(AnnotatedElement element) {
 2. **多条件是「与 + 短路」。** 第一个不匹配立即返回，后面的条件不问。这既是性能也是语义（后面的条件可能假设前面的条件成立）。
 3. **沿元注解找 `@Conditional`。** 这一条不是锦上添花——`@Profile` 就是 `@Conditional(ProfileCondition.class)`，不爬元注解链，`@Profile` 根本不生效。
 
+第 1 条决定了一件本章必须说清楚的事：**条件求值这一步必然加载类**。链条很短，一步都省不掉：
+
+> `@Conditional` 里存的是 `Class<? extends Condition>` → 要判断条件，先得有条件的**对象** →
+> `Condition#matches` 是**实例方法**，没有实例根本调不到 → 只能 `instantiate`（本章是
+> `getDeclaredConstructor().newInstance()`）→ 实例化要求那个类**已经加载并初始化** →
+> **所以条件求值阶段必然加载类**。
+
+这和上一章那句「扫描不加载类」并不矛盾：那句话的正确范围是**扫描与注册阶段**（第 17 章
+[5.6 节](17-classpath-scanning.md#56-类到底在哪一步进-jvm三栏对照) 有实测与完整对照）。
+真实 Spring 里这一步是 `ConditionEvaluator:137-138`：`ClassUtils.resolveClassName(conditionClassName,
+classloader)` 把类名变成 `Class`（内部就是 `Class.forName`，见 `ClassUtils:282`），
+`BeanUtils.instantiateClass(conditionClass)` 再实例化它。类名是从注解属性里读出来的字符串，
+跨过 `forName` 那一步之前，JVM 里根本没有这个类。
+
+四个阶段的三栏对照见 [5.7 节](#57-同一张表从条件求值这一侧看)。
+
 第 3 条逼出了本章的另一个基础件：`AnnotationSupport.findAnnotations`（103 行）。上一章的缺陷单里写着「`@SpringBootConfiguration` 会被判成 lite，因为只看直接标注」，这一章必须补上。算法是广度优先 + `seen` 集合防环（`@Documented`、`@Target` 这些 JDK 元注解互相标注，不防环会转死）。
 
 ### 3.4 第四步：`@Profile` 只是一个条件
@@ -654,6 +670,69 @@ private boolean factoryContainsBean(ConfigurableBeanFactory beanFactory, String 
 
 差距最大的两处正好对应两个「我们没做」：`MergedAnnotations` 的属性覆盖、别名、重复注解语义，和两阶段条件。
 
+### 5.7 同一张表：从条件求值这一侧看
+
+第 17 章反复说「扫描不加载类」，本章 3.3 节说「条件求值必然加载类」。两句话都对——它们说的是同一条
+装配链上**不同的两步**。把三个视角摆进一张表，看起来的矛盾就消失了（这张表与第 17 章
+[5.6 节](17-classpath-scanning.md#56-类到底在哪一步进-jvm三栏对照) 逐字一致）：
+
+| 阶段 | 真实 Spring 的行为 | 第 17 章的说法 | 第 22 章的说法 |
+|---|---|---|---|
+| ① 扫描：定位 class 文件 | **不加载**。`getResources` 只列文件，碰都不碰字节 | 「扫描阶段不加载」 ✓ 成立 | 未涉及 |
+| ② 注册：读字节码 → `BeanDefinition` | **不加载**。ASM 解析 `RuntimeVisibleAnnotations`，只写下类名字符串 | 「不加载」无限定 ⚠ 只在这一步成立 | 未涉及 |
+| ③ 条件求值：`@Conditional` 的 `matches` | **加载 + 初始化**。`Condition#matches` 是实例方法，得先有实例 | 漏了这一步 ✗（本次修订补上） | 「条件求值必然加载」 ✓ 成立 |
+| ④ 创建：`getBean` 造对象 | **加载 + 初始化**。`Class.forName` + 构造器 | 「创建阶段才加载」 ✓ 成立 | 未涉及 |
+
+本章负责的是第 ③ 行，第 17 章负责第 ①② 行，第 ④ 行两边都只是旁观（创建是第 04 章与第 30 章的地盘）。
+
+一句话结论：**「不加载」是注册阶段的性质，不是整条装配链的性质。** 界线在「有没有把 class 文件的
+字节交给 `defineClass`」：这条线之前你手上只有字节和字符串，跨过去之后 JVM 里才有 `Class` 对象，
+而它可能还没初始化。`Class.forName(name, false, loader)` 是中间态——已加载、未初始化。
+
+#### 实测：一次 `-Xlog` 同时钉住两句话
+
+把本章那个「条件为假就跳过整个配置类」的测试挂上 JVM 自己的日志（`argLine` 与 jacoco 能共存，
+第 17 章 5.6 节用过同一招）：
+
+```bash
+./mvnw -o -q -pl step-22-assembly-control test \
+  -Dtest='ConditionalTests#skipsTheWholeConfigurationClassWhenAnyConditionFails' \
+  -DargLine='-Xlog:class+load=info,class+init=info:file=/tmp/probe57/c22.log'
+```
+
+日志里与本章主角相关的七行（原文照抄；`source:` 的本机绝对路径用 `…` 省略，测试脚手架与 lambda 略去）：
+
+```text
+[0.504s][info][class,load] org.springframework.samples.ch22.ConditionalConfiguration source: …/ch22/target/classes/
+[0.515s][info][class,init] 2025 Initializing 'org/springframework/samples/ch22/ConditionalConfiguration'(no method) (0x00007ccf080ef048) by thread "main"
+[0.517s][info][class,load] org.springframework.samples.ch22.AlwaysTrueCondition source: …/ch22/target/classes/
+[0.518s][info][class,load] org.springframework.samples.ch22.AlwaysFalseCondition source: …/ch22/target/classes/
+[0.519s][info][class,init] 2031 Initializing 'org/springframework/samples/ch22/AlwaysTrueCondition'(no method) (0x00007ccf080f8460) by thread "main"
+[0.519s][info][class,init] 2032 Initializing 'org/springframework/samples/ch22/AlwaysFalseCondition'(no method) (0x00007ccf080f8688) by thread "main"
+[0.520s][info][class,load] org.springframework.samples.ch22.TrackedBean source: …/ch22/target/classes/
+```
+
+三件事同时被钉住：
+
+1. **两个条件类都被加载、且都被初始化**（`class,init` 那两行）。为什么非得初始化？因为要调
+   `matches` 这个**实例方法**——`newInstance()` 会触发 `<clinit>`。这是 3.3 节那条因果链的直接证据。
+2. **`ConditionalConfiguration` 也被加载 + 初始化**，时间点在两个条件之前（`0.504s` / `0.515s`）。
+   它的加载来自 `ConfigurationClassPostProcessor#resolveBeanClass` 里的两参 `Class.forName(beanClassName)`
+   ——直接加载 + 初始化，连中间态都不经过。所以「扫到配置类」到「判条件」之间，配置类本身就已经进 JVM 了。
+3. **`TrackedBean` 只出现在 `class,load` 里**（最后一行），**没有对应的 `Initializing`**。
+   条件为假，图纸被 `removeIfConditional` 删掉，它从头到尾没被创建。那它为什么还是「加载」了？
+   因为这条测试的断言里写着类字面量 `getBeanNamesForType(TrackedBean.class)`——
+   `javap -c` 能看到 `ldc #17  // class org/springframework/samples/ch22/TrackedBean`，
+   而类字面量按 JLS §12.4.1 **会加载、但不会初始化**。于是它正好卡在表里第 ② 行与第 ④ 行之间：
+   字节已经交给 JVM，`<clinit>` 一次都没跑。
+
+对照第 17 章那半边：扫描四个测试跑完，`org.springframework.samples.ch17` 名下进 JVM 的类数是 **0**
+（`grep -c 'samples\.ch17'` 输出 `0`）。**同一个仓库、同一套容器、同样 6 个 `BeanDefinition`：
+注册阶段 0 个类，条件求值阶段 3 个类（配置类 + 两个条件）。**
+
+> **所以「什么时候加载类」这个问题没有一句话答案，只有分阶段答案。** 讲「不加载」的时候必须带着
+> 阶段限定词，否则下一章（或者下一节）就会把它推翻。
+
 ## 6. 思考题
 
 先自己写，再看 [`../appendix/B-answers.md#第-22-章`](../appendix/B-answers.md#第-22-章)。
@@ -695,6 +774,7 @@ private boolean factoryContainsBean(ConfigurableBeanFactory beanFactory, String 
 | `@Import` 名字冲突只按简单类名判 | 两个同名类必须显式改名 | 同（`ConflictingBeanDefinitionException`），但支持 `@Component` 的 `value` 起名 |
 | 元注解只做「找得到」，不做属性覆盖 | 组合注解不能改属性值 | `MergedAnnotations` |
 | 扫描出来的类里的 `@Bean` 方法不处理 | lite 能力只覆盖 `@Import` 进去的类 | `ConfigurationClassUtils:151` 把 `@Component` 类里的 `@Bean` 也算 lite 候选 |
+| 「条件求值必然加载类」没写进正文 | 与第 17 章「扫描不加载类」看起来互相矛盾 | 5.7 节的三栏对照 + 第 17 章 5.6 节的实测 |
 
 ### 下一章
 
