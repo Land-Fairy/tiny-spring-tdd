@@ -16,10 +16,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 钉住「六只容器各自的保护方式」这条口径。
  *
  * <p>
- * 这些断言看起来在测实现细节，但它们防的是一类真实事故：有人「统一风格」把这几个
- * 容器换成同一个类型，编译与全部功能测试都不会红，直到某天并发销毁或并发取早期引用时
- * 才炸。真实 Spring 也是六种容器混用，理由与
- * {@code DefaultSingletonBeanRegistry} 类注释里那张表一致。
+ * 这些断言看起来在测实现细节，但它们防的是一类真实事故：有人「统一风格」把这几个 容器换成同一个类型，编译与全部功能测试都不会红，直到某天并发销毁或并发取早期引用时 才炸。真实
+ * Spring 也是六种容器混用，理由与 {@code DefaultSingletonBeanRegistry} 类注释里那张表一致。
  */
 class RegistryConcurrencyContractTests {
 
@@ -51,7 +49,7 @@ class RegistryConcurrencyContractTests {
 						this.registry.registerSingleton("bean-" + (base + i), new Object());
 					}
 				}
-				catch (Throwable ex) {
+				catch (Exception ex) {
 					synchronized (failures) {
 						failures.add(ex);
 					}
