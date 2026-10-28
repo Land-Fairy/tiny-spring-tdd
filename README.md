@@ -185,6 +185,13 @@ mvn verify
 | 5 | `JaCoCo`：行 ≥80%，分支 ≥70% | 构建失败 |
 | 6 | `ArchUnit`：分层依赖单向 | 测试失败 |
 
+另外有**两道仓库级检查**（不在单模块 `verify` 里，跑在 CI）：
+
+| # | 检查 | 抓什么 | 违规后果 |
+|---|---|---|---|
+| 7 | `scripts/check-propagation.sh` | 第 K 章的修复没传到第 K+1、K+2 章（「回退」与「静默缺失」两种事故指纹） | CI 红 |
+| 8 | `scripts/check-doc-links.sh` | 文件改名后 markdown 里的相对链接失效 | CI 红 |
+
 ---
 
 ## 术语

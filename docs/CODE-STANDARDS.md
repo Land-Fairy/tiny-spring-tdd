@@ -32,6 +32,7 @@
 | 5 | 覆盖率 | `JaCoCo`（行 ≥80%，分支 ≥70%） | `verify` | 构建失败 |
 | 6 | 架构约束 | `ArchUnit`（`LayeringTests`，每个模块各一份） | `test` | 测试失败 |
 | 7 | 跨章回归不变式 | `scripts/check-propagation.sh`（CI 单独跑） | 仓库级 | 退出码 1 |
+| 8 | 文档链接可达 | `scripts/check-doc-links.sh`（CI 单独跑） | 仓库级 | 退出码 1 |
 
 一条命令跑全部：`mvn verify`
 

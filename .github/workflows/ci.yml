@@ -39,6 +39,10 @@ jobs:
       - name: 跨章回归不变式（propagation）
         run: bash scripts/check-propagation.sh
 
+      # 文档腐败防线：文件改名后链接不跟着改，不会让任何测试变红，只会让读者撞 404。
+      - name: 文档相对链接可达性
+        run: bash scripts/check-doc-links.sh
+
       - name: 上传测试与覆盖率报告
         if: always()
         uses: actions/upload-artifact@v4
