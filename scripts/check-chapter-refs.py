@@ -8,12 +8,31 @@ v1.1.2 修过两处这类错误（通读才发现的）：
   - ch03 把「讲代理」指到第 30 章，而第 30 章是三级缓存与循环依赖，讲代理的是 24/26 章；
   - ch22 把「循环依赖的完整解法」指到第 29 章，而第 29 章是 AOP 失效场景合集。
 
-判据（`docs/chapter-topics.md` 里的区分性关键词表）：
-  引用点后面的短语命中目标章的关键词          → 通过
-  命中别的章的关键词、且不命中目标章          → ERROR（就是上面那两处的形状）
-  一个都不命中（短语太泛）                    → WARN，让人判断
+判据（`docs/chapter-topics.md` 里的关键词表，**具体词优先**）：
+  「具体词」＝跨章频次 ≤3 的关键词；「泛词」＝出现在 4 章以上的（「代理」「BeanDefinition」）。
+
+  被引章命中至少一个具体词                   → 通过（哪怕短语里也提到别的章：
+                                               「第 28 章讲的自调用失效在配置类上重演」算过）
+  被引章没有具体词、别的章有                 → ERROR（就是上面那两处的形状）
+  被引章只命中泛词                           → 低置信度通过（单独计数，不算警告）
+  一个词都不命中                             → WARN（短语太泛）
+  短语里压根没有名词（「这就是第 02 章的全部内容」「这个我们第 19 章会碰到」）
+                                             → SKIP，不占 WARN
+
+v2.x 起判据分四条通道，一条引用按顺序过：
+
+  ① 类名归属（最硬）：「第 NN 章的 `X`」这种定语断言，直接查 X 第一次出现在哪一章。
+     34 处这样的断言，26 处能定位到类，全部对得上。
+  ② 短语里点名的类首现于被引章 → 通过（类不会说谎，比关键词硬）。
+  ③ 被引章命中一个「具体词」（跨章 ≤5 章）→ 通过。
+  ④ 只有泛词 → 低置信度通过并单独计数；一个词都没有 → WARN 交给人。
+
+泛词（「代理」出现在 26 章）留在表里只用于提示，不能单独放行一次判定。
 
 只认区分性关键词，所以本闸门是「宁可漏、不可吵」：拿不准的一律 WARN。
+v1.2 修过一处自己造成的噪音：短语提取把 markdown 记号与连接词也算进去了，
+于是 475 条里绝大部分是「」「**」「→」「这就是的全部内容」这种没有主题的碎片，
+真正需要人看的被埋在里面。现在先判「有没有名词」，没有的直接跳过并计数。
 """
 
 from __future__ import annotations
@@ -39,6 +58,26 @@ CONNECTORS = ("讲的", "说的话", "讲", "说的", "说的那套", "的那套
 errors: list[str] = []
 warns: list[str] = []
 checks = 0
+skipped = 0
+weak = 0
+byclass = 0
+
+# 短语里出现这些词不算「有主题」——它们只是连接语或指代，说明了不指哪一章
+STOPWORDS = (
+    "这就是", "这也是", "那就是", "那些", "这些", "这个", "那个", "我们", "你们", "你在",
+    "它们", "其余", "然后", "所以", "因为", "但是", "如果", "其中", "以及", "还有", "这里",
+    "那里", "之后", "之前", "就是", "这是", "那是", "会碰", "碰到", "答案", "区别", "问题",
+    "内容", "全部", "一起", "直接", "已经", "可以", "需要", "看到", "来说", "而言",
+)
+
+
+def has_topic(phrase_plain: str) -> bool:
+    """短语里是否含有名词性内容（去掉连接词后还剩 ≥2 个字）。"""
+    t = phrase_plain
+    for w in STOPWORDS:
+        t = t.replace(w, "")
+    t = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "", t)
+    return len(t) >= 2
 
 
 def hit(keyword: str, text: str) -> bool:
@@ -54,6 +93,44 @@ def hit(keyword: str, text: str) -> bool:
     if all(ord(ch) < 128 for ch in k):
         return re.search(r"(?<![A-Za-z0-9_$])" + re.escape(k) + r"(?![A-Za-z0-9_$])", text) is not None
     return k in text
+
+
+def load_class_owner() -> dict[str, int]:
+    """类名 → 它第一次出现的那一章（按 step-NN 模块里有没有这个 .java 文件推断）。
+
+    用来抓一种关键词表抓不到的错：「第 28 章的 `AopContext`」——类名对、章号也对不上。
+    """
+    owner: dict[str, int] = {}
+    for mod in sorted(ROOT.glob("step-*")):
+        m = re.match(r"step-(\d+)", mod.name)
+        if not m:
+            continue
+        ch = int(m.group(1))
+        for f in mod.glob("src/main/java/**/*.java"):
+            owner.setdefault(f.stem, ch)
+    return owner
+
+
+# 「第 NN 章的 `Class`」——定语位置的归属断言，最容易指错，且机器可判
+ATTRIB = re.compile(r"第\s*(\d{1,2})\s*章的\s*`([A-Z][A-Za-z0-9]+)`")
+
+
+def check_attribution(path: Path, line_no: int, line: str, owner: dict[str, int]) -> None:
+    for m in ATTRIB.finditer(line):
+        claimed, cls = int(m.group(1)), m.group(2)
+        real = owner.get(cls)
+        if real is not None and real != claimed:
+            errors.append(
+                f"{path.relative_to(ROOT)}:{line_no}: 写「第 {claimed:02d} 章的 `{cls}`」，"
+                f"但这类第一次出现在第 {real:02d} 章"
+            )
+
+
+def load_df(topics: dict[int, list[str]]) -> dict[str, int]:
+    """每个关键词的跨章频次（在 docs/chapters/*.md 里出现的章数）。"""
+    docs = [p.read_text(encoding="utf-8") for p in sorted((ROOT / "docs" / "chapters").glob("*.md"))]
+    words = {k for ks in topics.values() for k in ks}
+    return {k: sum(1 for d in docs if k in d) or 1 for k in words}
 
 
 def load_topics() -> dict[int, list[str]]:
@@ -76,7 +153,7 @@ def load_topics() -> dict[int, list[str]]:
     return topics
 
 
-def scan_file(path: Path, topics: dict[int, list[str]]) -> None:
+def scan_file(path: Path, topics: dict[int, list[str]], dfw: dict[str, int], owner: dict[str, int]) -> None:
     global checks
     in_fence = False
     for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -85,6 +162,7 @@ def scan_file(path: Path, topics: dict[int, list[str]]) -> None:
             continue
         if in_fence:
             continue
+        check_attribution(path, line_no, line, owner)
         for m in REF.finditer(line):
             targets = {int(x) for x in re.split(r"[、,，和]", m.group(1)) if x.strip()}
             targets = {t for t in targets if t in topics}
@@ -127,41 +205,69 @@ def scan_file(path: Path, topics: dict[int, list[str]]) -> None:
                 phrase_plain = re.sub(r"[`*_\s]+", "", phrase)
             # 抹掉 markdown 记号，否则「`AdvisorAuto」这种会被截断成半个词
             phrase_plain = re.sub(r"[`*_\s]+", "", phrase)
-            checks += 1
-            hit_target = [t for t in targets if any(hit(k, phrase_plain) for k in topics[t])]
-            if hit_target:
+            if not has_topic(phrase_plain):
+                # 「这就是第 02 章的全部内容」这类：句子里根本没有讲到那章的哪个东西
+                global skipped
+                skipped += 1
                 continue
-            others = {
-                t: [k for k in ks if hit(k, phrase_plain)]
-                for t, ks in topics.items()
-                if t not in targets
-            }
-            others = {t: ks for t, ks in others.items() if ks}
+            checks += 1
+            # 短语里的类名若首现于被引章，也是证据（比关键词更硬：类不会说谎）
+            named = re.findall(r"`([A-Z][A-Za-z0-9]+)", phrase)
+            if any(owner.get(c) in targets for c in named):
+                global byclass
+                byclass += 1
+                continue
+
+            def specific(t: int) -> list[str]:
+                """目标章「具体词」命中：跨章频次 ≤3 的关键词，能真正指向一章。"""
+                return [k for k in topics.get(t, []) if hit(k, phrase_plain) and dfw.get(k, 99) <= 5]
+
+            def generic(t: int) -> list[str]:
+                return [k for k in topics.get(t, []) if hit(k, phrase_plain)]
+
+            if any(specific(t) for t in targets):
+                continue
+            others = {t: specific(t) for t in topics if t not in targets and specific(t)}
+            if not others:
+                # 只命中泛词（「代理」「Bean」）：说得不够具体，但也说不出它错，计「低置信度通过」
+                if any(generic(t) for t in targets):
+                    global weak
+                    weak += 1
+                    continue
+                warns.append(
+                    f"{path.relative_to(ROOT)}:{line_no}: 引用 "
+                    + "、".join(f"第 {t:02d} 章" for t in sorted(targets))
+                    + f"，短语「{phrase}」不含该章关键词（人工判断）"
+                )
+                continue
             where = f"{path.relative_to(ROOT)}:{line_no}"
             got = "、".join(f"第 {t:02d} 章（{'/'.join(ks)}）" for t, ks in sorted(others.items()))
             target_s = "、".join(f"第 {t:02d} 章" for t in sorted(targets))
-            if others:
-                errors.append(f"{where}: 引用 {target_s}，但短语「{phrase}」属于 {got}")
-            else:
-                warns.append(f"{where}: 引用 {target_s}，短语「{phrase}」不含该章关键词（人工判断）")
+            errors.append(f"{where}: 引用 {target_s}，但短语「{phrase}」属于 {got}")
 
 
 def main() -> int:
     show_all = "--all-warns" in sys.argv
     topics = load_topics()
+    dfw = load_df(topics)
+    owner = load_class_owner()
     files: list[Path] = []
     for d in SCAN_DIRS:
         files.extend(sorted(d.glob("*.md")))
     files.extend(p for p in SCAN_FILES if p.is_file())
     for path in files:
-        scan_file(path, topics)
+        scan_file(path, topics, dfw, owner)
     if show_all:
         for w in warns:
             print(f"WARN  {w}")
     for e in errors:
         print(f"ERROR {e}")
     print()
-    print(f"── 汇总: {checks} 处带主题的交叉引用，{len(errors)} 个指错，{len(warns)} 处短语太泛未判定（--all-warns 可列出）")
+    print(
+        f"── 汇总: {checks} 处带主题的交叉引用，{len(errors)} 个指错，"
+        f"{len(warns)} 处短语太泛未判定（--all-warns 可列出），{weak} 处仅泛词（低置信度通过），"
+        f"{byclass} 处靠类名归属通过，{skipped} 处无主题已跳过"
+    )
     return 1 if errors else 0
 
 

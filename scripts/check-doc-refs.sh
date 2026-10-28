@@ -243,6 +243,11 @@ check_doc_refs() {
 			end=$(printf '%s' "$ref" | sed -nE 's/^[A-Za-z0-9_$]+\.java:[0-9]+-([0-9]+)$/\1/p')
 			[ -n "$end" ] || end="$start"
 			if in_list "${file%.java}" "$(jdk_types)"; then continue; fi
+			# 附录/README/ADR 这类文档讲的是真实 Spring：行内没写出处也先按上游解析，
+			# 上游没有这个类才回到本项目。章节正文不受影响（UPSTREAM_FIRST 只在附录模式置 1）。
+			if [ "$up" -eq 0 ] && [ "${UPSTREAM_FIRST:-0}" -eq 1 ] && [ -n "$(resolve_upstream_path "$file")" ]; then
+				up=1
+			fi
 
 			if [ "$up" -eq 1 ] && [ "$SKIP_UPSTREAM" -eq 1 ]; then
 				note "$doc:$line_no: 无上游源码树（SPRING_REF），跳过上游引用 $file"
@@ -305,8 +310,8 @@ check_doc_refs() {
 
 run_one() {
 	local module="$1" doc="${2:-}"
-	echo "── $module"
-	check_javadoc_refs "$module"
+	echo "── ${module:-$(basename "$doc")}"
+	[ -n "$module" ] && check_javadoc_refs "$module"
 	if [ -n "$doc" ]; then
 		if [ -f "$doc" ]; then
 			check_doc_refs "$module" "$doc"
@@ -333,6 +338,12 @@ main() {
 			n=$(basename "$d" | sed -E 's/^step-([0-9]+)-.*/\1/')
 			m=$(ls "$ROOT"/docs/chapters/"$n"-*.md 2>/dev/null | head -1)
 			run_one "${d%/}" "${m:-}"
+		done
+		for e in "$ROOT"/docs/appendix/*.md "$ROOT"/README.md "$ROOT"/GLOSSARY.md \
+			"$ROOT"/docs/CODE-STANDARDS.md "$ROOT"/docs/architecture-gap.md \
+			"$ROOT"/docs/adr/*.md "$ROOT"/docs/spec/*.md; do
+			[ -f "$e" ] || continue
+			UPSTREAM_FIRST=1 run_one "" "$e"
 		done
 	elif [ -n "$module" ]; then
 		run_one "$module" "$doc"
