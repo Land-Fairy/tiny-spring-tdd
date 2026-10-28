@@ -3305,6 +3305,13 @@ T2 于是走正常路径：要么等到 alpha 造完（拿到成品），要么�
 只有在「并发创建」与「循环依赖」同时出现时才触发，而这恰好是真实应用里最难复现的场景之一。
 我们在缺陷表里如实记录了它。
 
+**第 31 章的修正**：上面这张时序表描述的是**真实 Spring 的两把锁**（创建用
+`synchronized (singletonObjects)` / 早期引用用 `singletonLock`），不是我们第 30 章的代码——
+我们只有**一把**可重入锁，两个线程不可能同时持有它，所以第 30 章的单锁实现**死锁不了**，
+它只是把所有创建都串行了。第 31 章 3.5 节把这份「串行」量了出来（两个 200 毫秒的无关 Bean
+总耗时 ≥ 350 毫秒），并用「早期引用路径不进创建锁 + 令牌制」去掉了那次无谓的排队。
+真正需要 `tryLock` + 宽松创建的是**细粒度**设计，也就是真实 Spring 6.2 的处境。
+
 ### B-30-3 两个 `Alpha@15a902e7` 为什么打印一样却不是同一个对象？
 
 `Object.toString()` 打印的是 `类名@Integer.toHexString(hashCode())`，而 `hashCode` 默认实现返回
@@ -3366,3 +3373,108 @@ identity hash，**由对象决定、但因对象不同而不同**——除非…
 我们只在单例上做了 `beforeSingletonCreation`/`afterSingletonCreation`，
 prototype 完全没做——所以我们的 prototype 环会以 `StackOverflowError` 结束（缺陷表已记录）。
 补法很短：照 `beforeSingletonCreation` 的样子加一个 `ThreadLocal<String>`（或 `Set`）即可。
+
+## 第 31 章
+
+### B-31-1 删掉「③ 再读一遍」，能稳定触发什么？
+
+**时序**（把 T1 卡在构造器里）：
+
+1. T2 调 `getBean("alpha")` → 锁外读 `singletonObjects` → `null`（T1 还没造完）；
+2. T2 抢锁失败，阻塞（T1 正持锁创建）；
+3. 放行 T1：`addSingleton` 放回、解锁；
+4. T2 拿到锁——此时若没有 ③，它会直接 `beforeSingletonCreation` + 创建。
+
+第 4 步是致命的：T1 已经 `afterSingletonCreation`（名字从「创建中」集合里摘掉了），
+所以 T2 自己的 `beforeSingletonCreation` **不会**报环，它会安安稳稳地再造一个。
+最后 `addSingleton` 的 `putIfAbsent` 撞上 T1 放进去的对象，抛
+`IllegalStateException: ... there is already object [...] bound`。
+
+**为什么八线程那次实验反而可能「看起来只创建一次」**：八个线程里，只要有一个的
+「锁外读」发生在 T1 放回**之后**，它的快路径就直接命中并返回了，压根不进创建流程。
+于是「创建次数」这个计数可能仍然是 1，缺陷却已经存在——它换了个出口：**异常**而不是计数。
+这正是我们让 `addSingleton` 冲突即抛（而不是静默覆盖）的原因：把机会主义的静默错误
+变成必然的响亮错误。测试里断言 `CREATED == 1` 只在「T1 还卡在构造器里」那一刻有效，
+后面那段要用「八个线程拿到同一个对象」+「没有异常」联合保证。
+
+### B-31-2 静默覆盖会让哪些现象难以排查？
+
+1. **`registerSingleton` 二次注册**：先注册 `a`，别的 Bean 已经注入了 `a`；再注册 `b` 覆盖同名。
+   于是「池子里是 `b`、注入方手里是 `a`」——两个对象，一个名字。排查时看日志「容器里明明是 b」，
+   但线上行为符合 `a`。这和第 29 章场景六是同一种病：**身份与表现为敌**。
+2. **`@Bean` 方法名与组件扫描撞名**：`@Bean public Foo foo()` 与一个默认名为 `foo` 的
+   `@Component` 共存。后者先注册、后者被覆盖（或反过来），表现是「我改了 `@Bean` 的定义却没生效」。
+   顺带一个值得知道的历史：Spring Framework 的 `allowBeanDefinitionOverriding` 默认是 `true`
+   （允许覆盖，只留一条 debug 日志），而 Spring Boot 2.1 起默认关掉并在覆盖时抛
+   `BeanDefinitionOverrideException`——正是为了让上面这类问题**响亮**起来。
+
+两个场景的共同点：覆盖发生在「别人已经拿着旧对象」之后。**能被覆盖的注册表，等于取消了
+「同一个名字永远同一个对象」这个承诺。**
+
+### B-31-3 怎么观察 ④ 分支的 `null` 窗口？真实 Spring 为什么能关掉它？
+
+**观察方法**：让工厂在求值过程中慢下来（例如内部 `Thread.sleep(200)`），两个线程同时
+`getSingleton("alpha")`。抢到令牌的线程会阻塞在工厂里；另一个线程走到 ④，读
+`earlySingletonObjects` 拿到 `null`。断言「一个非 null、一个 null，且 `evaluations == 1`」。
+这个窗口的宽度 = 工厂的执行时间，所以只要工厂够慢就必然可观察，不需要靠运气。
+
+**真实 Spring 关掉它的方式**：整段早期引用逻辑在 `tryLock` 成功的临界区里
+（`:219-252`），而且 `remove` 与 `put` 都在锁内：
+
+```java
+singletonObject = singletonFactory.getObject();
+if (this.singletonFactories.remove(beanName) != null) {
+    this.earlySingletonObjects.put(beanName, singletonObject);
+}
+```
+
+锁保证「拿令牌 → 求值 → 落库」是一条原子序列，别的线程要么在抢锁，要么拿不到锁返回 `null`——
+它不会读到「令牌已被抢、结果尚未落库」这种半成品状态。
+
+注意真实 Spring 的 `remove` 放在 `getObject()` **之后**，并且要检查返回值：如果这期间有别的
+路径（例如 `addSingleton` 清理）已经把工厂摘掉，那这次求值的结果就该丢弃、改读池子。
+这是「锁内也要处理被外部改动」的典型写法，我们的令牌制（先 `remove` 再求值）用另一种方式
+避免了同类问题——代价就是那个 `null` 窗口。
+
+### B-31-4 只改 `beforeSingletonCreation` 一个方法，能修掉「误判成环」吗？
+
+**不能，缺两样东西：状态和等待原语。**
+
+1. **缺状态**：`singletonsCurrentlyInCreation` 是 `Set<String>`，它只知道「这个名字有人在创建」，
+   不知道**是谁**。要区分「我自己重入（真环）」与「别人正在创建（假环）」，必须有
+   「名字 → 线程」的映射。真实 Spring 用的是 `currentCreationThreads`（`DefaultSingletonBeanRegistry:118`，
+   `ConcurrentHashMap<String, Thread>`），并且在 `singletonFactory.getObject()` 前后成对 `put`/`remove`（`:371`/`:376`）。
+   无论哪个字段，都要求**改字段**，题设不允许。
+2. **缺等待原语**：就算知道了「是别的线程在创建」，接下来要么抛异常、要么等。
+   「等」需要条件变量（真实 Spring：`lenientCreationFinished`，`:109` 声明、`:330` `await()`），
+   还得在醒来后**复读池子**（因为等的东西已经造好了）。忙等（`while` 循环 + `sleep`）能工作但
+   会把 CPU 烧掉，而且难以给出超时语义。
+
+结论：这说明**并发缺陷很少能靠「改一个方法」修好**，因为它们通常是「状态设计」的问题。
+第 30 章的三级缓存同理——它不是加了三个变量，而是把「什么时候交什么」这件事重新建模了。
+
+### B-31-5 「预期内的串行」与「意外的串行」
+
+分界线只有一条：**串行的范围是否与逻辑依赖一致。**
+
+**预期内**：
+
+- 3.5 节两个无关 Bean 被全局锁串行——已知代价，买的是「不可能死锁」。它发生在容器内部、
+  与业务语义无关，是**实现选择的固定开销**；
+- `preInstantiateSingletons()` 单线程顺序创建——启动阶段的确定性优先，且总时长与 Bean 数量线性相关。
+
+**意外**：
+
+- 某个 Bean 的构造器里做远程调用/查库（每次 300ms），于是**所有**后续 Bean 的创建都被它拖住。
+  这里的荒谬在于：A 的构造器慢，凭什么让无关的 Z 等？——**串行的范围（全局）远大于逻辑依赖
+  （只有依赖 A 的 Bean 才需要等 A）**。
+- 创建回调里触发别的 Bean 的创建（`FactoryBean#getObject()` 里 `getBean(...)`、`@Bean` 方法体里
+  `getBean(...)`）。在细粒度锁下，这是死锁的温床：持锁者在等一个新锁，而新锁的持有者可能正在
+  等第一个锁。真实 Spring 6.2 的宽松创建（`:268-288`）就是为了把这类「回调里再取 Bean」
+  从「死等」改成「绕开锁、直接造」。
+- 销毁期间取 Bean：`singletonsCurrentlyInDestruction` 检查（`:302`）就是为了让这种「意外串行」
+  直接变成异常，而不是变成半个容器。
+
+判断方法很简单：**把等待图画出来。** 如果边与依赖图一致，串行是预期的；如果边出现在两个
+没有依赖关系的 Bean 之间，那是意外——它要么是实现代价（要能被量出来，如 3.5 节），
+要么是缺陷（要么改锁的粒度，要么改代码结构）。

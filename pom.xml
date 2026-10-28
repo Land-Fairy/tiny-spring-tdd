@@ -96,6 +96,7 @@
 		<module>step-28-expose-proxy</module>
 		<module>step-29-aop-pitfalls</module>
 		<module>step-30-circular-dependencies</module>
+		<module>step-31-concurrency</module>
 	</modules>
 
 	<dependencyManagement>
