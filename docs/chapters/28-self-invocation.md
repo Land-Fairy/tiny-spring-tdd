@@ -1,5 +1,7 @@
 # 第 28 章 自调用失效、exposeProxy、AopContext
 
+> 🌿(ch00–ch27) 🕳️
+
 > 本章代码：`step-28-expose-proxy`。新增 `AopContext`（63 行），给 `AdvisedSupport` 加 `exposeProxy` 开关，
 > `JdkDynamicAopProxy` 增加「挂—取—还」。测试从 407 个涨到 **415** 个，行覆盖 86.6%、分支覆盖 75.3%。
 

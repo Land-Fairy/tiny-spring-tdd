@@ -1,5 +1,7 @@
 # 第 15 章 容器事件与监听器
 
+> 🌿(ch00–ch14) 🕳️ 🔖(第 19 章)
+
 > 本章把「容器在特定时刻回头调你」做成一门通用机制。
 >
 > 上一章的 `Scope#registerDestructionCallback` 已经露出了这个模式的雏形：**你登记一段逻辑，容器在它认为对的时候调用**。本章把它推广开——`ApplicationEventPublisher` 与 `ApplicationListener`，以及 `refresh()` 里那三步（第八、第十、第十二步）到底在干什么。

@@ -1,5 +1,7 @@
 # 第 17 章 包扫描：ASM 元数据 vs 反射
 
+> 🌿(ch00–ch16) 🕳️
+
 > 到第 16 章为止，你写下的每一个 Bean 都得先在 XML 里报一次户口。真实项目里没人这么干：
 > 你写 `@Service class OrderService`，Spring 自己就找到了它。
 >

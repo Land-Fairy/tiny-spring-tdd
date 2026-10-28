@@ -1,5 +1,7 @@
 # 第 10 章 BFPP + Environment + 占位符：在图纸上改字
 
+> 🌿(ch00–ch09) 🕳️
+
 > **本章你要带走的一句话**：`BeanFactoryPostProcessor` 的唯一特权是**在对象还不存在的时候改图纸**；`Environment` 的唯一职责是**在图纸还不需要值时提供值**。这两件事凑在一起，就是 `${...}` 的完整答案——而且它只能发生一次，位置固定在第 5 步。
 >
 > **前提**：第 08 章能从 XML 读出图纸（`TypedStringValue` / `RuntimeBeanReference`）。第 09 章有 `refresh()` 的十二步骨架，第 5 步是空的。

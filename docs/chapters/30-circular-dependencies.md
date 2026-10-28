@@ -1,5 +1,7 @@
 # 第 30 章 三级缓存与循环依赖
 
+> 🌿(ch00–ch29) 🕳️
+
 > 本章代码：`step-30-circular-dependencies`。测试 **421** 个（新增 6），行覆盖 86.7%（2979/3436）、
 > 分支覆盖 75.5%（1141/1512）。新增主代码只有 42 行的 `BeanCurrentlyInCreationException` 与 33 行的
 > `SmartInstantiationAwareBeanPostProcessor`，其余全是往三个已有类里加东西：
