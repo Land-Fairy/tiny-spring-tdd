@@ -91,7 +91,7 @@ ClassPathXmlApplicationContext    ← 「顺手从 XML 读图纸」的上下文
 | `RefreshStepOrderTests` | 2 | **十二步的顺序**（用子类覆写记录调用序列） |
 | `ClassPathXmlApplicationContextTests` | 4 | 那一行代码：能读 XML、读不到会抛、不能 refresh 两次 |
 
-本章模块共 **159** 个测试（含前八章累积的 141 个）。
+本章模块共 **163** 个测试（含前八章累积的 145 个）。
 
 ### 2.2 红 1：编译期——三个类还不存在
 
@@ -604,7 +604,7 @@ protected void destroyBeans() {
 **本章验证命令**
 
 ```bash
-./mvnw -pl step-09-application-context test      # 159 个测试
+./mvnw -pl step-09-application-context test      # 163 个测试
 ./mvnw -pl step-09-application-context verify    # 六道闸门
 ./mvnw -q verify                                 # 全仓 35 个模块（本章只关心前 9 个）
 ```

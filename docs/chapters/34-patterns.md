@@ -15,7 +15,7 @@
 | `AopPatternTests` | 模板方法、策略、适配器、责任链 | 4 |
 | `ProxyAndDecoratorTests` | 代理、装饰器（两种形态） | 3 |
 
-它们都住在 `step-34-patterns` 模块里，加上前三章的 434 个测试，共 **444 个**。
+它们都住在 `step-34-patterns` 模块里，加上前三章的 445 个测试，共 **455 个**。
 
 ---
 

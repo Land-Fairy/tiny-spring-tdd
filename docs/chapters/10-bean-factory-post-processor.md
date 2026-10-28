@@ -87,7 +87,7 @@
 | `BeanFactoryPostProcessorOrderingTests` | 4 | **时序**：后处理器运行时单例还不存在；改过的图纸体现在实例上；只跑一次；程序式先于 Bean 式 |
 | `PlaceholderWiringTests` | 3 | 端到端：XML + 环境 + `refresh()` |
 
-本模块共 **188** 个测试（含前九章累积的 159 个）。
+本模块共 **192** 个测试（含前九章累积的 163 个；下面的红字日志是当时跑出来的 188 个——多出的那 4 个是后来加的架构规则）。
 
 ### 2.2 红 1：编译期 38 个错误
 
@@ -717,7 +717,7 @@ $ find . -name 'BeanDefinitionRegistryPostProcessor.java'
 **本章验证命令**
 
 ```bash
-./mvnw -pl step-10-bean-factory-post-processor test      # 188 个测试
+./mvnw -pl step-10-bean-factory-post-processor test      # 192 个测试
 ./mvnw -pl step-10-bean-factory-post-processor verify    # 六道闸门
 ./mvnw -q verify                                         # 全仓 35 个模块（本章只关心前 10 个）
 ```

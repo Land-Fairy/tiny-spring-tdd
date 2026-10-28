@@ -735,4 +735,4 @@ return getSingleton(beanName, () -> createBean(beanName, beanDefinition));
 
 ---
 
-> **本章的实测数据**：`./mvnw -pl step-03-singleton-registry verify` → 52 个测试全绿，行覆盖 97.7%、分支覆盖 95.7%（门槛 80% / 70%，`All coverage checks have been met.`）。并发测试稳定耗时约 1.0 秒（两把 `CountDownLatch` 的等待时间），可重复。
+> **本章的实测数据**：`./mvnw -pl step-03-singleton-registry verify` → 56 个测试全绿，行覆盖 93.7%、分支覆盖 97.7%（门槛 80% / 70%，`All coverage checks have been met.`）。并发测试稳定耗时约 1.0 秒（两把 `CountDownLatch` 的等待时间），可重复。

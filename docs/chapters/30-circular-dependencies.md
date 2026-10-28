@@ -2,8 +2,8 @@
 
 > 🌿(ch00–ch29) 🕳️
 
-> 本章代码：`step-30-circular-dependencies`。测试 **421** 个（新增 6），行覆盖 86.7%（2979/3436）、
-> 分支覆盖 75.5%（1141/1512）。新增主代码只有 42 行的 `BeanCurrentlyInCreationException` 与 33 行的
+> 本章代码：`step-30-circular-dependencies`。测试 **436** 个（新增 4），行覆盖 86.5%（3047/3521）、
+> 分支覆盖 75.9%（1173/1546）。新增主代码只有 42 行的 `BeanCurrentlyInCreationException` 与 33 行的
 > `SmartInstantiationAwareBeanPostProcessor`，其余全是往三个已有类里加东西：
 > `DefaultSingletonBeanRegistry`（429 行）、`DefaultListableBeanFactory`（1120 行）、
 > `AbstractAutoProxyCreator`（204 行）。

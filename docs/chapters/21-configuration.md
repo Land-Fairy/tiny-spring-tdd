@@ -228,7 +228,7 @@ this.methodBodies.put(methodName, body);
 return body.invokeWithArguments(args);
 ```
 
-`bindTo(enhanced)` 把接收者焊死在**第一次**调用时的那个对象上。因为配置类 Bean 是单例，**当时全部 333 个测试都绿**——每次调用都来自同一个实例，绑没绑根本看不出来。
+`bindTo(enhanced)` 把接收者焊死在**第一次**调用时的那个对象上。因为配置类 Bean 是单例，**当时全部测试都绿**——每次调用都来自同一个实例，绑没绑根本看不出来。
 
 是给生成器补单测时抓到的。一个带状态的样本方法：
 
@@ -668,7 +668,7 @@ enhancer.setUseFactory(false);   // :182
 
 ### 5.5 覆盖率故事
 
-本章 334 个测试，行覆盖 88.3%、分支覆盖 79.3%。有意思的是覆盖率是怎么上去的：
+本章 345 个测试，行覆盖 88.0%、分支覆盖 79.7%。有意思的是覆盖率是怎么上去的：
 
 - 生成器有大量「按类型分支」的代码（`loadOpcode`、`returnOpcode`、`boxTypeName`、`unboxMethodName`、`descriptor` 各一条 switch）。这些分支**不可能**全部由「配置类里的 `@Bean` 方法」覆盖——用户不会写一个返回 `short` 的 `@Bean`。
 - 所以 `ConfigurationClassEnhancerTests` 直接对生成类做测试：一个 `Shapes` 样本类，8 种基本类型、数组、`void`、protected/包私有方法、五个 `long` 参数各一个方法，再加一个 `RecordingInterceptor`（继承 `ConfigMethodInterceptor` 覆写 `doInvoke`）把生成类的行为与容器解耦。
@@ -681,7 +681,7 @@ enhancer.setUseFactory(false);   // :182
 1. **如果 `@Bean` 方法是 `static` 的**，full 模式的拦截还有必要吗？为什么我们的 `findBeanMethods` 直接跳过 `static` 方法，而真实 Spring 允许（并推荐）`static` 的 `@Bean`？（提示：`BeanFactoryPostProcessor` 类型的 `@Bean` 方法。）
 2. 我们的 `isFullConfigurationClass` 只看**直接标注**的 `@Configuration`。如果用户写了 `@SpringBootConfiguration`（它标了 `@Configuration`），本章的代码会把它当 lite 处理。要让元注解也生效，最少需要改哪几行？第 17 章的哪个工具正好能用？
 3. 生成类名字里带了 `SEQUENCE` 递增序号。如果去掉它，同一个配置类被两个容器加载时会发生什么？把 `IllegalAccessError` 换成 `LinkageError` 想一想：**失败发生在哪一步**？
-4. 红六里的 `bindTo(enhanced)` 在单例配置类下 333 个测试全绿。请设计一个**最小的**测试来暴露它（提示：需要样本方法带状态，或者需要两个生成类实例）。再想想：真实 Spring 为什么不会踩这个坑？（提示：`MethodProxy.invokeSuper(enhancedConfigInstance, beanMethodArgs)` 把实例当参数传。）
+4. 红六里的 `bindTo(enhanced)` 在单例配置类下全部测试绿。请设计一个**最小的**测试来暴露它（提示：需要样本方法带状态，或者需要两个生成类实例）。再想想：真实 Spring 为什么不会踩这个坑？（提示：`MethodProxy.invokeSuper(enhancedConfigInstance, beanMethodArgs)` 把实例当参数传。）
 5. 我们让「工厂方法返回 `null`」对单例直接报错。真实 Spring 对 prototype 作用域允许返回 `null`（`getBean` 拿到 `null`）。这两种选择各自把「`null` 表示什么」定义成了什么？哪一种更难让调用方写出 `NullPointerException`？
 
 ## 7. 小结

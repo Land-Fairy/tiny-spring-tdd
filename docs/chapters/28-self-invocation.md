@@ -3,7 +3,7 @@
 > 🌿(ch00–ch27) 🕳️
 
 > 本章代码：`step-28-expose-proxy`。新增 `AopContext`（63 行），给 `AdvisedSupport` 加 `exposeProxy` 开关，
-> `JdkDynamicAopProxy` 增加「挂—取—还」。测试从 407 个涨到 **415** 个，行覆盖 86.6%、分支覆盖 75.3%。
+> `JdkDynamicAopProxy` 增加「挂—取—还」。测试从 418 个涨到 **426** 个，行覆盖 86.3%、分支覆盖 75.7%。
 
 第 27 章的结论可以压缩成一句话：**状态留在目标里，代理只持有「怎么拿到目标」的协议。**
 
@@ -360,8 +360,8 @@ Object oldProxy = (proxyExposed ? AopContext.setCurrentProxy(proxy) : null);
 3. 代理创建器被实例化时，属性被注入到它继承自 `ProxyConfig` 的字段上；创建代理时又传给
    `ProxyFactory`，最终落到 `AdvisedSupport.exposeProxy`。
 
-**这条链一个对象都没多造**：注解 → BeanDefinition 里的一个属性 → 继承来的字段。本书从第 15 章
-（`@Bean` 与配置类）到第 22 章（条件装配）反复用到的那个模式，在这里又出现了一次 ——
+**这条链一个对象都没多造**：注解 → BeanDefinition 里的一个属性 → 继承来的字段。本书从第 21 章
+（`@Configuration` 与 `@Bean`）到第 22 章（条件装配）反复用到的那个模式，在这里又出现了一次 ——
 **框架的「配置」几乎总是先变成一个 BeanDefinition 的属性，然后靠 setter 注入**。
 
 ### 5.3 三条出路，什么时候用哪条
