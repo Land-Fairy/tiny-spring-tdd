@@ -10,7 +10,7 @@ import java.util.Set;
  * 四个能力，每个都对应一条真实需求：
  * <ul>
  * <li><b>默认值</b>：{@code ${db.url:jdbc:hsqldb:mem:test}} —— 冒号后是缺省值，让「没配也能跑」成为可能</li>
- * <li><b>嵌套</b>：{@code ${${stage}.url}} —— 先解析内层，再解析外层；靠循环自然完成，不需要显式递归</li>
+ * <li><b>嵌套</b>：{@code ${${stage}.url}} —— 先解析内层，再解析外层（外层靠循环，值里的占位符靠一次递归）</li>
  * <li><b>宽松/严格</b>：解析不了时保留原文还是抛异常，构造时决定一次</li>
  * <li><b>多个占位符</b>：{@code ${a}-${b}} 一次替换完</li>
  * </ul>
@@ -84,6 +84,12 @@ public class PropertyPlaceholderHelper {
 				propVal = placeholderResolver.resolvePlaceholder(name);
 				if (propVal == null) {
 					propVal = resolveDefault(name, placeholderResolver, original, visited);
+				}
+				if (propVal != null) {
+					// 值本身也可能含占位符（a=${b}）：趁「a 还在 visited 里」把值解析完。
+					// 这样 a=${a}、a=${b}/b=${a} 会在下一层撞上 visited 直接报循环引用，
+					// 而不是靠外层循环反复替换同一段文本 —— 那会转不停。
+					propVal = replacePlaceholders(propVal, placeholderResolver, original, visited);
 				}
 			}
 			finally {

@@ -85,6 +85,12 @@ public class PropertyPlaceholderHelper {
 				if (propVal == null) {
 					propVal = resolveDefault(name, placeholderResolver, original, visited);
 				}
+				if (propVal != null) {
+					// 值本身也可能含占位符（a=${b}）：趁「a 还在 visited 里」把值解析完。
+					// 这样 a=${a}、a=${b}/b=${a} 会在下一层撞上 visited 直接报循环引用，
+					// 而不是靠外层循环反复替换同一段文本 —— 那会转不停。
+					propVal = replacePlaceholders(propVal, placeholderResolver, original, visited);
+				}
 			}
 			finally {
 				visited.remove(name);
