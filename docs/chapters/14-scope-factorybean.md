@@ -534,12 +534,12 @@ private void destroyScopedInstance(String beanName, Object instance) {
 
 | 本书 | 真实 Spring | 体量（行） |
 |---|---|---|
-| `beans/factory/FactoryBean` | `org.springframework.beans.factory.FactoryBean` | 47 / **149** |
-| `BeanIsNotAFactoryException` | 同名（继承 `BeanNotOfRequiredTypeException`） | 27 / — |
-| `beans/factory/config/Scope` | 同名（多 `resolveContextualObject`） | 65 / — |
-| `FactoryBeanRegistrySupport` | `...factory.support.FactoryBeanRegistrySupport` | 118 / **273** |
+| `beans/factory/FactoryBean` | `org.springframework.beans.factory.FactoryBean` | 45 / **149** |
+| `BeanIsNotAFactoryException` | 同名（继承 `BeanNotOfRequiredTypeException`） | 25 / — |
+| `beans/factory/config/Scope` | 同名（多 `resolveContextualObject`） | 53 / — |
+| `FactoryBeanRegistrySupport` | `...factory.support.FactoryBeanRegistrySupport` | 102 / **273** |
 | `DefaultListableBeanFactory` | 同名 + 中间还隔一层 `AbstractBeanFactory` | 900+ / **2778 + 2146** |
-| `SimpleThreadScope` | `org.springframework.context.support.SimpleThreadScope` | 57 / **98** |
+| `SimpleThreadScope` | `org.springframework.context.support.SimpleThreadScope` | 56 / **98** |
 
 注意最后一行：真实 Spring 在 `FactoryBeanRegistrySupport` 和 `DefaultListableBeanFactory` 之间还有一层 `AbstractBeanFactory`（2146 行），`getBean` 的主流程（`doGetBean`）就在那里。本书把这一层并进了 `DefaultListableBeanFactory`——这是本章最大的「砍」，理由是：**`AbstractBeanFactory` 的绝大部分代码是「别名解析、父子容器、类型转换、原型创建计数」的编排，而我们已经在前面的章节把能讲的部分讲完了。**
 

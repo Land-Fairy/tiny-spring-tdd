@@ -14,8 +14,8 @@
 
 ```java
 // 第 11 章：工厂从构造器参数进来
-BeanFactory factory = context.getBeanFactory();
-beanFactory.addBeanPostProcessor(new AutowiredAnnotationBeanPostProcessor(factory));
+ConfigurableListableBeanFactory beanFactory = context.getBeanFactory();
+beanFactory.addBeanPostProcessor(new AutowiredAnnotationBeanPostProcessor(beanFactory));
 ```
 
 能用，但只在这本书的测试里能用。摆在真实项目里立刻撞三堵墙：

@@ -470,11 +470,21 @@ context.getBean("greetingService", GreetingService.class).hasAudience();
 所以 `@Autowired` 完全无效。想让注解生效，必须自己把它装进来：
 
 ```java
+GenericApplicationContext context = new GenericApplicationContext("ch11-sample");
+BeanDefinitionReader reader = new XmlBeanDefinitionReader(context.getBeanFactory());
+reader.loadBeanDefinitions(new ClassPathResource("ch11/beans.xml"));
+// ① 先装后处理器，再 refresh —— 顺序不能反
 context.getBeanFactory().addBeanPostProcessor(
         new AutowiredAnnotationBeanPostProcessor(context.getBeanFactory()));
 context.refresh();
 // 现在 hasAudience() == true
 ```
+
+**为什么顺序不能反**：`refresh()` 会立刻把所有单例造出来（第 09 章第 5 步
+`preInstantiateSingletons`），造完再装后处理器，字段早就是 `null` 了；
+而且同一个 `GenericApplicationContext` 也不允许 refresh 两次
+（`refreshBeanFactory()` 会抛 `does not support multiple refresh attempts`）。
+这条约束不是本章的细节，而是**整个后处理器机制的存在意义**：它必须在「造对象」之前就位。
 
 等等——为什么必须手动装？真实 Spring 里 `@Autowired` 是开箱即用的。
 
@@ -589,11 +599,13 @@ public PropertyValues postProcessProperties(PropertyValues pvs, Object bean, Str
 | 后果 | 具体表现 |
 |---|---|
 | `afterPropertiesSet` 里看不到依赖 | 本章的 `audiencePresentAtInit` 会是 `false`；真实项目里就是 `NullPointerException` |
-| XML 与注解的先后无法推理 | 真实 Spring 的次序是：XML 属性 → 注解注入（都在 `populateBean` 里），然后才是 before 回调。混在一起就没有确定顺序了 |
+| XML 与注解的先后无法推理 | 真实 Spring 的次序是：注解注入 → XML 属性（都在 `populateBean` 里），然后才是 before 回调。混在一起就没有确定顺序了 |
 | 与 `BeanPostProcessor` 的通用契约冲突 | before 的设计意图是「属性都齐了，做最后检查」，让它在属性没齐时跑，等于推翻契约 |
 
 真实 Spring 的选择是把「注解注入」和「XML 属性」放在**同一个阶段**（`populateBean`），
-所以两者共享同一套冲突规则：**注解注入会覆盖 XML 属性**（因为它在 `pvs` 应用之后执行）。
+所以两者共享同一套冲突规则：**XML 属性会覆盖注解注入**——因为 `postProcessProperties` 先跑
+（上游 `AbstractAutowireCapableBeanFactory:1457`，本书 `DefaultListableBeanFactory:513-527`），
+`applyPropertyValues` 后跑（上游 `:1472`）。顺序记反了，排查「为什么我的 @Autowired 值被 XML 盖掉了」时会找错方向。
 这个顺序在第 19 章会有专门的实验。
 
 ### 4.5 我们的实现与真实的差距

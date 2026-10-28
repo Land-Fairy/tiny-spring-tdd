@@ -5,8 +5,10 @@
 Y 是从上游源码数出来的数，作者抄对了；X 常常是写完表之后代码又长了几行，
 没人回头改。读者按表估算「这一章要读多少」，读到的却是个过时的数。
 
-只认表头同时出现「本书行数」和「真实行数」的表格——形状明确才检查，
-不猜别的表格。列位置按表头文字找；表头认不出就报错，不静默跳过。
+认两种形状（形状明确才检查，不猜别的表格）：
+  A. 两列表头「本书行数」+「真实行数」；
+  B. 单列「体量（行）」里写 `本书 / 真实`（第 13、14、16… 章）。
+列位置按表头文字找；表头认不出就报错，不静默跳过。
 
 用法：
     scripts/check-doc-tables.py              # 全仓
@@ -20,6 +22,7 @@ Y 是从上游源码数出来的数，作者抄对了；X 常常是写完表之�
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -73,21 +76,23 @@ def find_real_class(name: str) -> Path | None:
 
 
 def check_table(doc: Path, module: Path, header: list[str], rows: list) -> None:
-    global checked, tables_checked
-
     def col(*keys: str):
         for i, h in enumerate(header):
             if any(k in h for k in keys):
                 return i
         return None
 
-    name_col = col("类", "接口")
+    vol_col = col("体量")
+    name_col = col("类", "接口") if vol_col is None else col("本书")
     book_col = col("本书行数")
     real_col = col("真实行数")
     if name_col is None:
         errors.append(f"{doc.name}: 体量对照表认不出类名列：{header}")
         return
     STATS["tables"] += 1
+    if vol_col is not None:
+        check_combined(doc, module, name_col, col("真实 Spring", "真实"), vol_col, rows)
+        return
 
     for line_no, cells in rows:
         if len(cells) <= max(name_col, book_col, real_col) or is_blank(cells[book_col]):
@@ -120,6 +125,51 @@ def check_table(doc: Path, module: Path, header: list[str], rows: list) -> None:
                 f"{doc.name}:{line_no}: {name} 真实行数写 {real_claim}，"
                 f"上游 {real_file.relative_to(SPRING_REF)} 实测 {real_actual}"
             )
+
+
+def check_combined(doc: Path, module: Path, name_col: int, real_col, vol_col: int, rows: list) -> None:
+    """第二种形状：单列「体量（行）」里写 `本书 / 真实`，例如 `275 / **841**`。
+
+    第 13、14、16… 章用的是这个写法。只认「恰好一个斜杠、两侧都是纯数字」的行；
+    `900+`、`2778 + 2146`、`—` 一律跳过，不猜。
+    """
+    for line_no, cells in rows:
+        if len(cells) <= vol_col:
+            continue
+        name = clean(cells[name_col]).split("/")[-1].split("(")[0].strip().lstrip("@")
+        if not name or name.startswith("*"):
+            continue
+        vol = clean(cells[vol_col])
+        if vol.count("/") != 1:
+            continue
+        book_claim, real_claim = (x.strip() for x in vol.split("/"))
+
+        if re.fullmatch(r"\d+", book_claim):
+            book_file = find_book_class(module, name)
+            if book_file is None:
+                errors.append(f"{doc.name}:{line_no}: 本书 {module.name} 里找不到 {name}.java")
+                continue
+            book_actual = wc(book_file)
+            STATS["numbers"] += 1
+            if int(book_claim) != book_actual:
+                fixes.append((doc, line_no, vol_col, book_claim, str(book_actual)))
+                errors.append(
+                    f"{doc.name}:{line_no}: {name} 本书行数写 {book_claim}，"
+                    f"实测 {book_actual}（差 {book_actual - int(book_claim):+d}）"
+                )
+
+        if re.fullmatch(r"\d+", real_claim):
+            real_file = find_real_class(name)
+            if real_file is None:
+                continue  # jakarta 注解之类不在 Spring 仓库里，不是错误
+            real_actual = wc(real_file)
+            STATS["numbers"] += 1
+            if int(real_claim) != real_actual:
+                fixes.append((doc, line_no, vol_col, real_claim, str(real_actual)))
+                errors.append(
+                    f"{doc.name}:{line_no}: {name} 真实行数写 {real_claim}，"
+                    f"上游 {real_file.relative_to(SPRING_REF)} 实测 {real_actual}"
+                )
 
 
 def resolve_module(doc: Path) -> Path | None:
@@ -176,7 +226,9 @@ def scan(docs: list[Path]) -> None:
                 continue
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
             if state["header"] is None:
-                if any("本书行数" in c for c in cells) and any("真实行数" in c for c in cells):
+                two_col = any("本书行数" in c for c in cells) and any("真实行数" in c for c in cells)
+                one_col = any("体量" in c for c in cells)
+                if two_col or one_col:
                     state["header"] = cells
             elif all(set(c) <= set("-: ") for c in cells):
                 continue

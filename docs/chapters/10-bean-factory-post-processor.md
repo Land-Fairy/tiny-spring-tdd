@@ -336,7 +336,7 @@ public void addBeanFactoryPostProcessor(BeanFactoryPostProcessor postProcessor) 
 ```java
 GenericApplicationContext context = new GenericApplicationContext("ch10-sample");
 context.getEnvironment().getPropertySources()
-        .addLast(new MapPropertySource("test", Map.of("db.url", "jdbc:hsqldb:mem:test")));
+        .addLast(new MapPropertySource("test", Map.<String, Object>of("db.url", "jdbc:hsqldb:mem:test")));
 context.addBeanFactoryPostProcessor(new PropertySourcesPlaceholderConfigurer(context.getEnvironment()));
 new XmlBeanDefinitionReader(context.getBeanFactory())
         .loadBeanDefinitions(new ClassPathResource("ch10/beans.xml"));
@@ -719,5 +719,5 @@ $ find . -name 'BeanDefinitionRegistryPostProcessor.java'
 ```bash
 ./mvnw -pl step-10-bean-factory-post-processor test      # 188 个测试
 ./mvnw -pl step-10-bean-factory-post-processor verify    # 六道闸门
-./mvnw -q verify                                         # 全仓 10 个模块
+./mvnw -q verify                                         # 全仓 35 个模块（本章只关心前 10 个）
 ```
