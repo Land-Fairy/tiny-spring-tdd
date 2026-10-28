@@ -17,6 +17,8 @@ package org.springframework.beans;
  * <b>真实 Spring 对应</b>：{@code org.springframework.beans.factory.FatalBeanException} （继承
  * {@code BeansException}；{@code BeanCreationException}、{@code BeanDefinitionStoreException}
  * 都在它下面）。
+ *
+ * @see org.springframework.beans.FatalBeanException
  */
 public class FatalBeanException extends BeansException {
 

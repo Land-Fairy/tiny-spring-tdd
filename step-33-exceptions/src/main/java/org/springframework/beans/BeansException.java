@@ -26,6 +26,8 @@ import org.springframework.core.NestedRuntimeException;
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.beans.BeansException}（53 行，继承
  * {@code NestedRuntimeException}）。
+ *
+ * @see org.springframework.beans.BeansException
  */
 public class BeansException extends NestedRuntimeException {
 

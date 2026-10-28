@@ -403,7 +403,7 @@ if (!optional) {
 | 6 | `invokeBeanFactoryPostProcessors` 不分批 | `PriorityOrdered` / `Ordered` / 其余三批 | 第 10 章只按注册顺序 |
 | 7 | `registerBeanPostProcessors` 不分批 | 同上 + 内部后处理器最后注册 | 顺序依赖 BPP 注册顺序 |
 | 8 | `finishBeanFactoryInitialization` 无 `setConversionService` | 把第 23 章的 ConversionService 装进工厂 | 我们的转换器是工厂内建字段，不是可替换服务 |
-| 9 | 无 `freezeConfiguration` 的完整语义 | 冻结后禁止再改图纸 | 第 22 章只有标记位 |
+| 9 | 无 `freezeConfiguration` 的完整语义 | 冻结后禁止再改图纸 | 全书没有任何 frozen 标记；`freezeConfiguration` 只在 `ConfigurableListableBeanFactory` 的 javadoc 里被提到，正文没讲 |
 | 10 | `catch` 不分异常类型 | 三个 catch 分支 | 行为等价，只是签名精度不同 |
 | 11 | 无 `startupShutdownLock` | 启动/关闭互斥 | 并发 `refresh()` / `close()` 有竞态 |
 | 12 | 无 `LiveBeansView` | 运维可观测 | 无法从外部查看容器内 Bean 快照 |

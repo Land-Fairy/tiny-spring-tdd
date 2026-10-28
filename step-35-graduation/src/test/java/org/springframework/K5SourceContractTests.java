@@ -33,9 +33,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </ul>
  *
  * <p>
- * <b>存量与新账分开算</b>：{@code src/test/resources/k5-baseline.txt} 里登记的是 2026-10 之前就欠着的 137
- * 个类型。基线不是免罪符，是<b>还款计划</b>——补一个删一行。不在基线里的新类型缺 {@code @see} 就红。 这条设计抄的是真实 Spring
- * 自己的做法：它的构建里有 {@code JavadocTypeCheck}，新类缺 javadoc 直接构建失败， 而历史遗留靠 suppress 文件登记，逐条销账。
+ * <b>存量与新账分开算</b>：{@code src/test/resources/k5-baseline.txt} 里登记的是 2026-10 之前就欠着的存量类型 （初始
+ * 137 个，逐条销账；剩余条数以文件为准，不在这里写死）。基线不是免罪符，是<b>还款计划</b>——补一个删一行。不在基线里的新类型缺 {@code @see} 就红。
+ * 这条设计抄的是真实 Spring 自己的做法：它的构建里有 {@code JavadocTypeCheck}，新类缺 javadoc 直接构建失败， 而历史遗留靠
+ * suppress 文件登记，逐条销账。
  *
  * <p>
  * 扫全仓（不是只看本模块）的理由同 {@link K2SourceContractTests}：每一章是完整副本，同一处违规会出现 35 次。

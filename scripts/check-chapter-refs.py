@@ -45,6 +45,12 @@ ROOT = Path(__file__).resolve().parent.parent
 TOPICS = ROOT / "docs" / "chapter-topics.md"
 SCAN_DIRS = [ROOT / "docs" / "chapters", ROOT / "docs" / "appendix"]
 SCAN_FILES = [ROOT / "README.md", ROOT / "GLOSSARY.md"]
+# javadoc 里的「第 NN 章」一直是盲区：代码注释里的章号指引没有任何机械校验
+# （实测 `ConfigurableListableBeanFactory.java:31` 就把 freezeConfiguration 指到了第 32 章，
+# 而第 32 章讲的是 getBean 流程）。35 份副本内容相同，只审最全的一份。
+SCAN_JAVA = ROOT / "step-35-graduation" / "src" / "main" / "java"
+# 假阳性豁免：`相对路径:行号` + 同行写理由（`#` 开头为注释）。每条都要能被第二个人复核。
+ALLOW = ROOT / "scripts" / "chapter-refs-allow.txt"
 
 REF = re.compile(r"第\s*([0-9]{1,2}(?:\s*[、,，和]\s*[0-9]{1,2})*)\s*章")
 PHRASE_LEN = 30
@@ -54,6 +60,10 @@ BARE = set(" ）)。，、；：|】」”\"' \t")
 CLAUSE_END = set("。，；：、（）()【】「」\"\"'|!?！？\n—-")
 # 「第 NN 章」后面允许的连接词：只有这些才表示「后面这个词是本章的主题」
 CONNECTORS = ("讲的", "说的话", "讲", "说的", "说的那套", "的那套", "的", "中", "里", "这一块", "那套")
+# 主题与章号之间常见的「连接标记」：中文破折号、括号、表格竖线、加粗与空白。
+# 它们是排版，不是从句边界——「**循环依赖**——第 30 章」「| 直接失败 | **第 30 章** |」
+# 在读者眼里都是带主题的引用，跨过去才看得见主题。
+MARKERS = set("|—-\u2014（(【「：:、,， \t*\u3000`")
 
 errors: list[str] = []
 warns: list[str] = []
@@ -61,6 +71,7 @@ checks = 0
 skipped = 0
 weak = 0
 byclass = 0
+allowed = 0
 
 # 短语里出现这些词不算「有主题」——它们只是连接语或指代，说明了不指哪一章
 STOPWORDS = (
@@ -107,6 +118,10 @@ def load_class_owner() -> dict[str, int]:
             continue
         ch = int(m.group(1))
         for f in mod.glob("src/main/java/**/*.java"):
+            # 示例类（`samples/`）不算证据：它们是「用这个容器」的演示，
+            # 出现在哪一章取决于情节需要，不取决于知识点归属。
+            if "samples" in f.parts:
+                continue
             owner.setdefault(f.stem, ch)
     return owner
 
@@ -153,10 +168,34 @@ def load_topics() -> dict[int, list[str]]:
     return topics
 
 
-def scan_file(path: Path, topics: dict[int, list[str]], dfw: dict[str, int], owner: dict[str, int]) -> None:
-    global checks
+def load_allow() -> dict[str, str]:
+    """读豁免表：`相对路径:行号  # 理由`。没有理由的行不生效，防止悄悄放行。"""
+    out: dict[str, str] = {}
+    if not ALLOW.is_file():
+        return out
+    for line in ALLOW.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "#" not in line:
+            continue
+        where, reason = line.split("#", 1)
+        if reason.strip():
+            out[where.strip()] = reason.strip()
+    return out
+
+
+def scan_file(path: Path, topics: dict[int, list[str]], dfw: dict[str, int], owner: dict[int, int],
+              allow: dict[str, str] | None = None) -> None:
+    global checks, allowed
     in_fence = False
-    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    is_java = path.suffix == ".java"
+    for line_no, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if is_java:
+            stripped = raw_line.lstrip()
+            # 只看注释行：javadoc 的 ` * `、行注释 `// `、块注释开头
+            if not (stripped.startswith("*") or stripped.startswith("//") or stripped.startswith("/*")):
+                continue
+            raw_line = re.sub(r"^\s*(/\*\*?|\*|//)\s?", "", raw_line)
+        line = raw_line
         if line.lstrip().startswith("```"):
             in_fence = not in_fence
             continue
@@ -176,12 +215,23 @@ def scan_file(path: Path, topics: dict[int, list[str]], dfw: dict[str, int], own
                 forward.append(ch)
             forward_s = "".join(forward).strip()
             # 后向：本章号之前、同一个从句里的部分（「X 的完整解法要到第 NN 章」这种形状）
+            # 只跨「一层」标记：取紧贴章号的那一小段。跨过两层会把上一句的主题也算进来，
+            # 那正是「只处理属性值——因为…不支持构造器参数（第 04 章）」这类假阳性的来源。
             backward = []
+            crossed = False
             for ch in reversed(line[max(0, m.start() - PHRASE_LEN) : m.start()]):
                 if ch in CLAUSE_END:
+                    if ch in MARKERS and not crossed:
+                        crossed = True
+                        continue
                     break
                 backward.append(ch)
-            backward_s = "".join(reversed(backward)).strip()
+            backward_s = "".join(reversed(backward)).strip().lstrip("|—-（(【「：:、,， *`")
+            # 跨标记取回来的那一段，只有在「短且纯中文」时才算主题：
+            # 「构造器注入的循环依赖直接失败 | 第 30 章」是主题，「而 after 链正是干这个的（第 26 章」
+            # 是上一句的尾巴。带英文标识符或长句一律不重构上下文，宁可漏。
+            if crossed and (len(backward_s) > 14 or re.search(r"[A-Za-z0-9@/]", backward_s)):
+                backward_s = ""
 
             tail = line[m.end() : m.end() + PHRASE_LEN]
             if not tail or tail[0] in BARE:
@@ -212,11 +262,29 @@ def scan_file(path: Path, topics: dict[int, list[str]], dfw: dict[str, int], own
                 continue
             checks += 1
             # 短语里的类名若首现于被引章，也是证据（比关键词更硬：类不会说谎）
-            named = re.findall(r"`([A-Z][A-Za-z0-9]+)", phrase)
+            # markdown 用反引号，javadoc 用 {@code X}/{@link X}——两种都要认，
+            # 类名是这套判据里最硬的证据：类不会说谎，关键词会。
+            named = re.findall(r"`([A-Z][A-Za-z0-9]+)", phrase) + re.findall(
+                r"\{@(?:code|link) ([A-Z][A-Za-z0-9]+)", phrase
+            )
             if any(owner.get(c) in targets for c in named):
                 global byclass
                 byclass += 1
                 continue
+            # 通道②b：短语里点名的类**全部**首现于别的章 —— 类不会说谎，这是最硬的反证。
+            # 只在「一个都没落在被引章」时判，避免把「第 27 章的属性填充（在 InstantiationStrategy 之后）」
+            # 这类真正在讲本章的句子误伤。
+            if named and all(owner.get(c) not in targets for c in named):
+                got_cls = "、".join(
+                    f"{c}（第 {owner[c]:02d} 章）" for c in named if c in owner
+                )
+                if got_cls:
+                    errors.append(
+                        f"{path.relative_to(ROOT)}:{line_no}: 引用 "
+                        + "、".join(f"第 {t:02d} 章" for t in sorted(targets))
+                        + f"，但短语里点名的类 {got_cls} 不属于它"
+                    )
+                    continue
 
             def specific(t: int) -> list[str]:
                 """目标章「具体词」命中：跨章频次 ≤3 的关键词，能真正指向一章。"""
@@ -229,6 +297,20 @@ def scan_file(path: Path, topics: dict[int, list[str]], dfw: dict[str, int], own
                 continue
             others = {t: specific(t) for t in topics if t not in targets and specific(t)}
             if not others:
+                # 通道⑤：短语里的词一个具体词都不构成，但**全都能对上的词只属于某一章**，
+                # 而那一章不是被引章 —— 这是「循环依赖（只属于第 30 章）指到第 27 章」的形状。
+                # 泛词（跨 12 章都出现的「循环依赖」）不给通行证，只是从「静默通过」改成「唯一归属才算错」。
+                owners = {t for t in topics if generic(t)}
+                if len(owners) == 1 and not (owners & targets):
+                    only = next(iter(owners))
+                    # 记 WARN 不记 ERROR：泛词之所以「泛」，是因为后面的章**也**在讲这件事，
+                    # 所以「唯一归属」只是提示，不足以下判决（实测 6 条里至少 3 条是真引用）。
+                    warns.append(
+                        f"{path.relative_to(ROOT)}:{line_no}: 引用 "
+                        + "、".join(f"第 {t:02d} 章" for t in sorted(targets))
+                        + f"，而短语「{phrase}」里的关键词只在第 {only:02d} 章的表里（人工判断）"
+                    )
+                    continue
                 # 只命中泛词（「代理」「Bean」）：说得不够具体，但也说不出它错，计「低置信度通过」
                 if any(generic(t) for t in targets):
                     global weak
@@ -241,6 +323,9 @@ def scan_file(path: Path, topics: dict[int, list[str]], dfw: dict[str, int], own
                 )
                 continue
             where = f"{path.relative_to(ROOT)}:{line_no}"
+            if allow and where in allow:
+                allowed += 1
+                continue
             got = "、".join(f"第 {t:02d} 章（{'/'.join(ks)}）" for t, ks in sorted(others.items()))
             target_s = "、".join(f"第 {t:02d} 章" for t in sorted(targets))
             errors.append(f"{where}: 引用 {target_s}，但短语「{phrase}」属于 {got}")
@@ -248,6 +333,7 @@ def scan_file(path: Path, topics: dict[int, list[str]], dfw: dict[str, int], own
 
 def main() -> int:
     show_all = "--all-warns" in sys.argv
+    allow = load_allow()
     topics = load_topics()
     dfw = load_df(topics)
     owner = load_class_owner()
@@ -255,8 +341,10 @@ def main() -> int:
     for d in SCAN_DIRS:
         files.extend(sorted(d.glob("*.md")))
     files.extend(p for p in SCAN_FILES if p.is_file())
+    if SCAN_JAVA.is_dir():
+        files.extend(sorted(SCAN_JAVA.rglob("*.java")))
     for path in files:
-        scan_file(path, topics, dfw, owner)
+        scan_file(path, topics, dfw, owner, allow)
     if show_all:
         for w in warns:
             print(f"WARN  {w}")
@@ -266,7 +354,7 @@ def main() -> int:
     print(
         f"── 汇总: {checks} 处带主题的交叉引用，{len(errors)} 个指错，"
         f"{len(warns)} 处短语太泛未判定（--all-warns 可列出），{weak} 处仅泛词（低置信度通过），"
-        f"{byclass} 处靠类名归属通过，{skipped} 处无主题已跳过"
+        f"{byclass} 处靠类名归属通过，{skipped} 处无主题已跳过，{allowed} 处按豁免表放行"
     )
     return 1 if errors else 0
 

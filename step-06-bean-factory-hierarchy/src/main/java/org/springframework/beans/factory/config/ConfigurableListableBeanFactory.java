@@ -28,7 +28,7 @@ import org.springframework.beans.factory.ListableBeanFactory;
  * 对应</b>：{@code org.springframework.beans.factory.config.ConfigurableListableBeanFactory}
  * （179 行）。本书砍掉了：{@code ignoreDependencyType}/{@code ignoreDependencyInterface}/
  * {@code registerResolvableDependency}（第 20
- * 章）、{@code freezeConfiguration}、{@code clearMetadataCache} （性能与不可变性，第 32 章）。
+ * 章）、{@code freezeConfiguration}、{@code clearMetadataCache} （性能与不可变性，本书未实现）。
  *
  * @see ListableBeanFactory
  * @see AutowireCapableBeanFactory

@@ -32,6 +32,26 @@ LINE = re.compile(
 )
 
 
+# 三节必须存在——它们是「六视角」这个承诺在文档里的最低形状：
+# 矩阵（六条视角各自的判决）、复核记录（哪些数字是我亲手跑的）、
+# 读者会在哪放弃（这份评审对读者的用处）。缺任何一节，读者就没法判断这份评审算不算数。
+REQUIRED = (
+    ("六视角矩阵", ("六视角", "视角矩阵")),
+    ("复核记录", ("复核记录",)),
+    ("读者会在哪", ("会在哪",)),
+)
+
+
+def has_structure(lines: list[str], needles: tuple[str, ...]) -> bool:
+    """命中标题或表格行都算——ch01–15 用 `## 一、六视角矩阵`，ch16–26 用带 V1–V6 的表。"""
+    for line in lines:
+        if line.startswith("## ") and any(n in line for n in needles):
+            return True
+        if line.startswith("|") and any(n in line for n in needles):
+            return True
+    return False
+
+
 def check_one(path: pathlib.Path) -> list[str]:
     errors: list[str] = []
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -53,7 +73,45 @@ def check_one(path: pathlib.Path) -> list[str]:
     for key, label in (("bc", "修前"), ("ac", "修后")):
         if not m.group(key).strip():
             errors.append(f"{path.name}:{idx + 1}: {label}括号说明不得为空")
+    for label, needles in REQUIRED:
+        if not has_structure(lines, needles):
+            errors.append(f"{path.name}: 缺「{label}」一节（六视角评审的最低形状）")
     return errors
+
+
+P0_ROW = re.compile(r"^\|\s*([A-E])[0-9]*\s*\|")
+P1_ITEM = re.compile(r"^(?:\d+\.|[-*])\s+\S")
+
+
+def stats(chapters: list[pathlib.Path]) -> int:
+    """数出每篇的 P0（按类别）与 P1 条数。
+
+    刻意不要求 P0 行带序号：早期批次写 `| A1 |`，后期批次写 `| B |`，
+    两种都是有效表达。要机器数得动，先让两种形状都认；要不要统一编号是另一件事。
+    """
+    by_class: dict[str, int] = {}
+    total_p0 = total_p1 = 0
+    for path in chapters:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        head = next((x for x in lines if x.startswith("- **判决**：")), "（缺）")
+        p0 = p1 = 0
+        in_p1 = False
+        for line in lines:
+            if line.startswith("## "):
+                in_p1 = "P1" in line
+                continue
+            m = P0_ROW.match(line)
+            if m:
+                p0 += 1
+                by_class[m.group(1)] = by_class.get(m.group(1), 0) + 1
+            elif in_p1 and P1_ITEM.match(line):
+                p1 += 1
+        total_p0 += p0
+        total_p1 += p1
+        verdict = re.search(r"修后 \*\*([A-Z-]+)\*\*", head)
+        print(f"{path.stem}\tP0={p0}\tP1={p1}\t修后={verdict.group(1) if verdict else '?'}")
+    print(f"── 合计：P0 {total_p0} 条（" + " ".join(f"{k}×{v}" for k, v in sorted(by_class.items())) + f"），P1 {total_p1} 条，{len(chapters)} 篇")
+    return 0
 
 
 def main() -> int:
@@ -61,6 +119,8 @@ def main() -> int:
         print(f"找不到 {REVIEWS}", file=sys.stderr)
         return 2
     chapters = sorted(REVIEWS.glob("ch*.md"))
+    if "--stats" in sys.argv[1:]:
+        return stats(chapters)
     if "--list" in sys.argv[1:]:
         for path in chapters:
             line = next(

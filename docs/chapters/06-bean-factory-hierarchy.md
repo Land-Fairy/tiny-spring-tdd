@@ -884,7 +884,7 @@ getBean(beanName)
 | 按注解枚举（`getBeanNamesForAnnotation`） | `@Component` 扫描需要它 | 17 |
 | `ConfigurableBeanFactory` 的 32 个设置 | 只有父容器与参数名策略可改 | 09 / 11 / 23 |
 | `ignoreDependencyType` / `registerResolvableDependency` | `@Autowired ServletRequest` 这类注入不支持 | 20 |
-| `freezeConfiguration` / `clearMetadataCache` | 没有「配置不可再改」的保护 | 32 |
+| `freezeConfiguration` / `clearMetadataCache` | 没有「配置不可再改」的保护 | 本书未讲 |
 | 实现的 4 层继承 | 所有方法挤在 2 个类里 | 32 |
 | `FactoryBean` 语义（`&` 前缀） | 只支持普通 Bean | 14 |
 

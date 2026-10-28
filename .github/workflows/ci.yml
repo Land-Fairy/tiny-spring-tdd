@@ -86,3 +86,10 @@ jobs:
         env:
           SPRING_REF: ${{ github.workspace }}/.spring-ref
         run: bash scripts/check-doc-refs.sh --all
+
+      # 第 13 道闸门要解析「上游类名:行号」，所以跟着这一份上游源码走；
+      # 没有上游时脚本降级为 WARN（只查本仓引用），不误报。
+      - name: 第 13 道闸门 · 评审文档的引用可解析
+        env:
+          SPRING_REF: ${{ github.workspace }}/.spring-ref
+        run: python3 scripts/check-review-refs.py

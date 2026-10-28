@@ -14,6 +14,8 @@ package org.springframework.beans;
  * <b>真实 Spring 对应</b>：{@code org.springframework.beans.PropertyAccessException} （90 行，字段是
  * {@code PropertyChangeEvent}，因此 {@code getPropertyName()} 与 {@code getValue()}
  * 都从事件里取；{@code getErrorCode()} 是抽象方法）。
+ *
+ * @see org.springframework.beans.PropertyAccessException
  */
 public abstract class PropertyAccessException extends BeansException {
 
