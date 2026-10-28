@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-29-aop-pitfalls</artifactId>
-	<name>step-26-autoproxy</name>
+	<name>step-29-aop-pitfalls</name>
 	<description>第 29 章 AOP 失效场景合集</description>
 
 	<dependencies>

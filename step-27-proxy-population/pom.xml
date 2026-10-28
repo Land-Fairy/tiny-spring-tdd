@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-27-proxy-population</artifactId>
-	<name>step-26-autoproxy</name>
+	<name>step-27-proxy-population</name>
 	<description>第 27 章 代理对象的属性填充</description>
 
 	<dependencies>

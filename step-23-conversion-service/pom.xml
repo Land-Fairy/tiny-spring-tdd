@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-23-conversion-service</artifactId>
-	<name>step-19-autowire-candidates</name>
+	<name>step-23-conversion-service</name>
 	<description>第 23 章 ConversionService 与类型转换</description>
 
 	<dependencies>

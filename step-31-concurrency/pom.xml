@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-31-concurrency</artifactId>
-	<name>step-26-autoproxy</name>
+	<name>step-31-concurrency</name>
 	<description>第 31 章 并发模型：锁、ConcurrentHashMap、延迟 ObjectFactory</description>
 
 	<dependencies>

@@ -12,7 +12,7 @@
 	</parent>
 
 	<artifactId>step-33-exceptions</artifactId>
-	<name>step-26-autoproxy</name>
+	<name>step-33-exceptions</name>
 	<description>第 33 章 异常体系与排错实战</description>
 
 	<dependencies>
