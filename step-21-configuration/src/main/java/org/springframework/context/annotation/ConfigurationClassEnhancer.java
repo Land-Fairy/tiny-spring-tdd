@@ -510,6 +510,11 @@ final class ConfigurationClassEnhancer {
 	/**
 	 * 一个方法体的三件套：字节码、栈深、局部变量槽数。打包成一个记录只是为了不让 {@code methodInfo} 收五个以上的参数。
 	 *
+	 * <p>
+	 * <b>为什么这里是 {@code record}</b>（CODE-STANDARDS 的 K2-b）：本书自创、仅内部使用、不进公共 API、
+	 * 不需要继承、也不靠实例身份表达任何东西——一段生成的字节码片段，字段相同就是同一段。判据全中， 用 {@code record} 让「不可变 +
+	 * 值相等」成为语言保证，而不是靠注释提醒读者。
+	 *
 	 * @param bytes 字节码
 	 * @param maxStack 最大栈深
 	 * @param maxLocals 局部变量槽数（含 {@code this}）

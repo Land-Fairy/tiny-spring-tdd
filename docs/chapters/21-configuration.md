@@ -1,5 +1,7 @@
 # 第 21 章 `@Configuration` 与 `@Bean`：full、lite，和一个自己写的类文件生成器
 
+> 🌿(ch00–ch20) 🕳️
+
 前二十章里，Bean 的图纸有三种来源：代码里 `new GenericBeanDefinition()` 手写、XML 解析出来、包扫描扫出来。三种来源有一件共同的事——**每个 Bean 都是某个类被 `new` 出来的**。
 
 这一章要打破它。`@Bean` 方法产出的对象不是「某个类被 new 出来的」，而是「**某个对象上的一个方法返回的**」。容器得学会第二种造对象的方式，而更要紧的是：配置类里那句普通的方法调用 `counter()`，语义到底是「调方法」还是「要 Bean」？
@@ -265,6 +267,9 @@ return body.invokeWithArguments(callArgs);
 | javaformat | 13 个文件格式不合 | `spring-javaformat:apply` |
 | checkstyle `UnusedImports` | `ConfigurationClassPostProcessor` 的 `java.util.List`、测试里的 `java.util.Map` | 删 |
 | checkstyle `ParameterNumber` | `methodInfo(int,int,int,byte[],int,int)` 六个参数 | 打包成 `private record MethodCode(byte[] bytes, int maxStack, int maxLocals)` |
+
+那个 `MethodCode` 是全书第二处 `record`（另一处是第 17 章的 `ConstantPool`）。为什么这里用 `record`、而 `PropertyValue` 不能用，
+判据在 `docs/CODE-STANDARDS.md` 的 K2-b：**本书自创 / 仅内部使用 / 不进公共 API / 不靠身份语义**，四条同时成立才用。
 | checkstyle `DeclarationOrder` / `ConstantName` | 静态常量 `codeAttributeNameIndex` 声明在方法之后、且不是全大写 | 改名 `CODE_ATTRIBUTE_NAME_INDEX` 并移到类顶部 |
 | checkstyle `IllegalThrows` | 拦截器三处 `throws Throwable` | **收窄规则**（见下） |
 

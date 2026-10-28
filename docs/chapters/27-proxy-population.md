@@ -1,5 +1,7 @@
 # 第 27 章 代理对象的属性填充
 
+> 🌿(ch00–ch26) 🕳️ 🔖(第 28 章) 🔖(第 30 章)
+
 > 本章代码：`step-27-proxy-population`。新增 `TargetSource` / `SingletonTargetSource` / `HotSwappableTargetSource`，
 > 改写 `AdvisedSupport` 与 `JdkDynamicAopProxy`，并给 `AbstractAutoProxyCreator` 补上 `Ordered`。
 > 测试从 398 个涨到 **407** 个，行覆盖 86.7%、分支覆盖 75.2%。

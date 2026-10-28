@@ -1,5 +1,7 @@
 # 第 26 章 织入生命周期：`AutoProxyCreator`
 
+> 🌿(ch00–ch25) 🕳️
+
 > 本章目标：回答第 25 章结尾留下的那个问题——**谁把目标装进 `ProxyFactory`？**
 > 答案是一个 `BeanPostProcessor`：它在 `postProcessAfterInitialization` 阶段，替容器里的每个 Bean
 > 决定「要不要换成代理」。从这一章起，AOP 不再需要用户写一行装配代码。

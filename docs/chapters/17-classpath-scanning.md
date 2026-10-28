@@ -1,5 +1,7 @@
 # 第 17 章 包扫描：ASM 元数据 vs 反射
 
+> 🌿(ch00–ch16) 🕳️
+
 > 到第 16 章为止，你写下的每一个 Bean 都得先在 XML 里报一次户口。真实项目里没人这么干：
 > 你写 `@Service class OrderService`，Spring 自己就找到了它。
 >
@@ -204,6 +206,9 @@ ClassFile {
 `@Retention(CLASS)` 的注解会进 `RuntimeInvisibleAnnotations`，`@Retention(SOURCE)` 的压根不进字节码。
 
 ### 3.3 常量池：所有字符串的图书馆
+
+> 这一节的实现会打包成一个 `private record ConstantPool(String[] utf8, int[] classRefs)`——**这是全书两处 `record` 之一**，
+> 也是最该用 `record` 的形状：本书自创、仅内部使用、不进公共 API、不靠实例身份语义。判据见 `docs/CODE-STANDARDS.md` 的 K2-b。
 
 类文件不自带字符串，它自带一张表，然后用两个字节的下标去查：
 

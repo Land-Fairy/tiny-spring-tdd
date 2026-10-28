@@ -1,5 +1,7 @@
 # 第 06 章 BeanFactory 的接口分层：为什么一个接口不够
 
+> 🌿(ch00–ch05) 🕳️
+
 > **本章你要带走的一句话**：接口分层的目的不是「代码整洁」，是**让调用方只依赖它真正需要的那部分能力**——这样实现才能换、测试才能桩、依赖方向才不会倒。
 >
 > **前提**：到第 05 章结束，`DefaultListableBeanFactory` 已经有 24 个公开方法，还有 6 个从 `DefaultSingletonBeanRegistry` 继承来的。所有测试都写着 `DefaultListableBeanFactory`。
