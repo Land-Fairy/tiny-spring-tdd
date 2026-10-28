@@ -230,7 +230,7 @@ README 三行加粗原则里最硬的一条是「**每章都是可运行快照**
 |---|---|---|
 | 12 `check-review-format.py` | 把 `docs/reviews/ch07.md` 的判决行改成 `- **判决**：还行`（词表外的词） | **红**，点名 `ch07.md` 与非法词 ✓ |
 | 10 `check-chapter-refs.py` | 把「循环依赖 → 第 30 章」三处改指第 27 章（第 03、05、09 章） | **全绿，一处没抓到** ✗ |
-| 13 `check-review-refs.py` | 在 `docs/reviews/ch20.md` 末尾追加一条 `DefaultListableBeanFactory.java:99999` | **红**，点名 `ch20.md`、报「超出最长候选 2778 行（35 份候选）」✓ |
+| 13 `check-review-refs.py` | 在 `docs/reviews/ch20.md` 末尾追加一条指向 `DefaultListableBeanFactory` 第 99999 行的引用 | **红**，点名 `ch20.md`、报「超出最长候选 2778 行（35 份候选）」✓ |
 
 闸门 10 为什么抓不到，查清楚了：它的判据是「短语里的关键词只属于被引章以外的一章」。
 但「循环依赖」出现在 **12 个章节**、「构造器注入」「属性填充」各 12/14 章——这类词按
