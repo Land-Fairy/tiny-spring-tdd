@@ -478,6 +478,24 @@ finally {
 3. **框架的正确性不能依赖用户的书写顺序**。给创建器写死 `LOWEST_PRECEDENCE`，把「什么时候套壳」从
    配置顺序里拿出来（红三）。
 
+### 一条工程侧的教训（本章交付后才炸出来的）
+
+本章新建的包叫 `org.springframework.aop.target`。项目的 `.gitignore` 里有一条没锚定的
+`target/`，于是**这 18 个源文件从未入库**——本地构建一直是绿的（文件在磁盘上），
+直到 CI 从 git 取代码才报：
+
+```
+package org.springframework.aop.target does not exist
+  symbol: class SingletonTargetSource
+```
+
+`git status` 干净得像什么都没发生。修法是把忽略规则锚定到模块根：
+`/target/` 与 `/*/target/`。
+
+记住这条：**「本机绿、CI 红」的最短路径，就是一条没有锚定的通配规则。**
+它和本章主题是同一个道理的反面——你以为你在描述「构建产物」，
+实际你描述的是「所有叫 target 的目录」。
+
 ### 这一章砍掉了什么
 
 | 省略的东西 | 真实 Spring 怎么做 | 影响 |
