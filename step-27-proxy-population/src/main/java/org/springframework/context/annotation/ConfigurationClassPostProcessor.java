@@ -144,6 +144,7 @@ public class ConfigurationClassPostProcessor implements BeanFactoryPostProcessor
 		GenericBeanDefinition beanDefinition = new GenericBeanDefinition();
 		beanDefinition.setBeanClassName(importedClass.getName());
 		beanDefinition.setLazyInit(isLazy(importedClass));
+		beanDefinition.setPrimary(importedClass.isAnnotationPresent(Primary.class));
 		((BeanDefinitionRegistry) this.beanFactory).registerBeanDefinition(beanName, beanDefinition);
 		// 导入的可能还是个配置类：递归（其 @Bean 方法要用「它自己的 Bean 名」当 factoryBeanName）
 		processConfigurationClass(beanName, processed);
@@ -232,6 +233,8 @@ public class ConfigurationClassPostProcessor implements BeanFactoryPostProcessor
 			beanDefinition.setFactoryBeanName(configBeanName);
 			beanDefinition.setFactoryMethodName(method.getName());
 			beanDefinition.setLazyInit(isLazy(method));
+			// @Primary 写在 @Bean 方法上也是合法的（真实 Spring 同样支持）
+			beanDefinition.setPrimary(method.isAnnotationPresent(Primary.class));
 			if (!bean.initMethod().isEmpty()) {
 				beanDefinition.setInitMethodName(bean.initMethod());
 			}

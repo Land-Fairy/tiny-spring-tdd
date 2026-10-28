@@ -1,6 +1,6 @@
 # ADR-0002：完全不使用 CGLIB
 
-- **状态**：已接受
+- **状态**：已接受；其中**决策 3**（`@Configuration` full 模式不做子类增强）已被 [ADR-0007](0007-config-enhancer-supersedes-adr0002.md) 取代
 - **日期**：2026-10-27
 - **决策者**：LandFairy
 
@@ -24,9 +24,13 @@
 1. **构造器注入** → 用 `-parameters` 编译，保留参数名到字节码，然后靠
    `Constructor#getParameters()[i].getName()` 按参数名匹配依赖。
 2. **AOP 代理** → 只用 **JDK 动态代理**，本章的示例服务一律面向接口编程。
-3. **`@Configuration` full 模式增强** → 不实现 CGLIB 子类增强，改为**注册表拦截 +
+3. ~~**`@Configuration` full 模式增强** → 不实现 CGLIB 子类增强，改为**注册表拦截 +
    显式说明**。正文会讲清真实 Spring 用 CGLIB 增强 `@Configuration` 类以达到什么目的，
-   以及我们不这么做时行为上的差异。
+   以及我们不这么做时行为上的差异。~~
+   **（已被 ADR-0007 取代）** 第 21 章实现时发现「注册表拦截」拦不住 `this.otherBean()`
+   ——那是一次编译期绑定的 `invokevirtual`，不改字节码就没有拦截点。最终写了一个手写 class
+   文件生成器（`ConfigurationClassEnhancer`）：它仍然是子类增强，只是不用 CGLIB。
+   「零运行时依赖」与「JDK 17+ 免 `--add-opens`」两条承诺不受影响。
 
 ## 后果
 

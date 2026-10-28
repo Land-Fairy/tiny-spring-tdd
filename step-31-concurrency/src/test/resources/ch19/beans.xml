@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <beans>
 
-	<bean id="englishGreeter" class="org.springframework.samples.ch19.EnglishGreeter"/>
+	<bean id="englishGreeter" class="org.springframework.samples.ch19.EnglishGreeter" primary="true"/>
 	<bean id="chineseGreeter" class="org.springframework.samples.ch19.ChineseGreeter"/>
 	<bean id="frenchGreeter" class="org.springframework.samples.ch19.FrenchGreeter"/>
 	<bean id="germanGreeter" class="org.springframework.samples.ch19.GermanGreeter"/>

@@ -98,6 +98,29 @@ public interface BeanDefinition extends BeanMetadataElement {
 	void setLazyInit(boolean lazyInit);
 
 	/**
+	 * 这张图纸造出来的对象是不是「默认实现」：类型匹配出现多个候选时，带这个标记的那个胜出。
+	 *
+	 * <p>
+	 * 注意它是**图纸上的事实**，不是一个注解。{@code @Primary} 住在注解层
+	 * （{@code org.springframework.context.annotation}），由扫描器与配置类解析器读出来、
+	 * 翻译成这张图纸上的布尔量。分层规则禁止 {@code beans} 包依赖 {@code context} 包，
+	 * 而这次「翻译」正是让那条规则成立的关键一步——注解只能影响**注册**， 不能影响**运行期决策**。
+	 *
+	 * <p>
+	 * <b>真实 Spring 对应</b>：{@code BeanDefinition#isPrimary()}。真实 Spring 用的是同一条路：
+	 * 扫描器与配置类解析器把 {@code @Primary} 写进图纸，
+	 * {@code DefaultListableBeanFactory#determinePrimaryCandidate} 只读标记。
+	 * @return 是否为主候选
+	 */
+	boolean isPrimary();
+
+	/**
+	 * 设置是否为主候选。
+	 * @param primary 是否为主候选
+	 */
+	void setPrimary(boolean primary);
+
+	/**
 	 * 初始化方法名——造好对象之后该调哪个无参方法。
 	 * @return 方法名，可能为 {@code null}
 	 */

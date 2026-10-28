@@ -73,6 +73,8 @@ public abstract class AbstractBeanDefinition implements BeanDefinition {
 	 */
 	private boolean lazyInit = false;
 
+	private boolean primary = false;
+
 	/**
 	 * 初始化方法名，默认没有。
 	 */
@@ -255,6 +257,16 @@ public abstract class AbstractBeanDefinition implements BeanDefinition {
 	@Override
 	public void setFactoryMethodName(String factoryMethodName) {
 		this.factoryMethodName = factoryMethodName;
+	}
+
+	@Override
+	public boolean isPrimary() {
+		return this.primary;
+	}
+
+	@Override
+	public void setPrimary(boolean primary) {
+		this.primary = primary;
 	}
 
 }

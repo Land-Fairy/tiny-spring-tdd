@@ -18,6 +18,12 @@
 		若在此禁止 Tab，两条闸门会互相矛盾。
 		缩进一致性交由 spring-javaformat 保证。
 	-->
+	<!-- 豁免清单：故意朴素的对照代码（naive 包）在这里被放行，见 docs/adr/0006 -->
+	<module name="SuppressionFilter">
+		<property name="file" value="${config_loc}/suppressions.xml"/>
+		<property name="optional" value="false"/>
+	</module>
+
 	<module name="NewlineAtEndOfFile">
 		<property name="lineSeparator" value="lf"/>
 	</module>

@@ -9,6 +9,12 @@
 		用意见 docs/CODE-STANDARDS.md。
 	</description>
 
+	<!--
+		教学用反面示例豁免：naive 包故意保留朴素写法，见 docs/adr/0006。
+		例外必须写在这里，不能默默存在。
+	-->
+	<exclude-pattern>.*[/\\]naive[/\\].*</exclude-pattern>
+
 	<!-- 用 stream / 集合 API 表达意图，而不是手写索引循环 -->
 	<rule ref="category/java/bestpractices.xml/ForLoopCanBeForeach"/>
 	<!-- 参数不可重赋值：减少"这个变量什么时候变的"这类阅读负担 -->

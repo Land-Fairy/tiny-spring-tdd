@@ -18,8 +18,6 @@ import org.springframework.beans.factory.config.DependencyDescriptor;
 import org.springframework.beans.factory.NoSuchBeanException;
 import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
 import org.springframework.beans.factory.config.InstantiationAwareBeanPostProcessor;
-import org.springframework.context.annotation.Primary;
-import org.springframework.context.annotation.Qualifier;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 
@@ -324,7 +322,7 @@ public class AutowiredAnnotationBeanPostProcessor implements InstantiationAwareB
 	}
 
 	/**
-	 * 第二步：{@code @Primary}。恰好一个候选带它才收窄，多个带它等于没带（交给下一步）。
+	 * 第二步：图纸上的 {@code primary} 标记。恰好一个候选带它才收窄，多个带它等于没带（交给下一步）。
 	 * @param type 想要的类型
 	 * @param candidates 当前候选
 	 * @return 收窄后的候选
@@ -332,12 +330,24 @@ public class AutowiredAnnotationBeanPostProcessor implements InstantiationAwareB
 	private List<String> narrowToPrimary(Class<?> type, List<String> candidates) {
 		List<String> primaries = new ArrayList<>();
 		for (String candidate : candidates) {
-			Class<?> beanClass = this.beanFactory.getType(candidate);
-			if (beanClass != null && beanClass.isAnnotationPresent(Primary.class)) {
+			if (isPrimary(candidate)) {
 				primaries.add(candidate);
 			}
 		}
 		return (primaries.size() == 1) ? primaries : candidates;
+	}
+
+	/**
+	 * 这个候选在图纸上被标成「默认实现」了吗。
+	 * <p>
+	 * 注意这里读的是图纸上的布尔量，不是 {@code @Primary} 注解——注解属于注解层， 由扫描器与配置类解析器在注册时翻译过来（见
+	 * {@code BeanDefinition#isPrimary()} 的说明）。
+	 * @param beanName 候选名
+	 * @return 是则为 {@code true}
+	 */
+	private boolean isPrimary(String beanName) {
+		return this.beanFactory.containsBeanDefinition(beanName)
+				&& this.beanFactory.getBeanDefinition(beanName).isPrimary();
 	}
 
 	/**
