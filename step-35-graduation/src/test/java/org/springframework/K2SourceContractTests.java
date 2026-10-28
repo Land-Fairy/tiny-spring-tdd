@@ -24,7 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 同一处违规会同时出现在后续 30 来个模块里，只看一个模块等于没看。
  *
  * <p>
- * 放这个位置是<b>过渡方案</b>：终局是把它收进第九道闸门（E5）。届时本类只保留断言，运行入口归闸门。
+ * 放在 step-35 一份而不是每章一份：它扫的是全仓，35 份等于同一件事查 35 遍。它<b>不是</b>独立闸门， 就是 {@code mvn verify}
+ * 里会跑的一个普通测试——所以任何模块改坏了 K2，全仓构建立刻红。
  *
  * <p>
  * 两条断言的由来与判据见 {@code docs/CODE-STANDARDS.md} 的「零、优雅六条」K2 与「record 的适用边界」。

@@ -23,6 +23,8 @@ package org.springframework.beans.factory.config;
  * 有三个方法：{@code predictBeanType}（{@code :50}）、{@code determineCandidateConstructors}（{@code :79}）、
  * {@code getEarlyBeanReference}（{@code :106}）。本书只差
  * {@code predictBeanType}——不创建对象也能说出类型，这本书没用上。
+ *
+ * @see org.springframework.beans.factory.config.SmartInstantiationAwareBeanPostProcessor
  */
 public interface SmartInstantiationAwareBeanPostProcessor extends InstantiationAwareBeanPostProcessor {
 

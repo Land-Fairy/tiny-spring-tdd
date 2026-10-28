@@ -1,8 +1,14 @@
 # 代码规范（可执行契约）
 
-> 这不是一份"建议"。本文的每一条都对应 Maven 构建里的一道闸门，
-> 违反即 `mvn verify` 失败、CI 红灯、PR 无法合并。
-> 规范之所以是机器判定的，是因为"高质量"如果只靠自觉，就一定会退化。
+> 这不是一份"建议"，但也别把它读成"全部由机器执行"——2026-10-28 审计过一次，真实情况是：
+>
+> - **闸门 12 道**（§闸门一览）：全部由 `mvn verify` 或 CI 执行，违反即红灯。这部分是硬约束。
+> - **优雅六条 K1–K6**：只有 **K2、K5** 有源码契约测试（`K2SourceContractTests`、`K5SourceContractTests`），
+>   **K3 部分**由 checkstyle 兜住（`MethodLength` 40 行是硬线，不是 K3 写的 30），**K1/K4/K6 目前靠评审清单**。
+>
+> 下表「判定手段」一列标的就是这个真实状态。**把"应该被机器检查"写成"已被机器检查"，是本书最容易犯的错**
+> ——前 11 轮里这类谎话出现过 6 次（闸门 9 未接 CI、闸门 11 未写进规范、`allowEmptyShould(true)` 让四条
+> ArchUnit 规则形同虚设……），所以这里宁可写得难看，也不写得好听。
 
 ## 零、优雅六条
 
@@ -10,12 +16,12 @@
 
 | 编号 | 规则 | 判定手段 | 反例 |
 |---|---|---|---|
-| **K1 机制单一** | 同一件事只允许一种写法（并发容器、工厂、异常路径…）；若必须混用，**每个字段旁一行说明为什么** | 源码契约测试 + 人工复核 | 同一类里四套并发机制，却没有一句话解释为什么 |
-| **K2 不变量可见** | 约束写在类型与构造器里，不写在注释里：与真实 Spring 同形的值对象用 `final class` + 全 `private final` + 构造期校验；本书自创、仅供内部使用的纯数据载体用 `record`；可变对象（`BeanDefinition` 系）全 `private` + 统一风格 setter + 构造期校验 | 反射测试 + 源码契约测试（E5） | 注释写「name 不能为 null」，字段却是可变 `public` |
-| **K3 意志单一** | 一个类只有一个变化理由：方法 ≤30 行、嵌套 ≤3 层、参数 ≤4（只对终态章节生效，见 E3 的快照标注） | 源码契约测试（E5） | 1120 行的 `DefaultListableBeanFactory` |
-| **K4 异常即文档** | 异常消息三段式：**谁 · 为什么 · 怎么办**；自定义异常构造器必须带 `beanName` | 源码契约测试（E5） | `throw new IllegalStateException("error")` |
-| **K5 契约可见** | 新增 `public` 类必须有 `@see org.springframework.…` 与「砍掉了什么」一句话 | 源码契约测试（E5） | 新类没有 `@see`，读者不知道它对应真实 Spring 的谁 |
-| **K6 成对对照** | 每章至少一对「朴素写法 / 优雅写法」，两者都编译、都过**同一组**断言 | 测试文件计数 | 只有正确写法，读者无从比较 |
+| **K1 机制单一** | 同一件事只允许一种写法（并发容器、工厂、异常路径…）；若必须混用，**每个字段旁一行说明为什么** | **人工复核**（没有能判「为什么」的机器：单例池有 4 种并发机制，正是人工审出来的） | 同一类里四套并发机制，却没有一句话解释为什么 |
+| **K2 不变量可见** | 约束写在类型与构造器里，不写在注释里：与真实 Spring 同形的值对象用 `final class` + 全 `private final` + 构造期校验；本书自创、仅供内部使用的纯数据载体用 `record`；可变对象（`BeanDefinition` 系）全 `private` + 统一风格 setter + 构造期校验 | `K2SourceContractTests`（2 条：禁 public record、可变值对象须声明） | 注释写「name 不能为 null」，字段却是可变 `public` |
+| **K3 意志单一** | 一个类只有一个变化理由：方法行数是症状，变化理由是病根 | checkstyle `MethodLength` ≤**40**（硬线）、`ParameterNumber` ≤5、`NestedIfDepth` ≤3；≤30 只是写作目标 | 1120 行的 `DefaultListableBeanFactory` |
+| **K4 异常即文档** | 异常消息三段式：**谁 · 为什么 · 怎么办**；与单个 bean 相关的异常要把 `beanName` 作为结构化字段，不是只写进字符串 | **人工**（没有契约测试；欠账 1 处见下） | `throw new IllegalStateException("error")` |
+| **K5 契约可见** | 新增 `public` 类必须有 `@see org.springframework.…` 与「砍掉了什么」一句话 | **`K5SourceContractTests`**：基线 137 个存量类登记在 `k5-baseline.txt`，基线之外缺 `@see` 即红；补完必须删基线行 | 新类没有 `@see`，读者不知道它对应真实 Spring 的谁 |
+| **K6 成对对照** | 每章至少一对「朴素写法 / 优雅写法」，两者都编译、都过**同一组**断言 | **人工**（「测试文件计数」这条机制从未存在，别再写成机器判定） | 只有正确写法，读者无从比较 |
 
 ### K1 机制单一：每个并发容器都要能说出理由
 
@@ -37,14 +43,14 @@ private final Map<String, Object> disposableBeans = new LinkedHashMap<>();
 
 ### K2 不变量可见：约束写在类型里
 
-四条可执行的落地规则（E2 已在全仓落完）：
+四条可执行的落地规则（2026-10 已在全仓落完）：
 
 | 编号 | 规则 | 当前状态 |
 |---|---|---|
 | **K2-a** | 与真实 Spring 同形的值对象（`PropertyValue`、`ConstructorArgumentValues.ValueHolder`…）按真实形状实现：`final class` + 全 `private final` + 构造期校验，**不得改成 `record`** | 已对齐，理由写进 `PropertyValue` 类注释 |
 | **K2-b** | 本书自创、仅供内部使用的纯数据载体一律用 `record`（四条判据见下） | 全仓恰好 2 处：`SimpleMetadataReader.ConstantPool`、`ConfigurationClassEnhancer.MethodCode` |
 | **K2-c** | 可变对象（`BeanDefinition` 系）必须「一种写法」：全 `private` 字段 + 统一风格 setter + 构造期校验；`*Value`/`*Metadata`/`*Descriptor` 若有非 final 字段，javadoc 必须显式写「可变/mutable」 | 由 `K2SourceContractTests` 钉住 |
-| **K2-d** | 构造器校验统一走自带消息的断言（`Assert.notNull(x, "beanName")` 这类），禁止裸 `if (x == null) throw new IllegalArgumentException()` 散布各处 | 新增代码遵守；存量见 E3 的快照标注 |
+| **K2-d** | 构造器校验统一走自带消息的断言（`Assert.notNull(x, "beanName")` 这类），禁止裸 `if (x == null) throw new IllegalArgumentException()` 散布各处 | 新增代码遵守；存量按快照标注（见 §人工清单） |
 
 
 反例（约束只活在注释和口头约定里）：
@@ -73,11 +79,20 @@ public final class PropertyValue {
 
 ### K3 意志单一：一个类只有一个变化理由
 
-判据是硬的：方法 ≤30 行、嵌套 ≤3 层、参数 ≤4。`MethodLength`/`ParameterNumber`/`NestedIfDepth` 由 checkstyle 兜底，K3 管的是**类级**的理由数——一个 1120 行的工厂同时管注册、解析、实例化、依赖、生命周期，就有五个变化理由。
+判据分两层，别混：**checkstyle 硬线是 40 行**（`config/checkstyle/checkstyle.xml`），**30 行是写作目标**。
+两者不一致是故意的：40 是「不许再长」，30 是「正常应当这么短」。2026-10 实测全仓有 **10 个方法**落在 31–39 行
+（`AbstractApplicationContext` 的 `refresh` 31、`DefaultSingletonBeanRegistry` 的 39、`ConfigurationClassEnhancer` 的 39……），
+它们过闸门但不合目标——**这类差集就是人为判断的地盘**，不要假装机器管得住。
+K3 真正管的是**类级**的理由数：一个 1120 行的工厂同时管注册、解析、实例化、依赖、生命周期，就有五个变化理由。
 
 ### K4 异常即文档：三段式
 
 见下一节「异常三段式」。
+
+**K4 的真实欠账（2026-10-28 实测）**：框架层 13 个自定义异常，6 个带 `beanName`。
+其中 `NoSuchBeanException(String message)` 把名字只写进了字符串，没有 `getBeanName()`——
+真实 Spring 的 `NoSuchBeanDefinitionException` 是有的。这条**没有机器兜着**，所以写在
+`docs/reviews/00-issue-drafts.md` 里当欠账，不假装闸门会拦住它。
 
 ### K5 契约可见：`@see` 与「砍掉了什么」
 

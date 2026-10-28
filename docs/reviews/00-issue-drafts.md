@@ -174,3 +174,69 @@ ch25 用「通知」指 `Advice`；「增强」既指 `Advice` 又指 `@Configur
 
 **验收**：`mvn -o -q verify` 全绿；`bash scripts/check-propagation.sh` 通过（改动已传播）；
 对应章节报告的 P0 条目状态更新。
+
+---
+
+## 草稿 7：K1/K4/K6 三条优雅契约没有任何机器检查
+
+**label**：`type/docs` `area/standards`
+
+**背景**：`docs/CODE-STANDARDS.md` 开头原来写「本文的每一条都对应 Maven 构建里的一道闸门，违反即失败」。
+2026-10-28 审计：优雅六条里只有 **K2、K5** 有契约测试，**K3 部分**由 checkstyle 兜住（且硬线是 40 行，
+不是文档写的 30），**K1、K4、K6 一条机器检查都没有**。已把开头改成真实状态，但三条契约要不要补机器检查需要决定。
+
+**证据**：
+
+- 全仓只有 `step-35-graduation/src/test/java/org/springframework/K2SourceContractTests.java`（2 条断言）
+  与新增的 `K5SourceContractTests`；`grep -r "K1\|K4\|K6" --include=*.java step-35-graduation/src/test` 命中 0。
+- K3 的差集：全仓 10 个方法在 31–39 行（过 `MethodLength`=40，不合 K3 写的 30）。
+
+**建议**：
+
+- K1（机制单一）：不可机器判——「为什么混用」是语义。保持人工，但把它写进评审清单的必查项。
+- K4（异常即文档）：可以机器判「与 bean 相关的异常类必须有 `beanName` 字段」，判据是类名里含
+  `BeanDefinition`/`BeanCreation`/`NoSuchBean`。约 40 行，值得做。
+- K6（成对对照）：可机器判「每章存在 `*Tests.java` 里名称含 Naive/朴素 与 优雅/Smart 的成对测试」，
+  但名称是约定，容易变成为了过闸门而改名。**建议保持人工**。
+
+---
+
+## 草稿 8：`NoSuchBeanException` 没有结构化的 `beanName`
+
+**label**：`type/feature` `area/beans` `chapter/01`
+
+**背景**：`NoSuchBeanException(String message)` 只把名字写进字符串，没有 `getBeanName()`；
+真实 Spring 的 `NoSuchBeanDefinitionException` 有。分类装配错误、写测试断言、上层按名字降级处理时，
+字符串只能靠 `contains` 匹配。
+
+**证据**：
+
+- `step-35-graduation/src/main/java/org/springframework/beans/factory/NoSuchBeanException.java`：
+  唯一构造器 `public NoSuchBeanException(String message)`，无字段。
+- 真实 Spring：`spring-beans/src/main/java/org/springframework/beans/factory/NoSuchBeanDefinitionException.java`
+  有 `getBeanName()` 与 `getResolvableType()`。
+
+**代价**：这个类从第 01 章就存在，改构造器要动 35 份副本（走 `scripts/propagate.sh`），
+且会改变 `ch01` 教「短名才诚实」的叙述连贯性。**建议**：只加一个重载构造器
+`NoSuchBeanException(String beanName, String message)` + `getBeanName()`，旧构造器保留。
+
+---
+
+## 草稿 9：K5 基线里还欠着 137 个 `public` 类型的 `@see`
+
+**label**：`type/docs` `area/standards`
+
+**背景**：新加的 `K5SourceContractTests` 只强制「基线之外的新类必须有 `@see org.springframework.…`」，
+基线 `step-35-graduation/src/test/resources/k5-baseline.txt` 登记了 **137** 个存量类型。
+换句话说：K5 从今天起不再欠新账，但旧账还在。
+
+**证据**：
+
+- 框架层 `public` 顶层类型 180 个，其中 43 个已带 `@see`/`{@link org.springframework…}`，137 个没有。
+- 本轮顺手补了 6 份副本：`SmartInstantiationAwareBeanPostProcessor` 在第 30–35 章被重写过 javadoc，
+  重写时把「真实 Spring 对应」那段丢了（前 21–29 章有）。
+
+**建议**：不要求一次补完。按章推进：每章下次被改动时，把该章新增的类从基线里划掉。
+基线文件里已经写了这条规矩。[^1]
+
+[^1]: `k5-baseline.txt` 的表头注明了「基线不是免罪符，是还款计划」。
