@@ -76,7 +76,7 @@ org.opentest4j.AssertionFailedError:
 [同一个单例的构造器执行次数]
 expected: 1
  but was: 4
-	at org.springframework.beans.factory.support.ConcurrentSingletonCreationTests.concurrentGetBeanCreatesTheBeanOnlyOnce(ConcurrentSingletonCreationTests.java:91)
+	at org.springframework.beans.factory.support.ConcurrentSingletonCreationTests.concurrentGetBeanCreatesTheBeanOnlyOnce(ConcurrentSingletonCreationTests.java:73)
 ```
 
 `4` 就是我们起的线程数。四个线程**全部**穿过了 ①，全部执行了 ②。
@@ -234,7 +234,7 @@ org.opentest4j.AssertionFailedError:
 [同一个单例的构造器执行次数]
 expected: 1
  but was: 4
-	at org.springframework.beans.factory.support.ConcurrentSingletonCreationTests.concurrentGetBeanCreatesTheBeanOnlyOnce(ConcurrentSingletonCreationTests.java:91)
+	at org.springframework.beans.factory.support.ConcurrentSingletonCreationTests.concurrentGetBeanCreatesTheBeanOnlyOnce(ConcurrentSingletonCreationTests.java:73)
 ```
 
 第二次红非常重要：**它证明缺陷出在并发控制上，而不是出在「池子这个结构本身」上**。同一个测试，同一个池子，只把「先查后写」改成「加锁 + 双重检查」，就从 `4` 变成 `1`。因果链干净。
