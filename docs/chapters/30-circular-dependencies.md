@@ -379,6 +379,8 @@ if (!this.singletonLock.tryLock()) {
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-30-章`](../appendix/B-answers.md#第-30-章)。
+
 1. 为什么「提前暴露」的窗口只能在「实例化之后、填充属性之前」？请给出上界和下界各自的论证，
    并说明为什么这个窗口恰好推出「必须用工厂而不是对象」。
 2. 我们的 `getSingleton(beanName, true)` 在拿不到锁时用 `lock()` 等待，真实 Spring 用 `tryLock()`

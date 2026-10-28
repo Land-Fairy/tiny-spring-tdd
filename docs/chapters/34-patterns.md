@@ -460,6 +460,8 @@ public Object proceed() throws Throwable {
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-34-章`](../appendix/B-answers.md#第-34-章)。
+
 1. **`BeanWrapperImpl` 为什么不算装饰器？** 请写出 GoF 定义里被违反的那一条，并举一个「同样违反它、但工程上仍被叫装饰器」的例子（提示：Servlet 的 `HttpServletRequestWrapper`）。
 
 2. **模板方法与策略的边界在哪？** 两者都能「让子类/实现类改变行为」。`AbstractAutoProxyCreator` 用的是模板方法而不是「把流程做成策略接口」，作者可能出于什么考虑？

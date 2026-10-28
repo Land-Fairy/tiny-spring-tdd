@@ -512,6 +512,8 @@ Object convert(Object source, TypeDescriptor sourceType, TypeDescriptor targetTy
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-23-章`](../appendix/B-answers.md#第-23-章)。
+
 1. **`canConvert(String.class, Object.class)` 为什么该是 `true`？** 如果它返回 `false`，注入逻辑会把一个「本来什么都不用做」的依赖判成「无法满足」。请说明「不需要转换」和「能转换」在语义上为什么必须合并，以及合并之后「没有转换器」的判定该怎么写。
 
 2. **`findConverter` 里为什么先判一对一、再问工厂？** 反过来（先问工厂）会发生什么？提示：`NumberToNumberConverterFactory` 声明源类型是 `Number`，而 `Integer → String` 有一个精确的一对一转换器。

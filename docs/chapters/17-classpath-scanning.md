@@ -631,6 +631,8 @@ protected boolean matchSelf(MetadataReader metadataReader) {
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-17-章`](../appendix/B-answers.md#第-17-章)。
+
 1. **`@Retention(CLASS)` 的注解，本章的解析器读得到吗？** 如果读不到，是解析器的 bug 吗？
    （提示：字节码里有 `RuntimeInvisibleAnnotations` 属性。）
 2. **`isMetaAnnotated` 里的 `visited` 如果换成 `static` 的 `Set`，会出什么事？**

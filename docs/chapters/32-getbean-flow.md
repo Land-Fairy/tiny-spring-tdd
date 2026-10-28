@@ -422,6 +422,8 @@ private Object initializeBeanInternal(String beanName, Object bean, BeanDefiniti
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-32-章`](../appendix/B-answers.md#第-32-章)。
+
 1. **把 `Probe` 改成 prototype 会怎样？** 本章第二个测试已经验证了「整条链走两遍」。
    请再回答一个更细的问题：prototype 的 `afterInitialization:proxy` 还会出现吗？
    如果 `Probe` 里持有 `Dependency`（prototype），这个环还能解吗？为什么？

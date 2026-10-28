@@ -690,6 +690,8 @@ registerBeanPostProcessors(beanFactory, priorityOrderedPostProcessors);      // 
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-11-章`](../appendix/B-answers.md#第-11-章)。
+
 **11-1** 把 `registerBeanPostProcessors` 挪到 `refresh()` 的最后一步（`finishRefresh` 之后），
 哪些测试会红？为什么这个缺陷在真实项目里往往**几周后**才被发现，而不是启动时就暴露？
 

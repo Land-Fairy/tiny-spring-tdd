@@ -386,6 +386,8 @@ if (!this.singletonLock.tryLock()) {
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-31-章`](../appendix/B-answers.md#第-31-章)。
+
 1. 如果把 `getSingleton(beanName, factory)` 里的「③ 再读一遍」删掉，请构造一个能稳定触发的
    测试（提示：两个线程 + 构造器闸门），并说明为什么「八个线程」那次实验反而可能仍然只创建一次。
 2. `addSingleton` 在检测到同名双写时抛 `IllegalStateException`。如果改成「静默覆盖」，

@@ -569,6 +569,8 @@ constructor → setLabel:ch12 → setBeanName:probe → setBeanFactory → setAp
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-12-章`](../appendix/B-answers.md#第-12-章)。
+
 1. **如果 `invokeAwareMethods` 挪到 `applyBeanPostProcessorsBeforeInitialization` 之后**，本章哪个测试会红？会造成什么真实后果？（提示：`ApplicationContextAwareProcessor` 是 BPP，它在 before 链里跑。）
 2. `ApplicationContextAwareProcessor` 是包私有的，而且是在 `prepareBeanFactory` 里用 `new` 造出来的。**如果改成 public 并允许用户自己 `addBeanPostProcessor(new ApplicationContextAwareProcessor(myContext))`，会出什么问题？**（提示：`this` 是谁？）
 3. 我们给 `ApplicationContextAware` 的 `setApplicationContext` 里递的是 `this`（上下文）。**如果这个 Bean 是 `prototype`，递进去的上下文还是同一个吗？** 这只 `prototype` Bean 会不会因此「记住」容器，从而在容器 `close()` 之后仍然活着？这算内存泄漏吗？

@@ -687,6 +687,8 @@ public String toString() {
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-33-章`](../appendix/B-answers.md#第-33-章)。
+
 1. **`FatalBeanException` 与「可恢复异常」的边界在哪？** 举出本书里的两个例子：什么情况下 `BeanDefinitionStoreException`（fatal）该被重试逻辑忽略，什么情况下不该。
 
 2. **如果 `NoSuchBeanException` 也继承 `FatalBeanException`，会发生什么？** 提示：想想「可选依赖」与 `ObjectProvider`（第 20 章）——调用方靠什么区分「必须存在但没找到」和「本来就可以没有」？

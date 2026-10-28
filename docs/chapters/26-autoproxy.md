@@ -479,6 +479,8 @@ AOP 故意**不用**它，理由值得记：
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-26-章`](../appendix/B-answers.md#第-26-章)。
+
 **6.1** 代理为什么必须在 `postProcessAfterInitialization` 而不是
 `postProcessBeforeInitialization`？请从「`afterPropertiesSet` 里调自己的方法」这个角度给出解释。
 再想一步：如果有人在 `afterPropertiesSet` 里通过 `context.getBean(getBeanName())` 拿一次自己，

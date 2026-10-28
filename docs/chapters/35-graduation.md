@@ -358,6 +358,8 @@ if (!optional) {
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-35-章`](../appendix/B-answers.md#第-35-章)。
+
 **6.1** 我们的 `GraduationTests` 里，`@Value("graduation")` 与 `@Autowired` 标在**同一个字段**上。
 真实 Spring 支持这种写法（`@Value` 提供值，`@Autowired` 只表示「必需」）。请说明：
 本书的 `descriptorFor` 方法为什么也能处理它，以及如果两者的语义冲突（例如

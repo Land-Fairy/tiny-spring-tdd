@@ -730,6 +730,8 @@ return initializedBean;
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-13-章`](../appendix/B-answers.md#第-13-章)。
+
 **Q1.** `invokeInitMethods` 里为什么要判 `beanDefinition == null`？如果删掉这个判断，哪个测试会红？为什么红的方式是 `NullPointerException` 而不是编译错误？
 
 **Q2.** 三条初始化通道的先后顺序是「注解 → 接口 → 方法」。如果反过来（方法 → 接口 → 注解），会破坏什么？请举一个真实场景说明。

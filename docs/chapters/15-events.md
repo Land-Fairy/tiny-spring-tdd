@@ -713,6 +713,8 @@ public void onOrderPlaced(OrderPlacedEvent event) { ... }
 
 ## 6. 思考题
 
+先自己写，再看 [`../appendix/B-answers.md#第-15-章`](../appendix/B-answers.md#第-15-章)。
+
 **Q1.** 如果第十步真的 `getBean` 了监听器，第 11 章的 `preInstantiateSingletons()` 会看到什么？为什么「提前创建」的危害在**有** `BeanPostProcessor` 的情况下比没有时更严重？
 
 **Q2.** `earlyApplicationEvents` 在第十步被置成 `null`。如果一个监听器在**补发早期事件**的过程中又发布了新事件，这个新事件会走哪条路？为什么 4.2 节强调「先抄出引用、再置 null、最后补发」？
