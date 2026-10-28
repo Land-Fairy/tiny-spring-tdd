@@ -12,6 +12,8 @@ import org.springframework.core.convert.converter.Converter;
  *
  * <p>
  * 失败时抛 {@link IllegalArgumentException} 而不是返回 {@code null}：类名找不到属于配置错误， 越早炸越好。
+ *
+ * @see org.springframework.beans.propertyeditors.ClassEditor
  */
 @SuppressWarnings("rawtypes")
 public class StringToClassConverter implements Converter<String, Class> {

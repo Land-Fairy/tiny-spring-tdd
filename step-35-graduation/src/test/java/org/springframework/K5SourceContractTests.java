@@ -57,6 +57,12 @@ class K5SourceContractTests {
 	private static final Set<String> AOP_ALLIANCE_TYPES = Set.of("Advice", "Joinpoint", "MethodInvocation",
 			"MethodInterceptor");
 
+	/**
+	 * 上游确实没有同类时（本书自建的教学工具），允许在 javadoc 里写明理由代替 {@code @see}。
+	 * 判据要求这句话**逐字出现**，并紧跟理由：写不出理由就不该有豁免。
+	 */
+	private static final String K5_EXEMPT = "K5 豁免：上游无同类";
+
 	@Test
 	@DisplayName("K5：基线之外的新 public 类型必须 @see 或 @link 到真实 Spring")
 	void newPublicTypesMustPointAtRealSpring() throws IOException {
@@ -84,7 +90,7 @@ class K5SourceContractTests {
 					|| text.contains("{@link org.springframework");
 			boolean pointsAtAopAlliance = AOP_ALLIANCE_TYPES.contains(type.group(1))
 					&& (text.contains("@see org.aopalliance") || text.contains("{@link org.aopalliance"));
-			if (!pointsAtSpring && !pointsAtAopAlliance) {
+			if (!pointsAtSpring && !pointsAtAopAlliance && !text.contains(K5_EXEMPT)) {
 				violations.add(fqcn + "  (" + repoRoot().relativize(file) + ")");
 			}
 		}

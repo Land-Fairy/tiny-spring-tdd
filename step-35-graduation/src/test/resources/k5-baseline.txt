@@ -2,10 +2,6 @@
 # 它们是 2026-10 之前的存量，一次性补不现实，所以在此登记，仅供新代码不再欠账。
 # 「还剩几个」故意不写死在这里：写死的数字会漂（上一版写 138，实数 137）。要看剩余条数，数非注释行。
 # 补一个就从这里删一行；不在表里的新 public 类型必须有 @see，否则 K5SourceContractTests 失败。
-org.springframework.aop.framework.AopProxy
-org.springframework.aop.framework.JdkDynamicAopProxy
-org.springframework.aop.framework.ProxyDiagnostics
-org.springframework.aop.support.AopProxyUtils
 org.springframework.beans.SimpleTypeConverter
 org.springframework.beans.factory.BeanDefinitionStoreException
 org.springframework.beans.factory.BeanFactory
@@ -66,21 +62,6 @@ org.springframework.core.OrderComparator
 org.springframework.core.Ordered
 org.springframework.core.PriorityOrdered
 org.springframework.core.annotation.AnnotationAwareOrderComparator
-org.springframework.core.convert.ConversionFailedException
-org.springframework.core.convert.ConversionService
-org.springframework.core.convert.ConverterNotFoundException
-org.springframework.core.convert.ConverterRegistry
-org.springframework.core.convert.converter.Converter
-org.springframework.core.convert.converter.ConverterFactory
-org.springframework.core.convert.support.DefaultConversionService
-org.springframework.core.convert.support.GenericConversionService
-org.springframework.core.convert.support.NumberToNumberConverterFactory
-org.springframework.core.convert.support.ObjectToStringConverter
-org.springframework.core.convert.support.StringToBooleanConverter
-org.springframework.core.convert.support.StringToCharacterConverter
-org.springframework.core.convert.support.StringToClassConverter
-org.springframework.core.convert.support.StringToEnumConverterFactory
-org.springframework.core.convert.support.StringToNumberConverterFactory
 org.springframework.core.env.ConfigurableEnvironment
 org.springframework.core.env.Environment
 org.springframework.core.env.MapPropertySource

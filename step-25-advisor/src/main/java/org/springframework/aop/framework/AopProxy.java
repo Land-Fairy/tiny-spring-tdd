@@ -7,6 +7,7 @@ package org.springframework.aop.framework;
  * 动态代理还是字节码生成的子类，只关心「给我一个能用的对象」。
  *
  * @see JdkDynamicAopProxy
+ * @see org.springframework.aop.framework.AopProxy
  */
 public interface AopProxy {
 

@@ -20,6 +20,8 @@ import org.springframework.core.convert.converter.ConverterFactory;
  * {@code Enum.class.isAssignableFrom(targetType)}，所以
  * {@code canConvert(String.class, Enum.class)} 会回答 {@code true}，直到真去转才发现转不了 —— 本书多加一道
  * {@code targetType.isEnum()}，把这种「说能转其实转不了」挡在询问阶段。
+ *
+ * @see org.springframework.core.convert.support.StringToEnumConverterFactory
  */
 public class StringToEnumConverterFactory implements ConverterFactory<String, Enum> {
 

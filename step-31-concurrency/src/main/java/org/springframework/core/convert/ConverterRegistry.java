@@ -15,6 +15,8 @@ import org.springframework.core.convert.converter.ConverterFactory;
  * 对应</b>：{@code org.springframework.core.convert.converter.ConverterRegistry}（183 行）， 它的
  * {@code addConverter(Converter)} 能从泛型参数里推断出源/目标类型（{@code GenericTypeResolver}）；本书要求显式传两个
  * {@code Class}，理由见缺陷表。
+ *
+ * @see org.springframework.core.convert.converter.ConverterRegistry
  */
 public interface ConverterRegistry {
 

@@ -13,6 +13,8 @@ import org.springframework.core.convert.converter.Converter;
  *
  * <p>
  * <b>真实 Spring 对应</b>：{@code StringToCharacterConverter}（69 行）。
+ *
+ * @see org.springframework.core.convert.support.StringToCharacterConverter
  */
 public class StringToCharacterConverter implements Converter<String, Character> {
 

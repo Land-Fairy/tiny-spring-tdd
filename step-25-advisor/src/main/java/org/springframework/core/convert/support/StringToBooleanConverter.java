@@ -17,6 +17,8 @@ import org.springframework.core.convert.converter.Converter;
  * <p>
  * <b>真实 Spring 对应</b>：{@code StringToBooleanConverter}（79 行），它的默认真值集合是
  * {@code [true, on, yes, 1]}，假值集合是 {@code [false, off, no, 0]}。
+ *
+ * @see org.springframework.core.convert.support.StringToBooleanConverter
  */
 public class StringToBooleanConverter implements Converter<String, Boolean> {
 

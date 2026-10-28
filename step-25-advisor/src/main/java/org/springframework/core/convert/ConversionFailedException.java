@@ -11,6 +11,8 @@ package org.springframework.core.convert;
  * <b>真实 Spring
  * 对应</b>：{@code org.springframework.core.convert.ConversionFailedException}（74 行， 带
  * {@code TypeDescriptor} 而不是 {@code Class}）。
+ *
+ * @see org.springframework.core.convert.ConversionFailedException
  */
 public class ConversionFailedException extends IllegalArgumentException {
 

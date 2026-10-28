@@ -22,6 +22,8 @@ import org.springframework.core.convert.converter.ConverterFactory;
  * <p>
  * <b>真实 Spring 对应</b>：{@code StringToNumberConverterFactory}（68 行）+
  * {@code NumberUtils.parseNumber}。
+ *
+ * @see org.springframework.core.convert.support.StringToNumberConverterFactory
  */
 public class StringToNumberConverterFactory implements ConverterFactory<String, Number> {
 

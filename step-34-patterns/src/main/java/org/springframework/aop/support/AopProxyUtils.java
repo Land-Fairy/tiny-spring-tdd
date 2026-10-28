@@ -9,6 +9,8 @@ import java.util.Set;
  * <p>
  * 真实 Spring 的同名类有 173 行，其中 {@code completeProxiedInterfaces} 负责算出「这个代理应该实现
  * 哪些接口」；我们把它压成一个递归收集 + 去重。
+ *
+ * @see org.springframework.aop.framework.AopProxyUtils
  */
 public final class AopProxyUtils {
 
