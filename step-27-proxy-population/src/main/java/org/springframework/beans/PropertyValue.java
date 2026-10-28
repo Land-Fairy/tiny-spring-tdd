@@ -9,11 +9,11 @@ package org.springframework.beans;
  * 是同一件事的另一半：<b>把「要填什么」也当成数据存起来</b>。
  *
  * <p>
- * <b>为什么它不是 {@code record}</b>：这里最容易「顺手现代化」一下，但三条理由都不允许。
- * ① 真实 Spring 里它就是 {@code class}（208 行），换成 {@code record} 会破坏全书最大的卖点——逐行对照；
- * ② {@code record} 的 {@code equals}/{@code hashCode} 是<b>结构化相等</b>（只看字段值），而属性合并在意的是
- * 「谁覆盖了谁」这层身份语义：两条字段相同但来源不同的指令被判定为「相等」，合并结果会静默改变；
- * ③ {@code record} 不可继承，而真实 Spring 的 {@code PropertyValue} 体系里存在子类用法。
+ * <b>为什么它不是 {@code record}</b>：这里最容易「顺手现代化」一下，但三条理由都不允许。 ① 真实 Spring 里它就是
+ * {@code class}（208 行），换成 {@code record} 会破坏全书最大的卖点——逐行对照； ② {@code record} 的
+ * {@code equals}/{@code hashCode} 是<b>结构化相等</b>（只看字段值），而属性合并在意的是
+ * 「谁覆盖了谁」这层身份语义：两条字段相同但来源不同的指令被判定为「相等」，合并结果会静默改变； ③ {@code record} 不可继承，而真实 Spring 的
+ * {@code PropertyValue} 体系里存在子类用法。
  *
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.beans.PropertyValue}（208 行）。它只有
