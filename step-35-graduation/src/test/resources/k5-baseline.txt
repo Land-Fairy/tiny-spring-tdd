@@ -2,9 +2,6 @@
 # 它们是 2026-10 之前的存量，一次性补不现实，所以在此登记，仅供新代码不再欠账。
 # 「还剩几个」故意不写死在这里：写死的数字会漂（上一版写 138，实数 137）。要看剩余条数，数非注释行。
 # 补一个就从这里删一行；不在表里的新 public 类型必须有 @see，否则 K5SourceContractTests 失败。
-org.springframework.aop.Advice
-org.springframework.aop.Joinpoint
-org.springframework.aop.MethodInvocation
 org.springframework.aop.framework.AopProxy
 org.springframework.aop.framework.JdkDynamicAopProxy
 org.springframework.aop.framework.ProxyDiagnostics

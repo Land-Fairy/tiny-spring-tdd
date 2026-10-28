@@ -49,6 +49,14 @@ class K5SourceContractTests {
 
 	private static final Pattern PACKAGE = Pattern.compile("^package ([\\w.]+);", Pattern.MULTILINE);
 
+	/**
+	 * Spring 自己打包了 AOP Alliance，{@code org.springframework.aop} 下**没有**这三个同名类： 它们的真实出处是
+	 * {@code org.aopalliance.aop.*}。对这几个类型，指向 aopalliance 才是真话， 硬要 `@see
+	 * org.springframework` 只会逼人写假引用。
+	 */
+	private static final Set<String> AOP_ALLIANCE_TYPES = Set.of("Advice", "Joinpoint", "MethodInvocation",
+			"MethodInterceptor");
+
 	@Test
 	@DisplayName("K5：基线之外的新 public 类型必须 @see 或 @link 到真实 Spring")
 	void newPublicTypesMustPointAtRealSpring() throws IOException {
@@ -72,7 +80,11 @@ class K5SourceContractTests {
 			if (baseline.contains(fqcn)) {
 				continue;
 			}
-			if (!text.contains("@see org.springframework") && !text.contains("{@link org.springframework")) {
+			boolean pointsAtSpring = text.contains("@see org.springframework")
+					|| text.contains("{@link org.springframework");
+			boolean pointsAtAopAlliance = AOP_ALLIANCE_TYPES.contains(type.group(1))
+					&& (text.contains("@see org.aopalliance") || text.contains("{@link org.aopalliance"));
+			if (!pointsAtSpring && !pointsAtAopAlliance) {
 				violations.add(fqcn + "  (" + repoRoot().relativize(file) + ")");
 			}
 		}
