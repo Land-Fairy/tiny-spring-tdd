@@ -2626,3 +2626,635 @@ catch (ConversionFailedException | ConverterNotFoundException ex) {
 原因正是「语义分类」的副作用：`IllegalArgumentException` 这个名字太宽，`setPropertyValue` 里任何一处抛出的参数错误都会被当成「转换失败」包成 `TypeMismatchException`，把真正的原因埋进 cause 里。真实 Spring 之所以要单独造一层 `ConversionException`，就是为了拿到一个**只覆盖转换这一族**的父类型 —— 宽，但不至于宽到误捕。
 
 这就是两种分类的取舍：语义分类（入参不合法）读起来自然，但借用了别人也在用的类型；分层分类（转换失败）多一个抽象类，换来一个专属的 catch 边界。真实 Spring 选了后者，本书因为「已经有一条现成的 `IllegalArgumentException` 链」而选了前者 —— 代价写进了缺陷表第 11 条。
+
+## 第 24 章
+
+### B-24-1 代理对象的 `equals` 该返回什么
+
+先把问题拆开：`p.equals(t)` 与 `t.equals(p)` 是**两次不同的调用**，它们各自落到谁身上？
+
+- `p.equals(t)`：`equals` 声明在 `Object` 上，代理类覆写了它，于是进 handler。我们的实现（无拦截器时
+  `method.invoke(this.target, args)`）会把它转发成 `t.equals(t)` —— 因为参数里那个 `t` 被原样传给了目标
+  对象自己，而 `Object.equals` 是引用比较，`t == t` 为真，返回 `true`。
+- `t.equals(p)`：`t` 是普通对象，直接走它自己的 `equals`。`Object.equals` 拿引用比，`t != p`，返回 `false`。
+
+于是 **`p.equals(t) == true` 而 `t.equals(p) == false`，对称性被破坏**。这不是"实现得不够好"，而是
+"把 `equals` 无脑转发给目标"这个策略自带的矛盾：代理说"我就是目标"，目标说"我不认识你"。
+
+真实 Spring 的做法是**不让这种矛盾发生**。`JdkDynamicAopProxy#invoke`（`:175`）只在
+`!this.cache.equalsDefined` 时才接管 `equals`；而 `equalsDefined` 是**扫描被代理的接口**得出的
+（`ProxiedInterfacesCache` 构造器里，`:336-350` 遍历 `proxiedInterfaces` 的 `getDeclaredMethods()`，
+看有没有接口自己声明了 `equals`）。也就是说：
+
+- 如果接口自己声明了 `equals`，那是业务语义，Spring 把调用转发给目标；
+- 如果接口没声明，那 `equals` 就是 `Object` 的引用比较语义，改由 `JdkDynamicAopProxy#equals`（`:265`）
+  处理，规则是 `other == this` 或"两个代理的 advised 配置等价"
+  （`AopProxyUtils.equalsInProxy`，`:227`：被代理接口数组相等 + advisors 相等 + TargetSource 相等）。
+
+注意这个规则跟"目标对象的 `equals`"完全无关。原因很实际：**代理对象的身份取决于它的配置，而不是它的目标**。
+两个代理指向同一个目标、但切面不同，它们就是两个不同的东西。
+
+另外 `hashCode`（`:297`）也遵循同样思路：`JdkDynamicAopProxy.class.hashCode() * 13 +
+this.advised.getTargetSource().hashCode()`，跟目标对象的 `hashCode` 无关。
+
+### B-24-2 `getClass()` 拦不到、`toString()` 拦得到，为什么
+
+`getClass()` 在 `Object` 上声明为 `public final native Class<?> getClass()`。`final` 意味着**任何子类都不能
+覆写**，代理类 `extends Proxy`、`Proxy` 也没覆写它，所以这个调用直接在 `java.lang.Object` 的方法体里执行，
+字节码里根本没有进 handler 的入口。`javap -p` 的输出里也找不到它 —— 那里只有 `equals`/`hashCode`/
+`toString` 三个 `Object` 方法和业务接口方法。
+
+`toString()` 不是 `final`，所以代理类能覆写（`javap -p` 里明明白白列着
+`public final java.lang.String toString();`）。注意它自己带 `final`——那是**代理类的**方法加了 `final`，
+防止你继承代理类再改，跟"能不能覆写 `Object.toString`"不是一回事。
+
+这对"用代理做懒加载/远程调用"有三层意味：
+
+1. **不能用 `proxy.getClass()` 判断真实类型**，它永远返回 `$ProxyN`。真实类型要用
+   `AopUtils.getTargetClass(proxy)`（内部拆 `TargetClassAware`、`Advised#getTargetSource`）。
+2. **`proxy.getClass()` 不会触发任何副作用**，但 `proxy.toString()` 会进 handler —— 所以如果你在 handler 里
+   做"初始化真实对象"，一句日志（`log.info("{}", proxy)`）就把懒加载提前了。这是个经典事故。
+3. `equals`/`hashCode` 进 handler 意味着：把代理对象当 `HashMap` 的 key 时，走的是 handler 的逻辑
+   （我们的实现转发给目标，真实 Spring 用"配置等价"），两种实现不能混用同一个 map。
+
+### B-24-3 `final class` 实现了接口，两种代理分别怎样
+
+**JDK 动态代理：能。** 因为它生成的类 `extends java.lang.reflect.Proxy` 并 `implements` 你的接口 ——
+它是"另造一个实现类"，**不是目标的子类**。目标类是不是 `final` 完全无关；目标类的方法是不是 `final`
+也无关（代理类调的是接口方法，接口方法在实现类里即便 `final` 也能被虚分派到）。
+
+**CGLIB：不能。** CGLIB 生成的是目标类的子类。JVM 层面 `final class` 不允许继承，字节码校验会直接拒绝
+（`VerifyError` / CGLIB 报 `Cannot subclass final class`）。同理，`final` 方法不能被覆写 —— Spring 遇到
+`final` 方法时会**静默漏拦**（它不能为了一个方法放弃整个代理），这是"我的切面为什么对某个方法不生效"的
+最常见原因之一（第 28 章会专门讲失效场景合集）。
+
+所以 `final class` 恰好是"JDK 代理能、CGLIB 不能"的场景。这也是 Spring 默认优先 JDK 代理的一条隐含理由。
+
+### B-24-4 多个拦截器的最小改动
+
+`JdkDynamicAopProxy` 现在只有一个 `InvocationHandler interceptor` 字段。改成链，`getProxy()` **一行都不用动**
+（第 3.2 节留的伏笔），只需在 `invoke` 里加一个"按下标递归"的私有方法：
+
+```java
+@Override
+public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+	return invokeChain(0, proxy, method, args);
+}
+
+private Object invokeChain(int index, Object proxy, Method method, Object[] args) throws Throwable {
+	if (index == this.interceptors.size()) {
+		try {
+			return method.invoke(this.target, args);      // 链尾：真正的业务调用
+		}
+		catch (InvocationTargetException ex) {
+			throw ex.getTargetException();
+		}
+	}
+	InvocationHandler current = this.interceptors.get(index);
+	return current.invoke(proxy, method, args,
+			(p, m, a) -> invokeChain(index + 1, p, m, a));   // 传给下一个
+}
+```
+
+真实 Spring 没有这么做，理由是 `InvocationHandler.invoke(Object, Method, Object[])` 这个签名**缺三样东西**：
+
+1. **没有"往下走"的入口**。想继续，只能把下一个 handler 作为构造参数塞进来 —— 于是每个拦截器都要知道
+   "下一个是谁"，链的顺序变成对象的构造顺序，无法用 `Ordered`/`@Order` 在运行期排序（第 16 章那套排序
+   机制用不上）。
+2. **没有上下文对象**。拦截器常要改参数、改返回值、读方法上的注解、拿目标对象、拿代理对象。为了做这些
+   它必须先反射一次（拿到参数类型、注解），而 JDK 只给它一个裸的 `Method`。Spring 定义了
+   `MethodInvocation`：`getMethod()`、`getArguments()`、`getThis()`、`proceed()`、`getTarget()` 全在里面。
+3. **无法适配 CGLIB**。CGLIB 的 `MethodInterceptor#intercept(obj, method, args, proxy)` 是另一套签名。
+   Spring 让两条技术路线都产出一个 `MethodInvocation`，于是切面代码（`MethodInterceptor`）两边通用 ——
+   这就是"接口决定依赖方向"的又一例。
+
+顺带一句：`ReflectiveMethodInvocation.proceed()` 里有个 `currentInterceptorIndex` 计数器，作用跟我们上面
+那个 `index` 参数一模一样。我们这十几行，是它 297 行里 `proceed()`（`:162`、`:167`）的核。
+
+### B-24-5 `UndeclaredThrowableException` 何时出现，为什么是 checked
+
+**出现条件**（看第 5.4 节那张 Exception table）：handler（或它调用的代码）抛出一个
+**受检异常**，而这个异常既没在**接口方法的 `throws`** 里声明、也不是 `Error` / `RuntimeException`。
+后两类原样抛出（table 的前两行），其余 `Throwable` 被包成 `UndeclaredThrowableException`（第三行 → 26 号指令）。
+
+**为什么是 checked**：因为它是"代理机制的产物"，不是业务概念。代理对调用方的隐含承诺是"我抛出的异常都在
+方法签名里"，一旦这条兑现不了，就必须让调用方**被迫**看见 —— 如果它是 unchecked，调用方连
+`catch (Exception)` 都不一定写，异常会静默穿透到线程顶层。Java 的异常分类规则在这里被用来强制
+"契约被破坏必须显式暴露"。
+
+**接口声明了 `throws IOException` 呢**：`IOException` 会原样抛出（不包装），其它未声明的受检异常仍会被包。
+换句话说，包装与否的判断依据是**接口方法的签名**，不是目标方法的签名 —— 这也是为什么"目标方法偷偷多抛了
+一个受检异常"会在代理层炸成 `UndeclaredThrowableException`，而直接调用目标时编译期就会拦住你。
+
+**实践含义**：写拦截器时不要抛新的受检异常。真实 Spring 在 `AopUtils.invokeJoinpointUsingReflection`
+（`:367`）遇到 `IllegalArgumentException` 时抛的是 `AopInvocationException` —— 一个
+`RuntimeException`，正是为了不惊动这条 checked 规则。
+
+## 第 25 章
+
+### B-25-1 `MethodBeforeAdvice` 的 `target` 参数为什么是代理对象
+
+先确认事实：真实 Spring 的 `MethodBeforeAdviceInterceptor:57` 写的是
+`this.advice.before(mi.getMethod(), mi.getArguments(), mi.getThis())`，
+而 `MethodInvocation#getThis()` 的契约就是「**代理**对象」。`MethodBeforeAdvice#before` 的参数名却叫
+`target`，Javadoc 写「the target of the invocation」——**名字是历史包袱，实际拿到的是代理**。
+
+实际影响有两个，都很具体：
+
+1. **日志失控**。增强里写 `target.getClass().getSimpleName()`，打出来是 `$Proxy10`、`$Proxy11`…
+   序号每次启动都可能变。想在日志里定位业务类，必须换一条路。
+2. **「随手拿 target 继续调」会踩坑**。有人觉得「我拿到 target 就能调它的其他方法」，
+   于是写了 `((MyService) target).other()` —— 这里的 `target` 是代理，这次调用**会重新进链**
+   （所以可能重复记日志、重复开事务）。反过来，如果拿到的是真目标并直接调，就**绕过**整条链。
+
+想拿到真目标，有三条路：
+
+- 从 `MethodInvocation` 拿：`invocation.getTarget()`。这是最直接的一条，我们的
+  `ReflectiveMethodInvocation` 就提供了它（真实 Spring 的 `ProxyMethodInvocation` 也有）。
+- 从代理身上解包：如果代理实现了 `Advised`（真实 Spring 的代理默认都实现），
+  `((Advised) proxy).getTargetSource().getTarget()`；工具方法 `AopUtils.getTargetClass(proxy)`
+  会顺着 `TargetClassAware`/`Advised` 往里走。
+- 用 `@Aspect` 时的 `JoinPoint`：`joinPoint.getTarget()` 返回**真目标**，`joinPoint.getThis()` 返回**代理**。
+  这两个方法在同一个接口上并排出现，正是为了让这件事不再靠记忆。
+
+### B-25-2 `Pointcut` 拆成 `ClassFilter` + `MethodMatcher` 换来了什么
+
+如果只留 `matches(Method, Class)`，功能上确实不少——方法里自带类参数，什么都能判断。损失的是**四种能力**：
+
+1. **「只问类、不问方法」的快速判断**。真实 Spring 需要它：`AopUtils.canApply(Pointcut, Class)`
+   （`:225` / `:239`）只想知道「这个类有没有可能被这个切点命中」，一个类一次就够。如果接口只提供
+   `matches(Method, Class)`，这个问题的代价从 O(1) 变成 O(方法数)，而且答案还得自己「取并」。
+2. **粗筛（按代价排序）**。类名、包名、注解都是廉价的判断；参数类型、运行期实参是昂贵的。
+   分开之后，框架可以先用 `ClassFilter` 砍掉绝大多数类，再对剩下的跑方法级匹配
+   （`DefaultAdvisorChainFactory:75` 就是这个顺序）。
+3. **细粒度的缓存**。类级答案是「每个目标类一次」，方法级答案是「类 × 方法」。
+   混在一个方法里，调用方最多只能缓存「类 × 方法」，白白多算。
+4. **组合的类型化**。想表达「这些类 + 这些方法」时，`ClassFilter` 与 `MethodMatcher` 可以各自求交/求并
+   （真实 Spring 有一整套 `ComposablePointcut`）；合成一个大 `matches` 就只能靠闭包捕获，无法再拆开。
+
+一句话：**拆开不是为了能多做，而是为了能少做。**
+
+### B-25-3 不认识的 `Advice` 静默返回空数组，为什么会比崩溃更糟
+
+因为「没生效」和「没配置」在运行时长得一模一样。给一个具体场景：
+
+> 团队写了一个 `AuditAdvice implements MethodBeforeAdvice`（自定义的 `Advice` 家族成员，
+> 不是内置两种），忘了在 `DefaultAdvisorAdapterRegistry` 里注册对应的 `AdvisorAdapter`。
+
+- **抛异常**：容器启动就炸，栈里直接写着 `Unknown advice type: AuditAdvice`，五分钟修好。
+- **返回空数组**：链里少一个元素，业务照常跑，测试照常绿（测试只断言「方法能调通」）。
+  三个月后合规审计要「所有 `book*` 调用的审计日志」，翻遍日志库发现**从来没写过**。
+  这时要回答的问题不再是「怎么注册适配器」，而是「这三个月哪些操作没有留痕」。
+
+真实 Spring 选的是「炸」，而且是**受检异常**：`DefaultAdvisorAdapterRegistry#getInterceptors`（`:78`）
+声明 `throws UnknownAdviceTypeException`。受检的设计意图就是强迫调用方回答「不认识怎么办」——
+框架调用方选择把它包成 `AopConfigException` 在启动期抛出。
+
+这条经验的通用版本：**在「配置」路径上，宁可炸；在「数据」路径上，才考虑宽容。**
+
+### B-25-4 链缓存什么时候会失效
+
+真实 Spring 有**两级**缓存（`AdvisedSupport:513-535`）：
+
+```java
+if (this.methodCache != null) {
+	// 方法级缓存：键是 Method
+	cachedInterceptors = this.methodCache.get(new MethodCacheKey(method));
+	...
+} else {
+	// 全类共享一条链：所有方法命中同一批 Advisor 时，链本来就相同
+	cachedInterceptors = this.cachedInterceptors;
+	...
+}
+```
+
+判定「用哪一级」的逻辑在 `adviceChanged()`（`:539-552`）：**只要 advisors 里出现任何一个
+`PointcutAdvisor`，就建 per-method 缓存；否则全类共享一条链**（没有方法级切点，全部方法的链必然一样）。
+
+失效（或不该用缓存）有三种情形：
+
+1. **配置变了**。`addAdvisor` / `setTarget` / `setExposeProxy` 等改动都会走 `adviceChanged()`，
+   把 `methodCache`、`cachedInterceptors`、`proxyMetadataCache` 三个缓存全部置空（`:541-542` / `:610-611`）。
+2. **运行期匹配**。切点若 `isRuntime()` 为真，链里的元素是
+   `InterceptorAndDynamicMethodMatcher`——「这次匹配没有」需要实参才能回答。缓存缓的是
+   **「哪些候选器可能参与」**，真正的匹配每次调用都重跑；拿缓存结果当「一定拦」就会出错。
+3. **目标类不同**。`methodCache` 的键只有 `Method`——注意 `Method` 本身带声明类，
+   所以「同一个方法」是安全的；但如果切点依赖 `targetClass`（比如 `hasIntroductions`、
+   或按目标类注解匹配），而同一 `Method` 被不同子类实例调用，真实 Spring 靠
+   `InterceptorAndDynamicMethodMatcher` 或按 `targetClass` 分实例来兜住。
+
+我们的 `AdvisedSupport#getInterceptors` 每次都从头算。本章规模下这是对的取舍：链最多两三个元素，
+省下的复杂度比省下的纳秒值钱。真实 Spring 之所以必须缓存，是因为**生产环境里一条链可能几十个 Advisor，
+而每秒调用可能上百万次**。
+
+### B-25-5 一个 Advisor 能带多个增强吗
+
+`Advisor` 现在的契约只有 `getAdvice()`。要支持多个，最小的改动是把它变成
+`Advice[] getAdvices()`，同时把注册表的签名从 `MethodInterceptor[] getInterceptors(Advisor)`
+改成返回列表（其实真实 Spring 已经是 `MethodInterceptor[]`，数组本身就能放多个——
+所以**签名早就不拦着你了，拦着你的是 `Advisor#getAdvice()` 这个单数契约**）。
+
+但真实 Spring 明确选择了「**一个通知方法 = 一个 Advisor**」，理由是两条：
+
+1. **可排序**。链的顺序由 Advisor 列表的顺序唯一决定。一个 Advisor 若带两个增强，
+   就得额外回答「这两个谁先」——而这个顺序既不能靠 `@Order`（它标在类上），
+   也不能靠方法声明顺序（`getDeclaredMethods()` 的顺序在 JLS 里没有保证）。
+   拆成两个 Advisor 之后，排序问题消失了：它们本来就是两个元素，各自有 `order`，
+   同 `order` 时再按切面名 + 方法名兜底（`ReflectiveAspectJAdvisorFactory` 里的比较器）。
+2. **可缓存**。链缓存的键是 `Method`，值是「这批 Advisor 适配出的拦截器列表」。
+   Advisor 是**不可变的配置元素**，缓存才敢长期持有。若一个 Advisor 内部带可变数量的增强，
+   任何一次「运行时往 Advisor 里加一个增强」都会让整张缓存表失效。
+
+换句话说：**Advisor 之所以是「一个切点 + 一个增强」，不是因为实现偷懒，而是因为它是缓存与排序的最小单位。**
+想要「组合」，正确的位置是往 `Advised` 里多加几个 Advisor，而不是把多个增强塞进一个 Advisor。
+
+## 第 26 章
+
+### B-26-1 为什么必须是 `postProcessAfterInitialization`，以及「初始化里取自己」
+
+`postProcessBeforeInitialization` 的调用时机在 `invokeInitMethods()` **之前**。如果代理在那一步产生，
+容器就会拿着代理去调 `afterPropertiesSet()` —— 这次调用会走代理的方法入口，于是**初始化回调本身进了
+拦截链**。后果是双向的：
+
+- 增强会在一个「还没初始化的对象」上跑。`@Transactional` 的增强要在目标上开连接，而目标此时可能
+  还没建好自己的连接池、还没读配置；
+- 初始化回调里的任何一次自我方法调用（`afterPropertiesSet` 里调 `this.validate()`）都会变成
+  「通过代理的调用」，把本不属于初始化阶段的开销与语义拖进来。
+
+放到 `after` 之后，顺序就是稳定的三步：**填属性（在目标上）→ 跑初始化（在目标上）→ 套壳**。
+壳只出现在「对象已经可用」之后，这正是一个包装器的合格时机。
+
+第二个问题更有意思：`afterPropertiesSet()` 里执行 `context.getBean(getBeanName())` 拿到什么？
+答案是**拿不到**——此时这个 Bean 还在创建中，单例池里没有它。真实 Spring 会走到
+`beforeSingletonCreation` 的「正在创建」判断上抛 `BeanCurrentlyInCreationException`；唯一能放行的是
+「提前暴露的早期引用」那条路（`getEarlyBeanReference`，第 30 章）。也就是说：**在初始化回调里，
+「我自己」这个 Bean 在容器眼中还不存在**。理解了这一点，就看懂了为什么 Spring 要在 `after` 阶段
+才把代理放进池子：池子里放的必须是成品。
+
+### B-26-2 「没有匹配就不造代理」为什么是正确性问题
+
+因为**代理会改变对象的类型**。它是「正确性」问题的最小证据有两条：
+
+1. **按类注入直接失效**。JDK 代理只实现接口，`getBean(LibraryImpl.class)` 找不到它 ——
+   `instanceof LibraryImpl` 为 `false`。如果容器给一个「明明没被任何切面命中」的 Bean 套了壳，
+   那么这个 Bean 从此不能被按具体类注入，也不能被 `instanceof` 判断，甚至不能被反射读出原有字段
+   （本章第 2 节那个「字段注入静默消失」的取证测试说的就是这件事）。
+2. **`final` 类/方法、包私有方法全部暴露成事故**。JDK 代理对「非接口方法」无能为力，一旦套壳，
+   调用方看到的可调用集合就缩小到了接口。真实 Spring 用 CGLIB 兜底，代价是「子类代理也会改变类型，
+   只是改变的方向相反（多了个父类）」。
+
+所以「匹配才代理」不是省性能，而是**保证没被切面动过的 Bean 保持原样**。真实 Spring 在
+`wrapIfNecessary` 里的判断顺序也说明了这一点：先算 `specificInterceptors`，为空就直接
+`return bean`（不套壳），连 `proxyTypes` 缓存都不查。
+
+### B-26-3 Advisor 依赖业务 Bean、业务 Bean 又被自己切点命中的后果
+
+用我们的 `findCandidateAdvisors()`（`getBeansOfType(Advisor.class)`）会**栈溢出**。链条是：
+
+```
+创建 library → 创建器问「有哪些 Advisor」 → getBeansOfType 触发创建 auditAdvisor
+  → 创建 auditAdvisor 需要注入 library → getBean(library) → 发现 library 正在创建……
+  → 但 library 的创建还没走完，于是重入创建流程 → 再问「有哪些 Advisor」 → …
+```
+
+第 25 章红一（`StackOverflowError`，探针实测深到 1024 层）就是这条链的雏形，本章的探针把它复现成了
+完整闭环。真实 Spring 用两个手段把「递归」变成「跳过」：
+
+1. **只取名字、不创建**。`BeanFactoryAdvisorRetrievalHelper.findAdvisorBeans()`（`:60-120`）调的是
+   `beanNamesForTypeIncludingAncestors(..., includeNonSingletons = true, allowEagerInit = false)`，
+   名字缓存在 `cachedAdvisorBeanNames` 里，第一轮之后不再扫类型。原注释写得很直白：
+   「Do not initialize FactoryBeans here: We need to leave all regular beans uninitialized to let the
+   auto-proxy creator apply to them!」
+2. **跳过正在创建的那个**。取到名字后逐个 `getBean`，但先判 `isCurrentlyInCreation(beanName)`
+   （`:84`），是就跳过；同时 `catch (BeanCreationException ex)`，若 `rootCause` 是
+   `BeanCurrentlyInCreationException` 就 `continue`（注释：「We don't want to consider advisors
+   of the bean we're trying to advise」）。
+
+一句话：**「问有哪些 Advisor」这件事本身不能创建 Bean**，否则它就和「创建 Bean」互相等待。
+
+### B-26-4 不属于四类、但代理了会出事的例子
+
+最典型的是 `BeanFactoryPostProcessor`（尤其 `BeanDefinitionRegistryPostProcessor`）。
+
+`PropertySourcesPlaceholderConfigurer`（一个 `BeanFactoryPostProcessor`）要在
+`invokeBeanFactoryPostProcessors()` 阶段被调用，那时 `BeanPostProcessor` 还没注册、代理创建器还没生效。
+它一旦被代理，会出现两个具体问题：
+
+- **调用方的 `instanceof` 判断失效**。容器在收后处理器时用 `instanceof BeanDefinitionRegistryPostProcessor`
+  分流，JDK 代理确实能过（它实现了接口），但 `instanceof PropertySourcesPlaceholderConfigurer`
+  这类**具体类**判断会失败，于是它自己的特殊逻辑被跳过。
+- **「被提前创建」的连带损失**。凡是让 `BFPP` 阶段提前 `getBean` 的 Bean，都会错过后面注册的后处理器，
+  真实 Spring 会打警告「Bean 'x' was not eligible for getting processed by all BeanPostProcessors」。
+  给这种 Bean 套一层代理，等于把一个「必须裸身参与容器启动」的组件变成了「需要容器已启动」的组件。
+
+真实 Spring 的答案不是继续列举类型，而是一个**标记接口** `AopInfrastructureBean`：任何框架自己的基础设施
+实现它，就自动不被代理。`ProxyProcessorSupport` 自己就 `implements Ordered, AopInfrastructureBean`
+（`:40`）—— **代理创建器自己也声明了「别代理我」**。这个设计比列举类型好，因为「基础设施」是一个
+会不断增加的集合，而标记接口让新增者自己声明身份。
+
+### B-26-5 两个 BPP 都在 after 阶段返回新对象，池里是什么
+
+放进去的是**最后一个返回的对象**：`applyBeanPostProcessorsAfterInitialization` 把结果依次往下传。
+所以「代理套代理」是可能的：
+
+```
+target → BPP-A 包装成 proxyA → BPP-B 包装成 proxyB(里面握着 proxyA) → 池里是 proxyB
+```
+
+此时一次调用会穿过 `proxyB` 的链，再进 `proxyA` 的链，最后到目标 —— 增强被执行两遍。
+两个避免办法：
+
+1. **每个 Bean 只处理一次**。真实 Spring 的 `AbstractAutoProxyCreator` 靠「同一 Bean 的 `after` 阶段
+   只走一次」这一事实，并配 `proxyTypes` 缓存（`:252`/`:296`）避免重复计算；判断「已经是代理」用
+   `AopUtils.isAopProxy(bean)`（`:284`/`:298`）。
+2. **让「返回新对象」的后处理器只允许一个**。要么把它们合并成一个（本章说的「创建器的位置必须固定」），
+   要么在文档层面约定：after 阶段的包装器只有代理创建器一家，其他后处理器只能返回同一个对象。
+
+## 第 27 章
+
+### B-27-1 `releaseTarget` 为什么必须在 `finally` 里
+
+因为「取/还」是**成对协议**，而方法的退出路径不止一条：正常返回、抛出受检异常、抛出运行时异常、
+抛出 `Error`。`finally` 是唯一对四条路径都生效的位置。把它写在 `return` 之前，只覆盖第一条。
+
+漏还的后果取决于目标源。`CommonsPool2TargetSource` 的 `releaseTarget` 就是把对象
+`pool.returnObject(target)` 还回去；少还一次，池里的可用对象就少一个。业务上表现为：
+
+- 单次调用完全正常，日志里看不出任何异常；
+- 池子被用空之后，下一次 `getTarget()` 变成「等空闲对象」，等不到就抛
+  `NoSuchElementException`（commons-pool2 的典型消息是 `Timeout waiting for idle object`）；
+- 报错位置**离出错位置很远**，栈里全是「借不到对象」，与「某次调用曾抛异常」毫无关联。
+
+这正是我们把 `finally` 写进正文的原因：它不是防御式编程的花招，而是成对协议的正确形状。
+顺带一句：真实 Spring 在 `finally` 里还多一个短路条件 `!targetSource.isStatic()`（
+`JdkDynamicAopProxy:247`），语义上等价于「静态目标源不需要归还」。
+
+### B-27-2 `getTarget()` 返回 `T`、`releaseTarget` 收 `Object`
+
+如果两个都写成 `T`，`JdkDynamicAopProxy#invoke` 里会遇到**通配符捕获**：
+
+```java
+TargetSource<?> targetSource = this.advised.getTargetSource();
+Object target = targetSource.getTarget();     // 类型是 capture#1 of ?
+targetSource.releaseTarget(target);           // 形参是 capture#1 of ? —— 编译器无法证明两者同一
+```
+
+`?` 是一个「未知的确定类型」，`getTarget()` 产出的 `capture#1 of ?` 和 `releaseTarget(T)` 期望的
+`capture#2 of ?` 在编译器眼里是两个不同的未知类型，没有赋值兼容性。要让它编译通过，得把方法改成
+泛型签名 `<T> void releaseTarget(T target)` 并把调用点也参数化，写法立刻变得比问题本身还复杂。
+
+所以这是**调用点的缺陷，不是泛型的缺陷**。泛型表达的是「同一个类型参数贯穿」，而这里的语义本来就是
+「你给我一个我刚给你的东西」，不要求编译期知道它是什么类型 —— 用 `Object` 恰好精确。真实 Spring 的
+`TargetSource#releaseTarget(Object target)`（`:77`）就是同一个取舍，而且它还把方法写成了 `default`
+空实现，让单例目标源不必写空方法。
+
+### B-27-3 包成 `IllegalStateException` 与直接抛，各自的代价
+
+真实 `JdkDynamicAopProxy#invoke` 声明了 `throws Throwable`，因为反射调用本来就会抛
+`InvocationTargetException`，它必须把受检异常透传出去。于是 `targetSource.getTarget()` 的异常可以
+**原样**抛给调用方，零成本。
+
+我们的 `AdvisedSupport#getTarget()` 没有这个自由：它被 `BeanWrapperImpl`、`JdkDynamicAopProxy`
+和测试直接调用，签名里没有 `throws`。两害相权，只能包一层 `IllegalStateException`。代价是：
+
+- **类型信息丢失**。调用方无法只捕获「取目标失败」，只能捕获 `IllegalStateException`（它太宽了），
+  或者去翻 `getCause()`；
+- **与业务异常混淆**。业务方法抛的 `IllegalStateException` 和「取目标失败」的 `IllegalStateException`
+  在类型上不可区分 —— 所以消息里必须带上 `targetSource` 的名字，让栈能说话。
+
+真实 Spring 的直抛方案也不是免费的：调用方（比如 `BeanWrapper`、AOP 上层）必须一路声明
+`throws Throwable`，所以你会看到整个框架大量方法带 `throws Throwable` —— 它用「到处都是受检异常」
+换「异常保真」。
+
+### B-27-4 目标源每次返回不同对象，按 Bean 名的缓存会怎样
+
+会**算错代理的形状**。第 26 章的 `proxyTypes` 缓存键是 Bean 名、值是「这个 Bean 的代理要实现的接口列表」，
+而接口列表来自 `TargetSource#getTargetClass()`。如果第一次取到的目标是 `LibraryImpl`（实现 `Library`），
+缓存就记下「只有 `Library`」；之后目标换成 `AdminLibraryImpl`（额外实现 `AdminLibrary`），
+代理仍然只实现 `Library` —— 调用 `adminLibrary.purge()` 时 `Method` 在代理上不存在，
+结果是 `IllegalArgumentException` 或者一次静默的 `ClassCastException`。
+
+所以 `getTargetClass()` 的契约是**静态**的：它承诺「这个目标源的所有目标都具备这一组类型」。
+真实 Spring 的 `HotSwappableTargetSource#getTargetClass()` 返回的是**当前** `target.getClass()`，
+框架层的缓存因此要求使用者的两个目标实现同一接口集合 —— 这条要求没有写在接口 Javadoc 的显眼处，
+属于「框架的隐含假设」。`isStatic()` / `isImmutable()` 这两个方法的存在，正是为了让「目标会不会变」
+这件事变成可询问的契约。
+
+### B-27-5 `LOWEST_PRECEDENCE` 与「meaning non-ordered」
+
+先看机制。`registerBeanPostProcessors()` 把后处理器分成三批：
+
+1. `PriorityOrdered` —— 批内按 `getOrder()` 排序；
+2. `Ordered` —— 批内按 `getOrder()` 排序；
+3. **没有实现任何顺序接口的** —— 按 Bean 定义顺序注册。
+
+三批是**串行**的：第 2 批整体在第 3 批之前。`AbstractAutoProxyCreator` 实现了 `Ordered` 且返回
+`LOWEST_PRECEDENCE`（`Integer.MAX_VALUE`），于是它落在**第 2 批的末尾** —— 在全部有顺序的后处理器
+之后，但在全部无顺序的后处理器**之前**。
+
+所以「优先级最低」与「没有优先级」在机制上**并不等价**：前者仍在第 2 批，后者在第 3 批。
+`ProxyProcessorSupport:57` 那句注释（`meaning non-ordered`）说的是**意图**——「我不想参与排序，
+所以用这个默认值」，而不是「机制上等同」。这个差别正是红三的来源：我们的创建器原先没有实现
+`Ordered`，于是落进第 3 批，与用户的后处理器一起按定义顺序跑。
+
+反过来说，如果真实 Spring 改成「一批、全部排序」，这条注释就**不成立**了。因为
+`OrderComparator` 会把「没有实现 `Ordered`」的对象当作 `LOWEST_PRECEDENCE` 参与排序，
+于是创建器和无顺序的后处理器变成**同值**，先后退化为「稳定排序保留定义顺序」——
+红三会立刻回来。这也解释了为什么真实 Spring 保留三批而不是「一批全排」：
+**「有没有声明顺序」本身是有意义的信息，不能用一个默认值抹平**。
+
+## 第 28 章
+
+### B-28-1 为什么是 `ThreadLocal` 而不是静态字段
+
+因为「当前正在执行哪个代理」是**线程私有**的。静态字段一份，多线程下会互相覆盖。
+
+具体场景：`OrderService.proxy` 同一个代理对象被两个线程同时调用 `createOrder()`。若用静态字段，
+线程 A 挂上自己正在执行的代理，线程 B 立刻覆盖它；这时 A 的自调用逻辑取到的可能是**另一个调用**
+的代理（甚至另一个 Bean 的代理）。症状是间歇性的 `ClassCastException` 或「A 的审计记录跑到了 B 的账上」
+—— 典型的**只在并发下出现、单测永远绿**的故障。
+
+`ThreadLocal` 把这份状态绑到线程上，代价是「跨线程必失效」：把工作丢给线程池之后，`currentProxy()`
+在新线程上取不到值，直接抛 `IllegalStateException`。这条限制不可能用静态字段绕开——静态字段能让
+跨线程「取到值」，但取到的是**别人的**值，比取不到更糟。
+
+真实 Spring 用的 `NamedThreadLocal`（`AopContext:50`）只是给这份 `ThreadLocal` 起了名字，
+好处是线程 dump / 内存分析时能看出「Current AOP proxy」这个名字，而不是一堆无名字段。
+
+### B-28-2 「清空代替恢复」在什么情况下看不出来
+
+在「一次调用里最多只有一次自调用」的情况下完全看不出来。因为唯一能观察到差异的时刻是
+「内层结束后、外层还要继续用代理」—— 没有第二次使用，就没有症状。
+
+这解释了它为什么特别容易活到生产环境：
+
+1. **单测通常只覆盖最简路径**（一次自调用，断言一次增强）；
+2. **症状是异常**（`IllegalStateException`），而异常发生在「第二次自调用」这个很少被执行的分支上；
+3. **一旦发生，栈里指向的是 `AopContext`，而不是「某次调用没有恢复现场」** —— 报错位置离原因很远；
+4. **它不破坏数据**，只是让某次增强没跑（而「没跑」本来就是本章前半部分的主角，容易被误认成已知问题）。
+
+我们的测试里那条 `theExposedProxyIsRestoredAfterEachCall` 就是为这类「看不出来」准备的：目标方法里
+**连续两次**取代理。写法上稍微刻意，但它把「协议必须可嵌套」这件事钉死在了测试里。
+
+### B-28-3 `setCurrentProxy` 包私有、`currentProxy()` 公开
+
+如果 `setCurrentProxy` 也公开，多出的风险是**业务代码可以伪造当前代理**：
+
+- **越权**。任何代码都能把自己喜欢的对象挂成「当前代理」，后续所有 `currentProxy()` 调用都会拿到它。
+  在按 `ThreadLocal` 做安全上下文、审计来源推断的场景下，等于给了业务代码一个伪造入口；
+- **污染**。挂上去不还，ThreadLocal 会在线程池里跨请求存活 —— 下一个请求看到上一个请求的代理。
+  这类「脏 ThreadLocal」是 Java Web 应用最常见的内存泄漏与串数据来源之一；
+- **责任混乱**。挂载时机与 `finally` 清理原本是框架的契约，公开之后就没有人能保证成对。
+
+反过来，`currentProxy()` 必须公开，因为它的使用者就是业务代码。这就是「**写权在框架，读权在业务**」
+的具体落实。真实 Spring 的签名完全一致：`public static Object currentProxy()`、
+`static Object setCurrentProxy(@Nullable Object proxy)`（`AopContext:66` / `:84`）。
+
+### B-28-4 先恢复代理、再释放目标，会有什么可观察差异
+
+差异出现在「释放目标」这一步本身也需要知道自己处在哪次调用里的时候。真实 Spring 的顺序是
+**先 `releaseTarget`（`:249`）、再 `AopContext.setCurrentProxy(oldProxy)`（`:253`）**，我们照抄了它。
+
+反过来写（先恢复、后释放）的具体风险：
+
+1. **释放逻辑看不到「当前代理」**。池化目标源的 `releaseTarget` 常常要记指标、打日志（「谁借了多久」）。
+   若此时 `currentProxy()` 已经被恢复成外层值（或已抛异常），指标就会记到错误的调用上；
+2. **异常路径上的次序差异**。`releaseTarget` 自己也可能抛异常。先恢复代理的话，`releaseTarget` 抛出时
+   现场已经「收工」，栈里看不出这次释放属于哪次调用；先释放、后恢复，则代理仍在，异常上下文完整；
+3. **嵌套调用时更明显**。外层 `finally` 恢复的是外层的旧值；若内层还没释放就恢复，内层的释放动作会
+   在「外层代理」的语义下执行。
+
+一条通用经验：**`finally` 里的多个清理动作有顺序，顺序由「谁依赖谁的上下文」决定**，不是随便排的。
+
+### B-28-5 为什么「拆成另一个 Bean」几乎无代价却少人用
+
+从技术可行性看它是免费午餐；从人的角度看有三道阻力：
+
+1. **它要求改的不是代码，而是模型**。「下单」和「扣库存」在原作者脑子里是一个动作，拆成两个类
+   意味着承认「我原来对这个聚合的划分是错的」。`AopContext` 只需要加一个开关、加一次强转，
+   十分钟就能让测试变绿；重构要动调用方、动测试、动评审范围。
+2. **反馈速度完全不同**。`AopContext` 的收益立刻可见（测试从红变绿），重构的收益在半年后才显形
+   （可测性、可复用）。人的注意力天然偏向立刻可见的收益。
+3. **知识门槛**。知道 `AopContext` 存在的人，往往也知道「自调用」这个词；而「这两个方法本该在两个类里」
+   需要的是领域建模的判断——它不在任何框架文档里。
+
+所以现实里最常见的组合是：**先用 `AopContext` 止血，把「这两个方法应该拆开」写进 TODO**。
+本书不反对这个顺序，但要记住一件事：`AopContext` 是把耦合从「代码里看不出来」变成「代码里写得明明白白」，
+它并没有消除耦合。真正消除耦合的只有第三、第二条出路。
+
+## 第 29 章
+
+### B-29-1 `final` 方法为什么在 JDK 代理下能拦，在 CGLIB 下不能？
+
+从「代理类继承自谁」看最清楚。
+
+JDK 代理生成的类形如：
+
+```java
+public final class $Proxy0 extends java.lang.reflect.Proxy implements Ticker {
+	@Override public final void beat() { /* 转发到 handler */ }
+	@Override public final void tick() { /* 转发到 handler */ }
+}
+```
+
+它的父类是 `java.lang.reflect.Proxy`，**不是 `TickerImpl`**。`tick()` 是它自己新写的一个方法，与
+`TickerImpl.tick()` 之间没有覆写关系。`final` 修饰符限制的是「子类不得覆写本方法」，而这里根本没有
+覆写发生 —— 所以 `final` 完全没参与。
+
+CGLIB 生成的是：
+
+```java
+public class TickerImpl$$EnhancerByCGLIB extends TickerImpl {
+	@Override public void beat() { /* 拦截逻辑 */ }
+	// tick() 无法生成：它是 final，覆写非法
+}
+```
+
+想拦截一个方法，就必须覆写它；`final` 方法禁止覆写，于是 CGLIB **只能不生成**这个覆写方法。
+注意这里的行为差别：`final` **方法**在 CGLIB 下是**静默不拦**（子类合法，只是少一个覆写），
+`final` **类**在 CGLIB 下是**直接失败**（`Cannot subclass final class com.acme.X`）——
+一个安静、一个吵闹，很多「有时生效有时不生效」的困惑就来自这个差别。
+
+所以「`final` 类不能代理」这句话只在 CGLIB 下成立：限制来自「子类化」这个手段本身。
+JDK 代理不子类化目标，`final` 类只要有接口，照样能被代理。
+
+### B-29-2 加了「创建中」标记并把环直接报错，场景五会变成什么现象？比栈溢出更好吗？
+
+会变成启动期一条点名到边的异常：
+
+```
+org.springframework.beans.factory.BeanCurrentlyInCreationException: Error creating bean with name 'alpha':
+Requested bean is currently in creation: Is there an unresolvable circular reference?
+```
+
+比栈溢出好，理由有三条：
+
+1. **错误里带「图」而不是「栈」**：点名了 `alpha` 与「正在创建」，读者立刻知道是环；栈溢出只给出
+   1024 层一模一样的 `doCreateBean`，唯一的线索是「层数很多」。
+2. **不依赖栈深度**：栈溢出什么时候炸取决于 JVM 栈大小和每帧大小，同一个 bug 在另一台机器上可能
+   崩在别的地方，甚至表现为 `StackOverflowError` 被某个 `catch (Throwable)` 吞掉。
+3. **不掩盖真实调用栈**：栈溢出把有用的调用栈挤出了打印上限。
+
+代价是**标记的清理必须绝对可靠**：`singletonsCurrentlyInCreation` 若在异常路径上没被移除，下一个
+合法创建的 Bean 会被误判成「环」。真实 Spring 在 `beforeSingletonCreation` / `afterSingletonCreation`
+里成对维护这个集合，并在 `catch` / `finally` 两处收尾 —— 这套「成对的生命周期方法」是三级缓存
+那章的地基。
+
+### B-29-3 早期引用与最终代理不是同一个对象时，注入方拿旧的会怎样？
+
+两种后果，一个关于**状态**，一个关于**增强**。
+
+**状态**：注入方持有的是那个「旧对象」。若容器最终放进单例池的是另一个实例（或目标被 `TargetSource`
+换成新实例，如热替换、`refresh()` 重建、`prototype` 重新创建），注入方读到的就是老状态：
+
+```java
+beta.getAlpha().getCount();          // 0  —— 老对象
+context.getBean("alpha", Alpha.class).getCount();   // 7  —— 单例池里的
+```
+
+同一时刻调两次「同一个 Bean」，答案不同。这类 bug 极难查，因为两个引用都「合法」。
+
+**增强**：旧引用若是裸目标（raw），那么通过它发起的调用**没有代理拦截** —— 事务、审计、缓存全部
+静默失效，业务代码完全正确。这就是真实 Spring 那句警告的含义：
+
+```
+Bean 'alpha' has been injected into other beans [beta] in its raw version as part of a circular reference,
+but has eventually been wrapped ...
+```
+
+它选择「打印警告而不是修复」，因为此刻替换注入方的引用已不可能（`beta` 的字段早就填好了）。
+所以真实 Spring 的正解是**从一开始就别让两种对象并存**：`getEarlyBeanReference` 在「提前暴露」
+那一刻就把代理造出来放进去，并用 `EarlyProxyReferences` 记录「已经包过谁」，让正常路径跳过重复包装。
+
+### B-29-4 速查表第 11 条为什么归到「顺序/嵌套」而不是「失效」？其中一次是 `@Transactional` 会怎样？
+
+因为它不属于「增强没跑」，而属于「增强跑了、但次数或时机与预期不符」—— 判据上完全不同：
+排「失效」看「链长度为 0」，排「重复」看「链长度大于你想的」。
+
+`@Transactional` 重复进入的后果很具体：传播行为是**每次进入都重新应用**的。
+
+- 若内外都 `REQUIRED`：两次都加入同一个物理事务，第二次进入不会开新事务，但会再做一次
+  `setRollbackOnly` 之类的判断 —— 表面看没事，实际是「同一事务被套了两层拦截」；
+- 若外层 `REQUIRED`、内层 `REQUIRES_NEW`：会在**已持有的行锁**上再开一个事务去更新同一行，
+  数据库里就是自己等自己，直到 `innodb_lock_wait_timeout` 超时；
+- 若内层 `NOT_SUPPORTED`：会把外层事务挂起，内层跑在没有事务的连接上，写完提交不上去，
+  回滚时外层看不见内层已经落库的部分。
+
+所以「重复增强」不是无害的重复劳动，它**放大了**传播语义的每一次副作用。
+
+### B-29-5 三条判据里哪一条无法靠读代码判断？
+
+第 3 问「这次调用是从代理发起的吗」。
+
+前两问是**静态**的：
+
+- 「是不是代理」看类型与容器配置（可推断，只是运行时确认更省事）；
+- 「方法在不在代理上」看接口、修饰符、是否 `static`（完全静态）。
+
+第 3 问是**动态**的：`this.foo()` 和 `bean.foo()` 在源码里长得一样，都是「对某个对象调用方法」，
+但前者的 `this` 是目标对象、后者是代理。判断它需要知道运行时**这个引用绑到了谁**。更麻烦的是
+间接路径 —— 把 `this` 存进字段、注册成回调、当作监听器发布出去 —— 源码上毫无痕迹，只能靠
+`AopUtils.isAopProxy(...)` 在运行期观察，或者靠断点里 `this == target` 确认。
+
+这也是为什么「自调用失效」是四个高频场景里唯一**没有其他迹象**的一个：它不报错、不警告，
+业务完全正确，只是增强静默消失。唯一的排查手段是运行时观察。

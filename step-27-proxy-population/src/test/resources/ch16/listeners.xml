@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+	<!-- 声明顺序同样是「故意错」的：plain 在前，priority 在最后。 -->
+	<bean id="plainListener" class="org.springframework.samples.ch16.PlainListener"/>
+	<bean id="orderedListener" class="org.springframework.samples.ch16.OrderedListener"/>
+	<bean id="priorityListener" class="org.springframework.samples.ch16.PriorityListener"/>
+
+</beans>

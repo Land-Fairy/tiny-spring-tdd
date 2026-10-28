@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+    <bean id="audience" class="org.springframework.samples.ch11.ConsoleAudience"/>
+
+    <bean id="greetingService" class="org.springframework.samples.ch11.GreetingService"/>
+
+    <!-- 第 11 章做不到的事：把 @Autowired 的后处理器写成纯 XML Bean。
+         它要的工厂现在由 Aware 回调送进来，所以不再需要构造器参数。 -->
+    <bean id="autowiredProcessor"
+          class="org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor"/>
+
+</beans>

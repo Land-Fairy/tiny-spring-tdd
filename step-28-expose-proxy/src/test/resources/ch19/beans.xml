@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+	<bean id="englishGreeter" class="org.springframework.samples.ch19.EnglishGreeter"/>
+	<bean id="chineseGreeter" class="org.springframework.samples.ch19.ChineseGreeter"/>
+	<bean id="frenchGreeter" class="org.springframework.samples.ch19.FrenchGreeter"/>
+	<bean id="germanGreeter" class="org.springframework.samples.ch19.GermanGreeter"/>
+
+	<bean id="orderRepository" class="org.springframework.samples.ch19.OrderRepository"/>
+	<bean id="userRepository" class="org.springframework.samples.ch19.UserRepository"/>
+
+	<bean id="frenchTranslator" class="org.springframework.samples.ch19.FrenchTranslator"/>
+	<bean id="germanTranslator" class="org.springframework.samples.ch19.GermanTranslator"/>
+
+	<bean id="plainHolder" class="org.springframework.samples.ch19.PlainHolder"/>
+	<bean id="qualifierHolder" class="org.springframework.samples.ch19.QualifierHolder"/>
+	<bean id="translatorHolder" class="org.springframework.samples.ch19.TranslatorHolder"/>
+	<bean id="shadowHolder" class="org.springframework.samples.ch19.ShadowHolder"/>
+	<bean id="nameFallbackHolder" class="org.springframework.samples.ch19.NameFallbackHolder"/>
+	<bean id="collectionHolder" class="org.springframework.samples.ch19.CollectionHolder"/>
+
+	<bean id="autowiredProcessor"
+		  class="org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor"/>
+
+</beans>

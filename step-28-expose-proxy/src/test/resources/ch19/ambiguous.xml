@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+	<bean id="orderRepository" class="org.springframework.samples.ch19.OrderRepository"/>
+	<bean id="userRepository" class="org.springframework.samples.ch19.UserRepository"/>
+
+	<bean id="ambiguousHolder" class="org.springframework.samples.ch19.AmbiguousHolder"/>
+
+	<bean id="autowiredProcessor"
+		  class="org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor"/>
+
+</beans>

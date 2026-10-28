@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+
+	<bean id="alpha" class="org.springframework.samples.ch29.Alpha">
+		<property name="beta" ref="beta"/>
+	</bean>
+
+	<bean id="beta" class="org.springframework.samples.ch29.Beta">
+		<property name="alpha" ref="alpha"/>
+	</bean>
+
+</beans>
