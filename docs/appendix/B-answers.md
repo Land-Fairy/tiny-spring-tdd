@@ -2690,7 +2690,10 @@ if (distance < bestDistance) {   // bestDistance 初值就是 MAX_VALUE
 
 所以「换服务」不是热更新规则，它只在 `refresh()` 之前的装配窗口内有效。这也解释了真实 Spring 为什么把 `conversionService` 放在 `ConfigurableBeanFactory` 上、并在 `prepareBeanFactory` 阶段就固定下来 —— 它是**装配期配置**，不是运行期配置项。
 
-顺带一个真实的坑：如果有人在 `refresh()` 之后 `setConversionService`，行为是「一半新一半旧」—— 已建 Bean 用旧规则，后来者用新规则。这种不一致比「完全不生效」难查得多，因为大部分测试仍然绿。
+顺带一个真实的坑：如果有人在 `refresh()` 之后 `setConversionService`，行为是「一半新一半旧」—— 已建 Bean 用旧规则，后来者用新规则。这种不一致比「完全不生效」难查得多，因为大部分测试仍然绿——实测：把
+`setConversionService` 改成**空操作**（等价于"完全不生效"），本章 363 条测试里只有 1 条红
+（`valueInjectionUsesTheContainerWideConversionService`）；而"refresh 之后再换一次服务"，本章**一条测试都没有**。
+两条事实拼起来：换服务这件事，只有"从没生效过"会被发现，"生效了一半"不会。
 
 ### B-23-5：两种异常继承选择各自解释了什么？
 

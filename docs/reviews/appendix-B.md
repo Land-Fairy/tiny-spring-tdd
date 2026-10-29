@@ -1,4 +1,4 @@
-# 附录 B 答案的实测抽查（14 处可证伪断言里抽 6 条：4 错 1 半错 1 条「结论对、论证不成立」）
+# 附录 B 答案的实测抽查（14 处可证伪断言里抽 7 条：4 错 1 半错 1 条「结论对、论证不成立」 1 条完全正确）
 
 > 审计对象：`docs/appendix/B-answers.md`，4,121 行，36 章 217 个小节。
 > 方法：不算「读起来对不对」，只挑**能靠变异跑出真值**的断言——把代码真改坏，看红的是哪几条。
@@ -7,7 +7,7 @@
 ## 抽样范围
 
 全篇能机器判的只有两类：12 处「N 行」、14 处「会红 / 会绿」。其余全是散文。
-在 14 条里挑**同时给出「测试名 + 预期结果」**的 6 条做变异实测，判红读 surefire XML
+在 14 条里挑**同时给出「测试名 + 预期结果」**的 7 条做变异实测，判红读 surefire XML
 的 `<failure>` / `<error>` 节点（不 grep 控制台——控制台的 `Tests run` 汇总会把 error 与 failure 混着数）。
 
 复现方式（每次改前 `cp` 备份，改后 `git diff --stat` 确认为空）：
@@ -31,6 +31,7 @@ mvn -o -q -pl step-20-value-descriptor test     -Dcheckstyle.skip -Dpmd.skip -Dj
 | B-19-1 名字匹配与优先级对调 | 「`nameMatchOutranksPriority` 会红」+ 贴 `expected: "Hallo"` / `but was: "Bonjour"` | 红的确是该条（313 里唯一），但失败信息是 `isInstanceOf`，不会有字符串比对格式 | **半错**（A2） |
 | B-20-4 `populateBean` 顺序反转 | 「只红 `XmlOverrideTests`，实际值变 `Hi`」 | 331 条里**仅此 1 条**红，报 `expected: "from-xml" but was: "Hi"` | **完全正确** |
 | B-07-5 去掉 `isEqualTo` 会漏什么 | 三个例子：「编码」「BOM」「顺手 trim」都「只有 `isEqualTo` 会红」 | 三个例子实测**全不成立**（详见 A5） | **结论对、论证错**（A5） |
+| B-23-4 `refresh()` 之后换 `ConversionService` | 「已建 Bean 不变，后来者用新规则，大部分测试仍然绿」 | 临时测试实测 `first=12.50 CNY / second=99.00 CNY`；把 `setConversionService` 改成空操作，363 条里只红 1 条 | **完全正确** |
 
 ## P0
 
@@ -113,3 +114,20 @@ mvn -o -q -pl step-20-value-descriptor test     -Dcheckstyle.skip -Dpmd.skip -Dj
 并补上边界：它挡「两个来源给的字节不一样」，挡不了「解析器错了」和「两边一起错」，后两者各需一条在那一层能红的断言）。
 
 这条最值得记：**答案里「结论正确 + 论证虚构」比结论错更难发现**——读者会照着这个错误机制去设计测试。
+
+### 附：B-23-4 的实测方式（唯一一条靠「临时测试」而不是「变异」判定的）
+
+前六条都是「把答案描述的 bug 造出来，看红哪几条」。这一条描述的是**没被任何测试覆盖的行为**，
+所以先写一个用完即删的临时测试，把答案说的两个世界都造出来：
+
+```java
+// refresh 之后：先取 first，再把服务换成「一律转成 99.00 CNY」的，再取 second
+System.out.println("SWAP-RESULT first=" + first + "  second=" + second);
+// 实测输出：SWAP-RESULT first=12.50 CNY  second=99.00 CNY
+```
+
+答案的两半都站得住。补上的实测数字写回了 `docs/appendix/B-answers.md`：把 `setConversionService` 改成空操作，
+本章 363 条测试只有 1 条红。**「生效了一半」比「从没生效」难查，这条终于有数字支撑了。**
+
+顺带一个覆盖缺口（不计为 P0，记在这里）：本章没有一条测试钉住「refresh 之后再换服务」的行为——
+上面那个临时测试删掉之后，这个语义在仓库里就没有守卫了。
