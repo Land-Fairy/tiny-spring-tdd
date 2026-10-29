@@ -31,8 +31,9 @@ org.springframework.core       ← 全书地基（资源、转换、排序、异
 ```
 
 箭头是**单向**的：`context` 可以依赖 `beans`，`beans` 不能反过来依赖 `context`。
-本书用一条 ArchUnit 规则把这件事变成可执行事实（`LayeringTests`）；真实 Spring 用的是同一套工具、
-不同的一组规矩。
+本书用一个测试类把这件事变成可执行事实（`LayeringTests`，**四条**规矩，每个模块各一份）；
+真实 Spring **没有** ArchUnit——它靠 Gradle 构建依赖（`spring-beans` 只声明 `api(project(":spring-core"))`）
+把反向依赖挡在编译期，看不见的类根本 import 不到。
 
 这条线上最容易踩的一处：**`@Primary` 住在 `spring-context`，但「谁是主候选」的决策发生在
 `spring-beans`**。真实 Spring 的解法是「注册期翻译」——把注解变成 `BeanDefinition` 上的一个布尔量，
@@ -42,9 +43,9 @@ org.springframework.core       ← 全书地基（资源、转换、排序、异
 
 | 断点 | 位置 | 你会看到什么 |
 | --- | --- | --- |
-| 容器启动的骨架 | `AbstractApplicationContext#refresh` `:588` | 12 个 `protected` 钩子在 `:596`–`:644` 依次亮起；每个钩子都对应本书一章 |
-| 单例的诞生 | `AbstractAutowireCapableBeanFactory#initializeBean` `:1811` | `Aware` → `BeanPostProcessor#before` → 初始化回调 → `after`；`:1821`–`:1826` 那段 `catch (Throwable)` 是第 05 章讲「为什么框架不得不捕获宽异常」的原话 |
-| 自动装配的决策 | `AutowiredAnnotationBeanPostProcessor` `:506`/`:515`/`:543` | 字段、方法、构造器三条注入通道；`:752`/`:830` 才是「按类型找候选」的真正入口 |
+| 容器启动的骨架 | `AbstractApplicationContext#refresh` `:588` | 12 个 `protected` 钩子在 `:596`–`:631` 依次亮起（`:644` 的 `cancelRefresh(ex)` 是 `catch` 分支，不是钩子）；每个钩子都对应本书一章 |
+| 单例的诞生 | `AbstractAutowireCapableBeanFactory#initializeBean` `:1811` | `Aware` → `BeanPostProcessor#before` → 初始化回调 → `after`；`:1819`–`:1825` 那段 `try` / `catch (Throwable)` 是第 05 章讲「为什么框架不得不捕获宽异常」的原话 |
+| 自动装配的决策 | `AutowiredAnnotationBeanPostProcessor` `:506`/`:515`/`:543` | 字段、方法、构造器三条注入通道；`:752`/`:830` 是注入的落地点（候选查找在它们内部的 `findAutowireCandidates`） |
 | 配置类解析 | `ConfigurationClassPostProcessor` `:435` 起 | 「每轮只处理新出现的候选」的收敛循环；`:512`–`:518` 是那条著名的 `@Bean` 过早创建告警 |
 | 代理的诞生 | `AbstractAutoProxyCreator#postProcessAfterInitialization` `:315` → `wrapIfNecessary` `:354` | 「有没有匹配的 Advisor」这道闸门（`:361` 判基础设施类）；代理类型缓存 `:252`/`:296` |
 
