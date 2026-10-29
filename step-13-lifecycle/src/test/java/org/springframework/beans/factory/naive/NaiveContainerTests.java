@@ -77,4 +77,21 @@ class NaiveContainerTests {
 		return controller;
 	}
 
+	@Test
+	@DisplayName("异常里带得出结构化名字，不用扒 message")
+	void missingNameIsStructured() {
+		NoSuchBeanException failure = org.junit.jupiter.api.Assertions.assertThrows(NoSuchBeanException.class,
+				() -> this.container.getBean("nope"));
+		assertThat(failure.getBeanName()).isEqualTo("nope");
+	}
+
+	@Test
+	@DisplayName("注册 null 被当场拒绝，而不是留下一个取不出来的名字")
+	void registerNullIsRejected() {
+		assertThatExceptionOfType(NullPointerException.class).isThrownBy(() -> this.container.register("x", null))
+			.withMessageContaining("bean");
+		assertThat(this.container.containsBean("x")).isFalse();
+		assertThat(this.container.size()).isZero();
+	}
+
 }

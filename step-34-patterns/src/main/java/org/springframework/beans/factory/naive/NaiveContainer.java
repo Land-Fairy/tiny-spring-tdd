@@ -2,6 +2,7 @@ package org.springframework.beans.factory.naive;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.beans.factory.NoSuchBeanException;
 
@@ -39,10 +40,17 @@ public class NaiveContainer {
 
 	/**
 	 * 把一个已经 new 好的对象按名字登记进来。
+	 *
+	 * <p>
+	 * {@code null} 在这里就拒掉，不许进 Map：否则 {@code containsBean("x")} 会说「有」， 而
+	 * {@code getBean("x")} 抛的却是「No bean named 'x' available」——同一个名字，
+	 * 两个互相矛盾的答案。**「找不到」只允许有一种含义**：没登记。
 	 * @param name Bean 的名字
-	 * @param bean 已经创建好的实例
+	 * @param bean 已经创建好的实例，不允许为 {@code null}
+	 * @throws NullPointerException {@code bean} 为 {@code null} 时
 	 */
 	public void register(String name, Object bean) {
+		Objects.requireNonNull(bean, "bean");
 		this.beans.put(name, bean);
 	}
 
@@ -54,8 +62,9 @@ public class NaiveContainer {
 	 */
 	public Object getBean(String name) {
 		Object bean = this.beans.get(name);
+		// register 已经拒掉 null，所以这里取到 null 只可能是「没登记」——一个含义，一个异常。
 		if (bean == null) {
-			throw new NoSuchBeanException("No bean named '" + name + "' available");
+			throw new NoSuchBeanException(name, "No bean named '" + name + "' available");
 		}
 		return bean;
 	}
