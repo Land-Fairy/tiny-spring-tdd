@@ -1,4 +1,4 @@
-# 附录 B 答案的实测抽查（14 处可证伪断言里抽 5 条：3 错 1 半错 1 对）
+# 附录 B 答案的实测抽查（14 处可证伪断言里抽 6 条：4 错 1 半错 1 条「结论对、论证不成立」）
 
 > 审计对象：`docs/appendix/B-answers.md`，4,121 行，36 章 217 个小节。
 > 方法：不算「读起来对不对」，只挑**能靠变异跑出真值**的断言——把代码真改坏，看红的是哪几条。
@@ -7,12 +7,13 @@
 ## 抽样范围
 
 全篇能机器判的只有两类：12 处「N 行」、14 处「会红 / 会绿」。其余全是散文。
-在 14 条里挑**同时给出「测试名 + 预期结果」**的 5 条做变异实测，判红读 surefire XML
+在 14 条里挑**同时给出「测试名 + 预期结果」**的 6 条做变异实测，判红读 surefire XML
 的 `<failure>` / `<error>` 节点（不 grep 控制台——控制台的 `Tests run` 汇总会把 error 与 failure 混着数）。
 
 复现方式（每次改前 `cp` 备份，改后 `git diff --stat` 确认为空）：
 
 ```bash
+mvn -o -q -pl step-07-resource test           -Dcheckstyle.skip -Dpmd.skip -Djacoco.skip
 mvn -o -q -pl step-11-bean-post-processor test  -Dcheckstyle.skip -Dpmd.skip -Djacoco.skip
 mvn -o -q -pl step-12-aware test                -Dcheckstyle.skip -Dpmd.skip -Djacoco.skip
 mvn -o -q -pl step-13-lifecycle test            -Dcheckstyle.skip -Dpmd.skip -Djacoco.skip
@@ -29,6 +30,7 @@ mvn -o -q -pl step-20-value-descriptor test     -Dcheckstyle.skip -Dpmd.skip -Dj
 | B-13-1 删掉 `beanDefinition == null` 判断 | 「会红的是 `AutowireCapableBeanFactoryTests#createBeanDoesNotRegister`」 | 231 条里 **2 error**：`createBeanDoesNotRegisterTheResult` 与 `initializeBeanInvokesTheCallback` | **错**（A4） |
 | B-19-1 名字匹配与优先级对调 | 「`nameMatchOutranksPriority` 会红」+ 贴 `expected: "Hallo"` / `but was: "Bonjour"` | 红的确是该条（313 里唯一），但失败信息是 `isInstanceOf`，不会有字符串比对格式 | **半错**（A2） |
 | B-20-4 `populateBean` 顺序反转 | 「只红 `XmlOverrideTests`，实际值变 `Hi`」 | 331 条里**仅此 1 条**红，报 `expected: "from-xml" but was: "Hi"` | **完全正确** |
+| B-07-5 去掉 `isEqualTo` 会漏什么 | 三个例子：「编码」「BOM」「顺手 trim」都「只有 `isEqualTo` 会红」 | 三个例子实测**全不成立**（详见 A5） | **结论对、论证错**（A5） |
 
 ## P0
 
@@ -94,3 +96,20 @@ mvn -o -q -pl step-20-value-descriptor test     -Dcheckstyle.skip -Dpmd.skip -Dj
   （`ConcurrentSingletonCreationTests.java:73` 是 `isEqualTo(1)`，带 `.as("同一个单例的构造器执行次数")`）。
 - `B-answers.md:769` 那句 `Bean named 'greeter' is expected to be of type ...` 经核为真
   （`step-06-bean-factory-hierarchy/.../DefaultListableBeanFactory.java:185`）。
+
+### A5（论证不成立）B-07-5 三个例子没有一个按它说的那样变红
+
+答案说：去掉 `assertThat(fromFile).isEqualTo(fromClasspath)` 只留弱断言，会漏掉「编码」「BOM」「顺手 `trim()`」三类 bug，且「只有 `isEqualTo` 会红」。把三类各造成真，实测：
+
+| 造出来的 bug | 答案的预言 | 实测 |
+|---|---|---|
+| `parse()` 顺手 `trim()` 值 | `containsKey` 通过、`isEqualTo` 红 | **两个都绿**；抓到它的是 `parsesLines` 的尾随空格断言 |
+| classpath 那条路的流前塞 BOM | 两边都能读、`isEqualTo` 红 | **`parse()` 先抛 `Malformed line (no '=')`**，两条断言都没执行 |
+| 「一条路用平台默认编码」 | `contains` 永远不红、`isEqualTo` 红 | **这一章的代码写不出这个 bug**：字符集在加载处写死 `InputStreamReader(in, UTF_8)`，不由 `Resource` 决定 |
+
+根因一句话：**这条断言比的是「两个来源」，不是「两个实现」。** 解析器被改坏时两边错得一样，`isEqualTo` 无从分辨。
+
+已按实测改写 `docs/appendix/B-answers.md` 的 B-07-5（保留结论「必须是相等性断言」，把三个理由换成能站住的版本，
+并补上边界：它挡「两个来源给的字节不一样」，挡不了「解析器错了」和「两边一起错」，后两者各需一条在那一层能红的断言）。
+
+这条最值得记：**答案里「结论正确 + 论证虚构」比结论错更难发现**——读者会照着这个错误机制去设计测试。

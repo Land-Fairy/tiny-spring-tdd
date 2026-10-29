@@ -957,13 +957,22 @@ if (!this.beanFactory.isSingleton("greeter")) {
 
 去掉 `assertThat(fromFile).isEqualTo(fromClasspath)`、只保留「两个都能读」会漏掉三类 bug：
 
-**一、编码相关的 bug。** `ClassPathResource` 与 `UrlResource` 如果一条路用 `StandardCharsets.UTF_8`、另一条用平台默认编码（`new InputStreamReader(in)`），那么在同一台机器上中文内容可能都「能读出来」，但**只有一条路的 `greeting.prefix=你好，` 是对的**。断言里 `contains("greeting.prefix=Hello,")` 只查 ASCII 前缀，永远不会红；`isEqualTo` 会因为值不同而红。
+**一、解析器的 bug——`isEqualTo` 也挡不住。** 把这一章的 `parse()` 改成顺手 `trim()` 值（一个极常见的"清理"），
+实测结果：`sameParserWorksForEverySource` **照样绿，连 `isEqualTo` 一起绿**——因为两边用的是同一个解析器，
+错得一样。抓到它的是另一条测试 `parsesLines` 的尾随空格断言。**这条相等性断言比的是"两个来源"，不是"两个实现"。**
 
-**二、行尾与 BOM 相关的 bug。** `Files.newInputStream` 与 `URLConnection.getInputStream` 对同一个文件给出的字节是相同的，但如果 `FileSystemResource` 走的是 `Files.readString`（会处理 BOM）而 `UrlResource` 用的是原始流（BOM 会变成 `\uFEFF` 留在第一行的 key 里），两边的 `Map` 的 key 就不同：一个是 `greeting.prefix`，另一个是 `\uFEFFgreeting.prefix`。两边都「能读出内容」，但只有 `isEqualTo` 会红。
+**二、编码相关的 bug——这一章的代码写不出来。** 解码字符集不归 `Resource` 决定：`PropertiesLoader` 在加载处
+显式 `new InputStreamReader(in, StandardCharsets.UTF_8)`。假如真有人在这里改成平台默认编码，那么两边**同时**变，
+`isEqualTo` 依旧绿。这是"本条断言覆盖不到"的边界，得靠一条钉住具体字节的测试。
 
-**三、解析细节的偏差。** 本章 `parse()` 特意保留值里的尾随空格（`"greeting.prefix" → "Hello, "`）。如果哪条路顺手 `trim()` 了整行，值会变成 `"Hello,"`——`containsKey` 仍然通过，`isEqualTo` 红。
+**三、BOM 相关的 bug——会先抛异常，不是静默变绿。** 给 classpath 那条路的流前面塞一个 BOM（模拟"一条路多吐三个字节"），
+实测 `parse()` 直接抛 `Malformed line (no '='): \ufeff# 第 07 章 classpath 测试资源`——弱断言与强断言都没机会执行。
+这个结局比"静默读到不一样的 Map"好得多，因为它指出的是行号和那一行的原文。
 
-这三类的共同特征：**它们都不是「读不到」，而是「读到了不一样的东西」**。`contains` 这类弱断言天生只能验证「有没有」，验证不了「一样不一样」。所以本章的验收断言必须是相等性断言。
+这三类合起来才是这条断言的真正价值：**它挡的是"两个来源给的字节不一样"（行尾、BOM、编码），
+挡不了"解析器错了"，也挡不了"两边一起错"。** 而"解析器错了"要靠 `parsesLines` 那种逐字断言，
+"两边一起错"只能靠对着规格写断言。弱断言（`containsKey`）确实不够——但换成 `isEqualTo` 也不是万能的，
+**每一层错误都需要一条能在那一层变红的断言**。
 
 这也是 `CODE-STANDARDS.md` 里那条「测试要钉住行为而不是钉住不崩溃」的具体体现。
 
