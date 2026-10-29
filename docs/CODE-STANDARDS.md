@@ -2,7 +2,7 @@
 
 > 这不是一份"建议"，但也别把它读成"全部由机器执行"——2026-10-28 审计过一次，真实情况是：
 >
-> - **闸门 16 道**（§闸门一览）：全部由 `mvn verify` 或 CI 执行，违反即红灯。这部分是硬约束。
+> - **闸门 17 道**（§闸门一览）：全部由 `mvn verify` 或 CI 执行，违反即红灯。这部分是硬约束。
 > - **优雅六条 K1–K6**：**K2、K5** 有源码契约测试（`K2SourceContractTests`、`K5SourceContractTests`），
 >   **K3 部分**由 checkstyle 兜住（`MethodLength` 40 行是硬线，不是 K3 写的 30），
 >   **K4 部分**由闸门 16 兜住（`check-bean-name.py` 查「类名带 Bean 的异常有没有结构化 `beanName`」），
@@ -128,7 +128,7 @@ Bean 的两处（重复名、缺 class）把 `id` 传进去。**现在这条有�
 ## 闸门一览
 
 代码注释里说的「第 N 道闸门」指的就是下面这张表的编号。1–6 在单个模块的 `mvn verify` 里跑；
-7–16 要看整个仓库才能判断，所以放在 CI 里单独跑。
+7–17 要看整个仓库才能判断，所以放在 CI 里单独跑。
 
 | # | 闸门 | 工具 | 阶段 | 违规后果 |
 |---|---|---|---|---|
@@ -148,13 +148,15 @@ Bean 的两处（重复名、缺 class）把 `id` 传进去。**现在这条有�
 | 14 | 附录 C 类对照表可验证（类名 + 真实行数 + 聚合数字） | `scripts/check-class-map.py`（CI 单独跑，需上游源码树） | 仓库级 | 退出码 1（缺上游退 2） |
 | 15 | ArchUnit 规则不许空集放行放过头 | `scripts/check-archunit-vacuity.py`（CI 单独跑） | 仓库级 | 退出码 1 |
 | 16 | 类名带 `Bean` 的异常必须带结构化 `beanName` | `scripts/check-bean-name.py`（CI 单独跑；`--all` 列全部被检查类） | 仓库级 | 退出码 1 |
+| 17 | 正文行内「N 个测试」对账 | `scripts/check-inline-numbers.py`（CI 在 `mvn verify` 之后跑；`--fix` 自动回写） | 仓库级 | 退出码 1（缺 surefire 退 2） |
 
-一条命令跑 1–6：`mvn verify`；7–16 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、
+一条命令跑 1–6：`mvn verify`；7–17 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、
 `bash scripts/check-doc-links.sh`、`python3 scripts/check-chapter-refs.py`、`python3 scripts/check-doc-tables.py`、
 `python3 scripts/check-review-format.py`、`python3 scripts/check-review-refs.py`、`python3 scripts/check-class-map.py`、
-`python3 scripts/check-archunit-vacuity.py`、`python3 scripts/check-bean-name.py`
-（7 查代码有没有退化；8–16 查文档与规则的九类腐败：引用解析不了、链接指向空气、链接指错了门、
-体量表里的数字对不上、评审结论的写法各说各话、**评审自己引用的 file:line 指不到东西**、**附录 C 那张对照表的类名与行数悄悄漂了**、**异常改了却没能结构化告诉调用方是哪个 Bean**）。
+`python3 scripts/check-archunit-vacuity.py`、`python3 scripts/check-bean-name.py`、
+`python3 scripts/check-inline-numbers.py`
+（7 查代码有没有退化；8–17 查文档与规则的十类腐败：引用解析不了、链接指向空气、链接指错了门、
+体量表里的数字对不上、评审结论的写法各说各话、**评审自己引用的 file:line 指不到东西**、**附录 C 那张对照表的类名与行数悄悄漂了**、**异常改了却没能结构化告诉调用方是哪个 Bean**、**正文里手抄的「N 个测试」跟着代码悄悄过期**）。
 
 闸门 10 判六条通道（v2.x）：**类名不符（判错）> 类名归属（通过）> 类名首现章 > 具体关键词 > 泛词唯一归属（WARN）> 泛词提示**。
 扫描范围含 `docs/**.md` **与 `step-35-graduation` 的 javadoc/行注释**（35 份副本内容相同，审最全的一份）。
@@ -757,3 +759,29 @@ git commit -am "fix(step-05): ..."
 **它的上限**：只判「存在性」，判不了「抛点是否真的填了名字」。`BeanDefinitionStoreException` 目前 13 个
 抛点里只有 2 个填了（重复名、缺 class），其余是 XML 级错误、没有单个 Bean 可归属——**填 null 是正确行为，
 但「该填的地方是否都填了」仍要人读**。这条已写进 `docs/reviews/00-issue-drafts.md`。
+
+### 闸门 17：正文行内「N 个测试」对账
+
+**它防的是什么**：闸门 11 只校验**表格**。正文里散落的「模块内 376 个测试」「测试从 422 个涨到 430 个」
+不在表格里，一直靠手抄——而每加一次跨章测试，十几章的数字同时过期。2026-10-28/29 两轮里
+这类数字**漂了三次**，每次都靠人 grep：`+4`（占位符四测）、`+2`（`NaiveContainer` 两测）、
+`+3`（ch23 转换服务）。手抄必漂，这是结构性的。
+
+**为什么不能用「看起来像数字就查」**：正文里有大量合法的一次性计数——「17 个测试全绿」（说的是
+某个测试类的样本）、「327 个测试里 3 个红」（说的是一次红跑的历史快照）、「下面的红字日志是当时
+跑出来的 188 个」（明写是历史）。所以只认**六种明确形状**，每种都对应「这个模块现在的总数」：
+
+1. `模块内 376 个测试` / `模块内 **376** 个测试`
+2. `本模块共 **196** 个测试`
+3. `本章 349 个测试`
+4. `红四之后：363 个测试全绿`（`红…之后：N 个测试`）
+5. `./mvnw -pl step-NN-xxx test      # 196 个测试`（行尾注释）
+6. `测试 **440** 个（新增 4）`；`测试 **435** 个（净减 5）`——顺便校验「净减 N」这半个数字
+
+以及跨两章的 `测试从 X 个涨到 **Y** 个`：X 对上一章、Y 对本章。
+
+**依赖测试结果**：要读各模块 `target/surefire-reports/*.txt`，所以它在 CI 里排在
+`./mvnw -B verify` **之后**（同一作业，报告还在）。本地缺报告时退 2：**判不了 ≠ 通过**。
+
+**首次上线的实测**：18 处行内数字里 **15 处已过期**（最大差 +3），`--fix` 一次改写 10 个章节后归零。
+这个比例本身就是结论——没有闸门时，这类数字的「保鲜期」只有一轮。

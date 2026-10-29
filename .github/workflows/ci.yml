@@ -42,6 +42,10 @@ jobs:
       # 跨章回归不变式：35 个章节模块是同一份代码的快照，第 K 章的修复必须传到 K+1、K+2。
       # 这一条不属于任何单个模块（要横着比），所以放在 CI 里单独跑，见 scripts/check-propagation.sh。
       - name: 第 7 道闸门 · 跨章回归不变式
+      # 第 17 道闸门要读各模块的 surefire 报告，所以必须紧跟 `mvn verify`（报告还在）。
+      - name: 第 17 道闸门 · 正文行内「N 个测试」对账
+        run: python3 scripts/check-inline-numbers.py
+
         run: bash scripts/check-propagation.sh
 
       # 文档腐败防线之一：文件改名后链接不跟着改，不会让任何测试变红，只会让读者撞 404。
