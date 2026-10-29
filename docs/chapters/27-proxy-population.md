@@ -7,7 +7,7 @@
 > 测试从 413 个涨到 **422** 个，行覆盖 86.5%、分支覆盖 75.7%。
 
 上一章的结尾有个问题被我一笔带过：代理是在 `postProcessAfterInitialization` 里造出来的。也就是说，
-容器**先**把属性填进 `LibraryImpl`、跑完 `afterPropertiesSet()`，**然后**才用一层壳把对象包起来。
+容器**先**把属性填进 `LibraryImpl`、跑完 `afterPropertiesSet()`，**然后**才用一层壳把对象包起来（下称「壳」，正式术语是**代理**）。
 
 那么问题来了：既然 `getBean()` 拿回来的是那个壳，
 

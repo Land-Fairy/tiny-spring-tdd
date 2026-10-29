@@ -321,6 +321,14 @@ class ApplicationContextAwareProcessor implements BeanPostProcessor {
 
 **③ 为什么不复用 `invokeAwareMethods`？** 因为它跨包了。`beans` 层的工厂不该知道 `context` 层有一个 `ApplicationContextAware`。**跨层的东西由上层的后处理器补**，这是分层架构里「依赖方向」的直接体现。
 
+**④ 它递出的接口是故意做窄的。** 本书的 `ApplicationContext` 只有 `getDisplayName()` 与 `getStartupDate()`，
+`getEnvironment()` 长在 `ConfigurableApplicationContext` 上。真实 Spring 不是这样——它的 `ApplicationContext`
+继承了 `EnvironmentCapable`，回调里直接就能读到环境。
+
+这个差距是**有意留的**：本章要证明的是「上层后处理器把上层能力补给 `beans` 层的 Bean」这条依赖方向，
+接口一旦加宽，「窄接口也能被补上」这件事就看不出来了。代价写清楚：**实现 `ApplicationContextAware` 的 Bean
+想读环境，必须自己向下转型**成 `ConfigurableApplicationContext`——这不是 bug，是取舍。
+
 现在解释 3.3 留下的问题：**为什么 `invokeAwareMethods` 在 BPP before 链之前？**
 
 因为这样两个通道的顺序就是确定的：**工厂能给的先给，上层能补的后补**。于是 `setBeanName` / `setBeanFactory` 一定早于 `setApplicationContext`。反过来（先 BPP 后工厂）就危险了：`ApplicationContextAwareProcessor` 里如果某个实现顺手在 `setApplicationContext` 里用 `getBeanName()`，就会拿到 `null`。**顺序即契约**——真实 Spring 的 `initializeBean` 也是这个顺序（`:1812` 调 `invokeAwareMethods`，`:1816` 才进 before 链）。
