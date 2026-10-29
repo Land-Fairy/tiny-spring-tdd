@@ -663,17 +663,17 @@ factory.getBean("controller")
 
 | 本书的类 | 真实全限定名 | 真实行数 | 本书行数 |
 | --- | --- | --- | --- |
-| `BeanDefinitionReader` | `org.springframework.beans.factory.support.BeanDefinitionReader` | 121 | 45 |
+| `BeanDefinitionReader` | `org.springframework.beans.factory.support.BeanDefinitionReader` | 121 | 47 |
 | `AbstractBeanDefinitionReader` | `org.springframework.beans.factory.support.AbstractBeanDefinitionReader` | 258 | 63 |
-| `XmlBeanDefinitionReader` | `org.springframework.beans.factory.xml.XmlBeanDefinitionReader` | **564** | 121 |
-| `BeanDefinitionDocumentReader` | `org.springframework.beans.factory.xml.BeanDefinitionDocumentReader` | 50 | 27 |
-| `DefaultBeanDefinitionDocumentReader` | `org.springframework.beans.factory.xml.DefaultBeanDefinitionDocumentReader` | 349 | 182 |
+| `XmlBeanDefinitionReader` | `org.springframework.beans.factory.xml.XmlBeanDefinitionReader` | **564** | 123 |
+| `BeanDefinitionDocumentReader` | `org.springframework.beans.factory.xml.BeanDefinitionDocumentReader` | 50 | 29 |
+| `DefaultBeanDefinitionDocumentReader` | `org.springframework.beans.factory.xml.DefaultBeanDefinitionDocumentReader` | 349 | 185 |
 | *(无)* | `org.springframework.beans.factory.xml.BeanDefinitionParserDelegate` | **1544** | — |
 | *(无)* | `org.springframework.beans.factory.xml.DocumentLoader` / `DefaultDocumentLoader` | 50 / 88 | — |
-| `RuntimeBeanReference` | `org.springframework.beans.factory.config.RuntimeBeanReference` | 152 | 42 |
-| `TypedStringValue` | `org.springframework.beans.factory.config.TypedStringValue` | 240 | 46 |
-| `BeanDefinitionValueResolver` | `org.springframework.beans.factory.support.BeanDefinitionValueResolver` | **513** | 68 |
-| `BeanDefinitionStoreException` | `org.springframework.beans.factory.BeanDefinitionStoreException` | 129 | 24 |
+| `RuntimeBeanReference` | `org.springframework.beans.factory.config.RuntimeBeanReference` | 152 | 44 |
+| `TypedStringValue` | `org.springframework.beans.factory.config.TypedStringValue` | 240 | 48 |
+| `BeanDefinitionValueResolver` | `org.springframework.beans.factory.support.BeanDefinitionValueResolver` | **513** | 70 |
+| `BeanDefinitionStoreException` | `org.springframework.beans.factory.BeanDefinitionStoreException` | 129 | 58 |
 | *(无)* | `org.springframework.beans.factory.xml.XmlBeanDefinitionStoreException` | 57 | — |
 
 **本章是全书中真实代码与本书代码差距最大的一章**：真实总量约 3900 行，本书约 640 行，比例 6:1。原因很集中——`BeanDefinitionParserDelegate`（1544 行）和 `BeanDefinitionValueResolver`（513 行）这两个「多分支翻译器」的规模由**支持多少种配置**决定，而本书只支持 5 种。

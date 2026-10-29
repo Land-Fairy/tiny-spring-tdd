@@ -16,6 +16,8 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistry;
  * registry、resource、environment、problemReporter。 本书把上下文压成一个
  * {@link BeanDefinitionRegistry} 参数——这是**有意的简化， 代价是错误消息里拿不到「哪个资源」**，所以我们的
  * XmlBeanDefinitionReader 在解析失败时要自己补上资源描述。
+ *
+ * @see org.springframework.beans.factory.xml.BeanDefinitionDocumentReader
  */
 public interface BeanDefinitionDocumentReader {
 

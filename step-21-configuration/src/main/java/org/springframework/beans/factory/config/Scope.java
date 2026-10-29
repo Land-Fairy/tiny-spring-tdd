@@ -17,6 +17,8 @@ import org.springframework.beans.factory.ObjectFactory;
  * <p>
  * 真实对应物：{@code org.springframework.beans.factory.config.Scope}。 本书砍掉了
  * {@code resolveContextualObject(String)}（用于 {@code @Value} 取上下文对象）。
+ *
+ * @see org.springframework.beans.factory.config.Scope
  */
 public interface Scope {
 

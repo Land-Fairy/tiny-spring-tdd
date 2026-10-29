@@ -33,6 +33,8 @@ import org.springframework.core.io.ResourceLoader;
  * <li>命名空间标签交给 {@code NamespaceHandler}（{@code <context:component-scan>} 就是从这里进来的）
  * <li>{@code resourcesCurrentlyBeingLoaded}（一个 ThreadLocal 集合）用来检测 {@code <import>} 的循环引用
  * </ul>
+ *
+ * @see org.springframework.beans.factory.xml.XmlBeanDefinitionReader
  */
 public class XmlBeanDefinitionReader extends AbstractBeanDefinitionReader {
 

@@ -459,7 +459,7 @@ bf.registerBeanDefinition("target", new RootBeanDefinition(TextTarget.class));
 |---|---|---|---|---|
 | `Value.java` | 63 | `beans/factory/annotation/Value.java` | 66 | 几乎一样（都是注解声明） |
 | `DependencyDescriptor.java` | 167 | `beans/factory/config/DependencyDescriptor.java` | 474 | 方法参数、嵌套层级、`ResolvableType`、Kotlin 可空 |
-| `SimpleTypeConverter.java` | 158 | `beans/SimpleTypeConverter.java` | **40** | 真实只有一个 `convertIfNecessary` 委派；活儿在 `TypeConverterSupport`（91）与 `TypeConverterDelegate`（650） |
+| `SimpleTypeConverter.java` | 160 | `beans/SimpleTypeConverter.java` | **40** | 真实只有一个 `convertIfNecessary` 委派；活儿在 `TypeConverterSupport`（91）与 `TypeConverterDelegate`（650） |
 | `AutowiredAnnotationBeanPostProcessor.java` | 546 | 同名文件 | 1113 | 方法/构造器注入、`@Value` 策略、缓存、`ObjectProvider` |
 | `StringValueResolver.java` | 38 | `spring-core` 的 `util/StringValueResolver.java` | 44 | 包位置不同：真实在 `util`，本书放 `beans.factory.config` |
 

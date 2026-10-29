@@ -13,6 +13,8 @@ package org.springframework.core;
  *
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.core.Ordered}（71 行，常量 :49/:55，方法 :69）。
+ *
+ * @see org.springframework.core.Ordered
  */
 public interface Ordered {
 

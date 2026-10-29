@@ -33,6 +33,9 @@ import java.nio.file.StandardCopyOption;
  * 本类只做两件事：告诉你文件在哪、把它复制到你指定的位置。真正生成字节码的是 JVM，我们连一个字节都没写 ——这正是本章想让人看清的分界线。
  *
  * @see JdkDynamicAopProxy
+ *
+ * <p>
+ * K5 豁免：上游无同类——真实 Spring 不提供「取代理字节码」的公开工具， 它只是本书为了把代理类打开给学生看而加的手脚。
  */
 public final class ProxyDiagnostics {
 

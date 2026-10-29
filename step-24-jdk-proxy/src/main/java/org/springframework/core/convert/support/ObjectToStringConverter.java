@@ -17,6 +17,8 @@ import org.springframework.core.convert.converter.Converter;
  * <p>
  * <b>真实 Spring 对应</b>：{@code ObjectToStringConverter}（89 行），它会跳过
  * {@code char[]}、{@code Character} 等已有专门转换器的类型，本书不跳过（那些转换器我们没做）。
+ *
+ * @see org.springframework.core.convert.support.ObjectToStringConverter
  */
 public class ObjectToStringConverter implements Converter<Object, String> {
 

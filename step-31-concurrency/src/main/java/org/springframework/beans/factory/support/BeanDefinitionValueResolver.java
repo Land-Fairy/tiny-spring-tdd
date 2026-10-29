@@ -26,6 +26,8 @@ import org.springframework.beans.factory.config.TypedStringValue;
  * 真实对应物：{@code org.springframework.beans.factory.support.BeanDefinitionValueResolver}（513
  * 行）。 真实版本要处理 12 种值类型（内部 Bean、ManagedList/Map/Set/Properties、数组、
  * {@code DependencyDescriptor}、{@code BeanDefinitionHolder}……），本书只留 2 种。
+ *
+ * @see org.springframework.beans.factory.support.BeanDefinitionValueResolver
  */
 public class BeanDefinitionValueResolver {
 

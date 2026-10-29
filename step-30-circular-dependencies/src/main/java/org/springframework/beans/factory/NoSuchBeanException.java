@@ -15,12 +15,37 @@ package org.springframework.beans.factory;
  */
 public class NoSuchBeanException extends RuntimeException {
 
+	/** 找不到的那个名字；按类型查找时没有名字，为 {@code null}。 */
+	private final String beanName;
+
 	/**
-	 * 创建一个异常。
-	 * @param message 说明是哪个名字 / 哪个类型找不到
+	 * 创建一个「没有结构化名字」的异常——按类型查找走这条路。
+	 * @param message 说明是哪个类型找不到
 	 */
 	public NoSuchBeanException(String message) {
+		this(null, message);
+	}
+
+	/**
+	 * 创建一个带结构化名字的异常。
+	 * @param beanName 找不到的那个名字，可能为 {@code null}
+	 * @param message 说明是哪个名字找不到
+	 */
+	public NoSuchBeanException(String beanName, String message) {
 		super(message);
+		this.beanName = beanName;
+	}
+
+	/**
+	 * 返回找不到的那个名字。
+	 * <p>
+	 * 按名字查找时总有值；按类型查找时为 {@code null}——那时问题不是「名字错」，而是「没有这种类型」。
+	 * 上层要做「找不到就降级」这种分支时，应当用这个字段而不是去 {@code getMessage()} 里做字符串匹配。 真实 Spring 的对应物
+	 * {@code NoSuchBeanDefinitionException} 也有 {@code getBeanName()}。
+	 * @return 名字，可能为 {@code null}
+	 */
+	public String getBeanName() {
+		return this.beanName;
 	}
 
 }

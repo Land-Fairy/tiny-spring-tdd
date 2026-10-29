@@ -21,6 +21,8 @@ import java.util.Deque;
  * （{@code AbstractBeanFactory.java:229}，一个 {@code ThreadLocal<Object>}，要么是单个名字、要么是名字的
  * {@code Set}），配合 {@code ConfigurationClassEnhancer.BeanMethodInterceptor} 里对
  * {@code BeanCurrentlyInCreationException} 的专门处理。
+ *
+ * @see org.springframework.context.annotation.ConfigurationClassEnhancer.BeanMethodInterceptor
  */
 public final class FactoryMethodInProgress {
 

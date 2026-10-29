@@ -2,7 +2,7 @@
 
 > 🌿(ch00–ch29) 🕳️
 
-> 本章代码：`step-30-circular-dependencies`。测试 **440** 个（新增 4），行覆盖 86.6%（3050/3523）、
+> 本章代码：`step-30-circular-dependencies`。测试 **442** 个（新增 4），行覆盖 86.6%（3050/3523）、
 > 分支覆盖 76.0%（1176/1548）。新增主代码只有 42 行的 `BeanCurrentlyInCreationException` 与 56 行的
 > `SmartInstantiationAwareBeanPostProcessor`，其余全是往三个已有类里加东西：
 > `DefaultSingletonBeanRegistry`（433 行）、`DefaultListableBeanFactory`（1170 行）、
@@ -306,6 +306,34 @@ this.singletonFactories.remove(beanName);
 
 不清的后果很具体：下一次解析依赖时，`getSingleton(beanName, true)` 会先看二级缓存，拿到那个
 **早就被替换掉的**早期对象——又是第 29 章场景六。
+
+### 4.4 本章顺手删掉的一段死代码
+
+`getBean(String)` 里原来有这么一段（第 06 章起就有，`registerSingleton` 直接注册现成对象的路径要用它）：
+
+```java
+if (beanDefinition == null) {
+    // 只有单例池里有：registerSingleton 直接注册的现成对象，没有图纸。
+    return getObjectForBeanInstance(getSingleton(beanName), name, beanName, null);
+}
+```
+
+本章在它上面加了「先问一句」的提前返回：
+
+```java
+Object sharedInstance = getSingleton(beanName);
+if (sharedInstance != null) {
+    return getObjectForBeanInstance(sharedInstance, name, beanName, beanDefinition);
+}
+```
+
+加了这三行之后，那段旧分支就**永远走不到了**：它描述的情况（池里有、图纸没有）已经被上面提前返回，
+于是走到它时 `getSingleton(beanName)` 一定是 `null`——真按那段代码执行，等于把 `null` 交给
+`getObjectForBeanInstance`。所以 `step-30`–`step-35` 把它删了；`step-06`–`step-29` 保留，因为那几章里它是活的。
+
+这也是一课：**加一条提前返回，会让别处的分支悄悄变成死代码**。真实 Spring 里那段分支是活的
+（它的 `getBean` 没有这个提前返回），所以照抄上游的代码形状、再加上自己的优化，很容易叠出一段既不生效、
+又能骗过所有人的代码。判据很简单：**删掉它，测试还是全绿，它就不是"为了将来"，是死代码**（本章的 9,734 条测试就是判据）。
 
 ## 5. 🔍 真实 Spring 里它在哪
 

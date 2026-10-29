@@ -19,6 +19,8 @@ import java.util.List;
  * <b>真实 Spring 对应</b>：{@code org.springframework.core.OrderComparator}（229 行）。 真实版还支持
  * {@code OrderSourceProvider}（把一个对象映射到「真正的排序来源」， 比如 {@code FactoryBean} 让它按工厂方法上的
  * {@code @Order} 排序）与 {@code getPriority}（{@code @Priority} 注解）。
+ *
+ * @see org.springframework.core.OrderComparator
  */
 public class OrderComparator implements Comparator<Object> {
 

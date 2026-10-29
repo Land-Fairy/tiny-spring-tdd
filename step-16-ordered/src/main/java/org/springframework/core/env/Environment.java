@@ -15,6 +15,7 @@ package org.springframework.core.env;
  * {@code Environment}， 因为本书没有 profile（Out of Scope）。
  *
  * @see StandardEnvironment
+ * @see org.springframework.core.env.Environment
  */
 public interface Environment extends PropertyResolver {
 

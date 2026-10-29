@@ -20,6 +20,8 @@ import java.util.List;
  * 对应</b>：{@code org.springframework.beans.factory.NoUniqueBeanDefinitionException}（69
  * 行）。消息模板与本书一致：{@code No qualifying bean of type '...' available: expected single matching
  * bean but found 2: a, b}。
+ *
+ * @see org.springframework.beans.factory.NoUniqueBeanDefinitionException
  */
 public class NoUniqueBeanDefinitionException extends NoSuchBeanException {
 

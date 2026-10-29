@@ -5,6 +5,8 @@ package org.springframework.aop;
  * <p>
  * 真实 Spring 里它是 {@code org.aopalliance.intercept.Joinpoint}（AOP Alliance
  * 规范里的接口，spring-aop 依赖的那个包其实只有二十来个类）。我们把它落在这里，因为「连接点」这个词在正文里要反复用。
+ *
+ * @see org.aopalliance.aop.Joinpoint
  */
 public interface Joinpoint {
 

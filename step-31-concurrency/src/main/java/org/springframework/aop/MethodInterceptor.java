@@ -8,6 +8,8 @@ package org.springframework.aop;
  * <p>
  * 同时它也是 {@link Advice} 的子接口：在 Spring 里「环绕增强」和「前置/后置增强」是同一族东西，
  * 只是前者能力更大（所以适配器只给前两者准备，环绕增强天生就是拦截器）。
+ *
+ * @see org.springframework.cglib.proxy.MethodInterceptor
  */
 @FunctionalInterface
 public interface MethodInterceptor extends Advice {

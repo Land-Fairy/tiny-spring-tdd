@@ -7,6 +7,8 @@ package org.springframework.beans.factory;
  * 真实对应物：{@code org.springframework.beans.factory.BeanIsNotAFactoryException}（它继承
  * {@code BeanNotOfRequiredTypeException}）。本书继承 {@link NoSuchBeanException}，
  * 让调用方只需捕一种「找不到/找错」的异常。
+ *
+ * @see org.springframework.beans.factory.BeanIsNotAFactoryException
  */
 public class BeanIsNotAFactoryException extends NoSuchBeanException {
 

@@ -12,6 +12,8 @@ import org.springframework.util.PatternMatchUtils;
  * <p>
  * 这是最朴素也最常用的切点：{@code addMethodName("book*")} 表示「名字以 book 开头的方法」。 匹配用
  * {@link PatternMatchUtils#simpleMatch(String, String)}，语义是「{@code *} 当正则的 {@code .*}」。
+ *
+ * @see org.springframework.aop.support.NameMatchMethodPointcut
  */
 public class NameMatchMethodPointcut extends StaticMethodMatcherPointcut {
 

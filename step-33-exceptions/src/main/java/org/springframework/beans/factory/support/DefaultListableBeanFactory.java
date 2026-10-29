@@ -240,10 +240,10 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 		if (sharedInstance != null) {
 			return getObjectForBeanInstance(sharedInstance, name, beanName, beanDefinition);
 		}
-		if (beanDefinition == null) {
-			// 只有单例池里有：registerSingleton 直接注册的现成对象，没有图纸。
-			return getObjectForBeanInstance(getSingleton(beanName), name, beanName, null);
-		}
+		// 真实 Spring 在 `getBean` 里还有一段「单例池里有、图纸里没有」（`registerSingleton` 注册的现成对象）
+		// 的分支。第 30 章之前我们也有这一段；从本章起它变成了死代码——上面的 `getSingleton(beanName)`
+		// 已经提前返回了那种情况，走到这里时 `getSingleton(beanName)` 一定是 null，
+		// 再查一次只会把 null 交给 `getObjectForBeanInstance`。所以本章把它删掉。
 		return getObjectForBeanInstance(getBeanInstance(name, beanName, beanDefinition), name, beanName,
 				beanDefinition);
 	}
@@ -252,7 +252,7 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 	public <T> T getBean(String beanName, Class<T> requiredType) {
 		Object bean = getBean(beanName);
 		if (!requiredType.isInstance(bean)) {
-			throw new NoSuchBeanException("Bean named '" + beanName + "' is expected to be of type '"
+			throw new NoSuchBeanException(beanName, "Bean named '" + beanName + "' is expected to be of type '"
 					+ requiredType.getName() + "' but was actually of type '" + bean.getClass().getName() + "'");
 		}
 		return requiredType.cast(bean);
@@ -300,7 +300,7 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 	private Scope requireScope(String beanName, String scopeName) {
 		Scope scope = this.scopes.get(scopeName);
 		if (scope == null) {
-			throw new NoSuchBeanException(
+			throw new NoSuchBeanException(beanName,
 					"No Scope registered for scope name '" + scopeName + "' (bean '" + beanName + "')");
 		}
 		return scope;
@@ -458,7 +458,7 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 		if (parent != null && parent.containsBean(beanName)) {
 			return parent.getType(beanName);
 		}
-		throw new NoSuchBeanException("No bean named '" + beanName + "' available");
+		throw new NoSuchBeanException(beanName, "No bean named '" + beanName + "' available");
 	}
 
 	// ------------------------------------------------------------------
@@ -606,7 +606,7 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 	public void removeBeanDefinition(String beanName) {
 		BeanDefinition removed = this.beanDefinitionMap.remove(beanName);
 		if (removed == null) {
-			throw new NoSuchBeanException("No bean named '" + beanName + "' available");
+			throw new NoSuchBeanException(beanName, "No bean named '" + beanName + "' available");
 		}
 		this.beanDefinitionNames.remove(beanName);
 	}
@@ -615,7 +615,7 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 	public BeanDefinition getBeanDefinition(String beanName) {
 		BeanDefinition beanDefinition = this.beanDefinitionMap.get(beanName);
 		if (beanDefinition == null) {
-			throw new NoSuchBeanException("No bean named '" + beanName + "' available");
+			throw new NoSuchBeanException(beanName, "No bean named '" + beanName + "' available");
 		}
 		return beanDefinition;
 	}
@@ -649,13 +649,13 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 		if (parent != null && parent.containsBean(beanName)) {
 			return parent.getBean(beanName);
 		}
-		throw new NoSuchBeanException("No bean named '" + beanName + "' available");
+		throw new NoSuchBeanException(beanName, "No bean named '" + beanName + "' available");
 	}
 
 	private BeanFactory requireParent(String beanName) {
 		BeanFactory parent = this.parentBeanFactory;
 		if (parent == null || !parent.containsBean(beanName)) {
-			throw new NoSuchBeanException("No bean named '" + beanName + "' available");
+			throw new NoSuchBeanException(beanName, "No bean named '" + beanName + "' available");
 		}
 		return parent;
 	}

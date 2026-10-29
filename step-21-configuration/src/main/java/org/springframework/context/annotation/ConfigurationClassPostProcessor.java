@@ -42,6 +42,7 @@ import org.springframework.beans.factory.support.GenericBeanDefinition;
  *
  * @see Bean
  * @see Configuration
+ * @see org.springframework.context.annotation.ConfigurationClassPostProcessor
  */
 public class ConfigurationClassPostProcessor implements BeanFactoryPostProcessor {
 

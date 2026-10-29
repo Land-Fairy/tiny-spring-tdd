@@ -9,6 +9,8 @@ import org.springframework.aop.Pointcut;
  * <p>
  * 它存在的原因是「只给增强、不给切点」也得能写 —— 这时语义是「全部方法都增强」。 真实 Spring 里同样有
  * {@code TruePointcut}（{@code INSTANCE} 单例）。
+ *
+ * @see org.springframework.aop.TruePointcut
  */
 public final class TruePointcut implements Pointcut {
 

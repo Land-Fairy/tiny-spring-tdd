@@ -9,6 +9,8 @@ import org.springframework.aop.TargetSource;
  * 全都写在目标上。
  * <p>
  * 真实 Spring 同名类 92 行，大部分是 {@code equals}/{@code hashCode}/{@code toString} 与序列化支持。
+ *
+ * @see org.springframework.aop.target.SingletonTargetSource
  */
 public class SingletonTargetSource implements TargetSource<Object> {
 

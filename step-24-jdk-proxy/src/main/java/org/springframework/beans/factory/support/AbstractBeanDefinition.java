@@ -26,6 +26,7 @@ import org.springframework.beans.factory.config.BeanDefinition;
  *
  * @see BeanDefinition
  * @see GenericBeanDefinition
+ * @see org.springframework.beans.factory.support.AbstractBeanDefinition
  */
 public abstract class AbstractBeanDefinition implements BeanDefinition {
 

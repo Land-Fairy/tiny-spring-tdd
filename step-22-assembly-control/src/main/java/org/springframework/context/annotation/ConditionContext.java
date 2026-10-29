@@ -15,6 +15,7 @@ import org.springframework.core.env.Environment;
  * 行，还有 {@code getRegistry} / {@code getResourceLoader} / {@code getClassLoader}）。
  *
  * @see Condition
+ * @see org.springframework.context.annotation.ConditionContext
  */
 public interface ConditionContext {
 

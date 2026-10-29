@@ -45,6 +45,7 @@ import org.springframework.beans.factory.support.FactoryMethodInProgress;
  * 的 {@code BeanMethodInterceptor} 同样 public。
  *
  * @see ConfigurationClassEnhancer
+ * @see org.springframework.context.annotation.ConfigurationClassEnhancer.BeanMethodInterceptor
  */
 public class ConfigMethodInterceptor {
 

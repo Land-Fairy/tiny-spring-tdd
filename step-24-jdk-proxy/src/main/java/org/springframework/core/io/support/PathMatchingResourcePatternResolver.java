@@ -33,6 +33,8 @@ import org.springframework.util.PathMatcher;
  * 对应</b>：{@code org.springframework.core.io.support.PathMatchingResourcePatternResolver}
  * （1342 行，多出的大小来自：{@code PathMatcher} 可换、VFS（JBoss）支持、{@code module:} 支持、 明确的 URL
  * 协议分支、以及大量日志与「跳过 CGLIB 类」之类细节）。
+ *
+ * @see org.springframework.core.io.support.PathMatchingResourcePatternResolver
  */
 public class PathMatchingResourcePatternResolver implements ResourcePatternResolver {
 

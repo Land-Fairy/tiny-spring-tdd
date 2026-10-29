@@ -15,6 +15,8 @@ package org.springframework.core.convert;
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.core.convert.ConversionService}（111 行，
  * 多出 {@code TypeDescriptor} 重载——带泛型、注解、数组元素的完整描述，本书不做，见缺陷表）。
+ *
+ * @see org.springframework.core.convert.ConversionService
  */
 public interface ConversionService {
 

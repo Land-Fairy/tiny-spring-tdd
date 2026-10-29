@@ -37,6 +37,8 @@ import org.springframework.beans.factory.support.GenericBeanDefinition;
  * 真实对应物：{@code org.springframework.beans.factory.xml.DefaultBeanDefinitionDocumentReader}（349
  * 行） + {@code BeanDefinitionParserDelegate}（1544 行）。真实实现把「遍历文档」与
  * 「解释单个标签」拆成两个类，后者大得多——因为它要处理命名空间、构造器参数、 内部 Bean、集合、p／c 命名空间、lookup-method 等等。
+ *
+ * @see org.springframework.beans.factory.xml.DefaultBeanDefinitionDocumentReader
  */
 public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocumentReader {
 
@@ -118,11 +120,12 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 		if (!namesInThisDocument.add(id)) {
 			// 真实 Spring 的措辞：BeanDefinitionParserDelegate#checkNameUniqueness
 			// "Bean name 'x' is already used in this <beans> element"
-			throw new BeanDefinitionStoreException("Bean name '" + id + "' is already used in this <beans> element");
+			throw new BeanDefinitionStoreException(id,
+					"Bean name '" + id + "' is already used in this <beans> element");
 		}
 		String className = element.getAttribute(CLASS_ATTRIBUTE);
 		if (className.isEmpty()) {
-			throw new BeanDefinitionStoreException("No bean class name specified on bean definition '" + id
+			throw new BeanDefinitionStoreException(id, "No bean class name specified on bean definition '" + id
 					+ "': the class attribute is required in this book");
 		}
 

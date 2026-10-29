@@ -12,6 +12,8 @@ import java.util.Set;
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.core.type.ClassMetadata}（类名、父类、接口） 与
  * {@code AnnotationMetadata}（注解）两个接口；本书合成一个。
+ *
+ * @see org.springframework.core.type.ClassMetadata
  */
 public interface ClassMetadata {
 

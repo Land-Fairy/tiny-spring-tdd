@@ -8,6 +8,8 @@ package org.springframework.util;
  * {@code .*} 的位置」。把方法论的名字交给路径匹配器，是初学者常犯的错 （{@code book/*} 永远匹配不上 {@code book}）。
  * <p>
  * 真实 Spring 的同名类有 107 行，方法是 {@code simpleMatch}；我们这一版是它的核心递归。
+ *
+ * @see org.springframework.util.PatternMatchUtils
  */
 public final class PatternMatchUtils {
 

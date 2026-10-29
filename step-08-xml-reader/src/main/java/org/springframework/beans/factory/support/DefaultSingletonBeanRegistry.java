@@ -45,6 +45,7 @@ import org.springframework.beans.factory.config.SingletonBeanRegistry;
  * 与依赖关系图（第 13 章）、以及 6.2 新增的 {@code tryLock} + strict/lenient 双模（第 31 章）。
  *
  * @see DefaultListableBeanFactory
+ * @see org.springframework.beans.factory.support.DefaultSingletonBeanRegistry
  */
 public class DefaultSingletonBeanRegistry implements SingletonBeanRegistry {
 

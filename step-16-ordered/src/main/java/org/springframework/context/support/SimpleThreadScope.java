@@ -16,6 +16,8 @@ import org.springframework.beans.factory.config.Scope;
  * 真实对应物：{@code org.springframework.context.support.SimpleThreadScope}（98 行）， 它用
  * {@code NamedThreadLocal} 包一层只为调试时能看到名字。 真实 Spring 默认<b>不注册</b>它——要用得自己
  * {@code beanFactory.registerScope("thread", new SimpleThreadScope())}。
+ *
+ * @see org.springframework.context.support.SimpleThreadScope
  */
 public class SimpleThreadScope implements Scope {
 

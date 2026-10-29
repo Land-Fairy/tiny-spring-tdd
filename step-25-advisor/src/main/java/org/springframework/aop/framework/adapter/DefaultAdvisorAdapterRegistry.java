@@ -12,6 +12,8 @@ import org.springframework.aop.MethodInterceptor;
  * <p>
  * 这里是本章最反直觉的一处：**链上跑的全是拦截器**。前置增强、后置增强、环绕增强三者在用户眼里是 三种东西，在框架眼里只有一种 ——
  * 因为前两者会被适配器当场翻译成拦截器。这也解释了为什么「环绕增强 能力最大」：它不需要翻译，天生就是拦截器。
+ *
+ * @see org.springframework.aop.framework.adapter.DefaultAdvisorAdapterRegistry
  */
 public class DefaultAdvisorAdapterRegistry {
 

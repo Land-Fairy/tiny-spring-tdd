@@ -10,6 +10,8 @@ package org.springframework.util;
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.util.ErrorHandler}（24 行，方法
  * {@code handleError}）。
+ *
+ * @see org.springframework.util.ErrorHandler
  */
 @FunctionalInterface
 public interface ErrorHandler {

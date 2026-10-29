@@ -19,6 +19,8 @@ import org.springframework.aop.framework.adapter.DefaultAdvisorAdapterRegistry;
  * </ol>
  * 真实 Spring 的同名类有 746 行，多出来的部分主要是 `TargetSource`、`introduction`、`exposeProxy`、 以及「advisor
  * 链的缓存」。
+ *
+ * @see org.springframework.aop.framework.AdvisedSupport
  */
 public class AdvisedSupport {
 

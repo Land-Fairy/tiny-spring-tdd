@@ -13,6 +13,7 @@ package org.springframework.core.convert.converter;
  *
  * @param <S> 源类型
  * @param <R> 目标类型的上界（比如 {@code Enum}）
+ * @see org.springframework.core.convert.converter.ConverterFactory
  */
 public interface ConverterFactory<S, R> {
 

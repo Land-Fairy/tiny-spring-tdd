@@ -9,6 +9,8 @@ import org.springframework.aop.PointcutAdvisor;
  * <p>
  * 注意构造器的顺序是「切点在前、增强在后」，而类名里 {@code PointcutAdvisor} 的顺序也是切点在前 ——
  * 但人类语言里常说「这个增强应用在那些方法上」。两种读法都对，代码里以构造器为准。
+ *
+ * @see org.springframework.aop.support.DefaultPointcutAdvisor
  */
 public class DefaultPointcutAdvisor implements PointcutAdvisor {
 

@@ -10,6 +10,8 @@ package org.springframework.util;
  * <b>真实 Spring 对应</b>：{@code org.springframework.util.PathMatcher}（126 行， 比本书多了
  * {@code extractPathWithinPattern}、{@code extractUriTemplateVariables}、
  * {@code getPatternComparator}、{@code combine} 等「给 MVC 用的」方法）。
+ *
+ * @see org.springframework.util.PathMatcher
  */
 public interface PathMatcher {
 

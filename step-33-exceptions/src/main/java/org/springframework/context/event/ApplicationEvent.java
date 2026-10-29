@@ -17,6 +17,8 @@ import java.util.EventObject;
  * <b>真实 Spring 对应</b>：{@code org.springframework.context.event.ApplicationEvent}（77 行）。
  * 真实版还有 {@code (Object source, Clock clock)} 构造器与 {@code getTimestamp()}，并有序列化 id； 本书省掉
  * {@code Clock}（那是给测试注入假时钟用的）。
+ *
+ * @see org.springframework.context.ApplicationEvent
  */
 public abstract class ApplicationEvent extends EventObject {
 

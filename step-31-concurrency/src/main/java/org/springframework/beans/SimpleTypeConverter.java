@@ -23,6 +23,8 @@ import org.springframework.core.convert.support.DefaultConversionService;
  * {@code TypeConverterSupport} 的薄壳，真正干活的是
  * {@code TypeConverterDelegate#convertIfNecessary} —— 那里先试 {@code PropertyEditor}、再试
  * {@code ConversionService}、最后才放弃，正是上面说的「翻译层」。
+ *
+ * @see org.springframework.beans.SimpleTypeConverter
  */
 public class SimpleTypeConverter {
 

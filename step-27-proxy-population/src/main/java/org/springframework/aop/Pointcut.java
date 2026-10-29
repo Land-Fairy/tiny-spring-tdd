@@ -5,6 +5,8 @@ package org.springframework.aop;
  * <p>
  * 这个接口只有两个 getter，没有任何 {@code matches} —— 这是刻意的：切点是**数据**（两个判断器）， 真正的判断发生在
  * {@code PointcutAdvisor} 把它和增强组装起来之后。
+ *
+ * @see org.springframework.aop.Pointcut
  */
 public interface Pointcut {
 

@@ -21,7 +21,10 @@
 
 ### A.1.1 真实 Spring 的集合族清单
 
-`spring-core` 的 `convert/support` 下，与集合/数组/`Map`/`Stream` 相关的转换器一共 10 个（行数为 6.2.x）：
+`spring-core` 的 `convert/support` 下，与集合/数组/`Map`/`Stream` 相关的转换器一共 **14 个**：正向 10 个（下表，行数为 6.2.x），
+另有 4 个反方向的 `ArrayToObjectConverter`（71 行）、`ArrayToStringConverter`（63）、
+`CollectionToObjectConverter`（69）、`CollectionToStringConverter`（76）——它们是 `ObjectToCollection` /
+`ObjectToArray` 的镜像，本书没讲过，列在这里只为让你数得对。
 
 | 转换器 | 行数 | 方向 |
 |---|---|---|
@@ -36,7 +39,7 @@
 | `MapToMapConverter` | 152 | `Map<K1,V1>` → `Map<K2,V2>` |
 | `StreamConverter` | 130 | `Stream` ↔ 集合/数组 |
 
-十个加起来约 960 行，而**每一个内部的核心都只有几行**。这是这一族代码最值得学的地方：**复杂度全在「判断该不该我上」和「目标容器怎么造」，真正干活的那一行和普通转换器一模一样。**
+十个正向的加起来 959 行（连四个反向的一共 1,238 行），而**每一个内部的核心都只有几行**。这是这一族代码最值得学的地方：**复杂度全在「判断该不该我上」和「目标容器怎么造」，真正干活的那一行和普通转换器一模一样。**
 
 ### A.1.2 元素级转换的那一行
 

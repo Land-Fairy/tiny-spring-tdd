@@ -30,6 +30,8 @@ import org.springframework.aop.PointcutAdvisor;
  * {@code AopUtils}（{@code spring-aop}，390 行）里， 这个「粗版本」在
  * {@code canApply(Pointcut, Class, boolean)} {@code :225}，子类重载在 {@code :239}； 批量过滤在
  * {@code findAdvisorsThatCanApply} {@code :319}。
+ *
+ * @see org.springframework.aop.support.AopUtils
  */
 public abstract class AopUtils {
 

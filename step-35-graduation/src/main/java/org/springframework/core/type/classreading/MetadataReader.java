@@ -9,6 +9,8 @@ package org.springframework.core.type.classreading;
  * <li>{@link SimpleMetadataReader}：读字节码，不加载类</li>
  * <li>{@link ReflectionMetadataReader}：用反射，加载并初始化类</li>
  * </ul>
+ *
+ * @see org.springframework.core.type.classreading.MetadataReader
  */
 public interface MetadataReader {
 

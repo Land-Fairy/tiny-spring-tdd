@@ -10,6 +10,8 @@ import org.springframework.context.ApplicationContext;
  *
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.context.event.ContextClosedEvent}（40 行）。
+ *
+ * @see org.springframework.context.event.ContextClosedEvent
  */
 public class ContextClosedEvent extends ApplicationContextEvent {
 

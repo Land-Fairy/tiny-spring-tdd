@@ -3,7 +3,7 @@
 
 这张表回答一个问题：**读完这本书，你要去读真实 Spring 源码时，该打开哪个文件。**
 
-本书一共手写了 **203 个框架类**（不含各章的 `samples` 示例类），合计 15,256 行。其中 **190 个**能在真实 Spring 里找到同名类，本书这 190 个类共 14,372 行，真实对应类共 42,962 行——**平均每 1 行本书代码对应 3.0 行真实代码**。这个倍数就是全书反复出现的那个判断的依据：真实框架的体量里，大头不是「机制」而是「边角」。
+本书一共手写了 **203 个框架类**（不含各章的 `samples` 示例类），合计 15,950 行。其中 **190 个**能在真实 Spring 里找到同名类，本书这 190 个类共 15,009 行，真实对应类共 42,962 行——**平均每 1 行本书代码对应 2.9 行真实代码**。这个倍数就是全书反复出现的那个判断的依据：真实框架的体量里，大头不是「机制」而是「边角」。
 
 ## 1. 怎么读这张表
 
@@ -17,8 +17,8 @@
 
 | 档位 | 数量 | 含义 |
 | --- | ---: | --- |
-| 同名同包 | 172 | 直接按全限定名搜，通常能一行行对上 |
-| 同名异包 | 18 | 类名一样，但真实 Spring 把它放在别的包（多为 AOP 联盟接口与 stereotype 注解） |
+| 同名同包 | 173 | 直接按全限定名搜，通常能一行行对上 |
+| 同名异包 | 17 | 类名一样，但真实 Spring 把它放在别的包（多为 AOP 联盟接口与 stereotype 注解） |
 | 无同名类 | 13 | 本书为了叙事合并或自造的小类；备注里给出真实实现散落在哪里 |
 
 ## 2. 全量对照表
@@ -106,6 +106,7 @@
 | `PostConstruct` | `jakarta.annotation.PostConstruct` | — | 13 | JSR-250，真实 Spring 用 jakarta 命名空间 |
 | `PreDestroy` | `jakarta.annotation.PreDestroy` | — | 13 | 同上 |
 | `Value` | `org.springframework.beans.factory.annotation.Value` | 66 | 20 |  |
+| `Qualifier` | `org.springframework.beans.factory.annotation.Qualifier` | 44 | 19 |  |
 | **`org.springframework.beans.factory.config`** | | | | |
 | `AutowireCapableBeanFactory` | `org.springframework.beans.factory.config.AutowireCapableBeanFactory` | 405 | 6 |  |
 | `BeanDefinition` | `org.springframework.beans.factory.config.BeanDefinition` | 388 | 2 |  |
@@ -170,7 +171,6 @@
 | `Primary` | `org.springframework.context.annotation.Primary` | 96 | 19 |  |
 | `Profile` | `org.springframework.context.annotation.Profile` | 118 | 22 |  |
 | `ProfileCondition` | `org.springframework.context.annotation.ProfileCondition` | 48 | 22 |  |
-| `Qualifier` | `org.springframework.beans.factory.annotation.Qualifier` | 44 | 19 | 包名不同 |
 | `Repository` | `org.springframework.stereotype.Repository` | 69 | 17 | 包名不同 |
 | `Service` | `org.springframework.stereotype.Service` | 56 | 17 | 包名不同 |
 | **`org.springframework.context.event`** | | | | |
@@ -263,7 +263,7 @@
 集中在两处，都不是偶然：
 
 - **AOP 联盟接口**：`Advice`、`Joinpoint`、`MethodInvocation`、`MethodInterceptor` 在真实 Spring 里属于 `org.aopalliance.*`——它是 AOP 联盟的标准包，Spring 只是实现方。本书把它们放进 `org.springframework.aop`，因为读者要理解的是「Spring 怎么用这几个接口」，而不是联盟的历史。
-- **stereotype 注解**：`@Component`、`@Service`、`@Repository` 在真实 Spring 里位于 `org.springframework.stereotype`，`@Qualifier` 位于 `org.springframework.beans.factory.annotation`。本书统一放在 `context/annotation`，因为第 17 章的扫描器是「按注解找类」的地方，读者在那里同时看到它们更直观。
+- **stereotype 注解**：`@Component`、`@Service`、`@Repository` 在真实 Spring 里位于 `org.springframework.stereotype`，本书放在 `context/annotation`（第 17 章的扫描器是「按注解找类」的地方，读者在那里同时看到它们更直观）。**`@Qualifier` 是例外**：真实 Spring 把它放在 `beans/factory/annotation`，本书保持同名同包——因为它和 `@Autowired`、`DependencyDescriptor` 是一伙的，离开那一伙反而不好找。
 
 ### 3.2 无同名类（13 个）
 

@@ -604,7 +604,7 @@ protected void destroyBeans() {
 **本章验证命令**
 
 ```bash
-./mvnw -pl step-09-application-context test      # 163 个测试
+./mvnw -pl step-09-application-context test      # 165 个测试
 ./mvnw -pl step-09-application-context verify    # 六道闸门
 ./mvnw -q verify                                 # 全仓 35 个模块（本章只关心前 9 个）
 ```

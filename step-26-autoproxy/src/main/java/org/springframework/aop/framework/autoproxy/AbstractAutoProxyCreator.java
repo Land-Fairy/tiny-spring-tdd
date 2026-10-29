@@ -39,6 +39,8 @@ import org.springframework.beans.factory.config.BeanPostProcessor;
  * 真实 Spring：{@code AbstractAutoProxyCreator}（640 行，{@code postProcessAfterInitialization}
  * :248 与 :294 两个出口，{@code wrapIfNecessary} :294 附近）。本书砍掉了 early reference、
  * TargetSource、{@code advisedBeans} 缓存与 {@code exposeProxy}。
+ *
+ * @see org.springframework.aop.framework.autoproxy.AbstractAutoProxyCreator
  */
 public abstract class AbstractAutoProxyCreator implements BeanPostProcessor, BeanFactoryAware {
 

@@ -454,7 +454,7 @@ Dependency annotations: {@org.springframework.beans.factory.annotation.Autowired
 |---|---|---|---|---|
 | `Primary` | 34 | 同名注解 | 96 | Javadoc 之外无差别（纯标记） |
 | `Qualifier` | 39 | 同名注解 | 44 | 无差别（本书只读 `value`） |
-| `NoUniqueBeanDefinitionException` | 58 | 同名类 | 134 | 4 个构造器、`getBeanType` / `getBeanNamesFound` |
+| `NoUniqueBeanDefinitionException` | 60 | 同名类 | 134 | 4 个构造器、`getBeanType` / `getBeanNamesFound` |
 | 决策链所在的注入器（全部） | 462 | `DefaultListableBeanFactory` | **2778** | `@Value`、`ObjectProvider`、`Optional`、`@Lazy` 代理、`@Fallback`、`resolvableDependencies` |
 | — | — | `AutowiredAnnotationBeanPostProcessor` | 1113 | 构造器/方法注入、元素缓存、`@Value` |
 

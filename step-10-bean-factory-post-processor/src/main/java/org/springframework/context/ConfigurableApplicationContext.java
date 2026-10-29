@@ -26,6 +26,7 @@ import org.springframework.core.env.Environment;
  * {@code getEnvironment} 与 {@code addBeanFactoryPostProcessor}）。
  *
  * @see AbstractApplicationContext
+ * @see org.springframework.context.ConfigurableApplicationContext
  */
 public interface ConfigurableApplicationContext extends ApplicationContext, AutoCloseable {
 

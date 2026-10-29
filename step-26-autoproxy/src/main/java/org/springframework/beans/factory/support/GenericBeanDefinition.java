@@ -19,6 +19,7 @@ package org.springframework.beans.factory.support;
  * purposes」—— 本章抄的就是这个定位。
  *
  * @see AbstractBeanDefinition
+ * @see org.springframework.beans.factory.support.GenericBeanDefinition
  */
 public class GenericBeanDefinition extends AbstractBeanDefinition {
 

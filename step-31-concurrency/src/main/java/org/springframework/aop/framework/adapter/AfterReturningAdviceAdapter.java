@@ -6,6 +6,8 @@ import org.springframework.aop.MethodInterceptor;
 
 /**
  * 认识 {@link AfterReturningAdvice} 的适配器。
+ *
+ * @see org.springframework.aop.framework.adapter.AfterReturningAdviceAdapter
  */
 public class AfterReturningAdviceAdapter implements AdvisorAdapter {
 

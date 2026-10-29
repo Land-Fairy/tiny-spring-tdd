@@ -13,6 +13,7 @@ import java.util.Map;
  * 它还额外检查「map 里是否有非 String 的 key」（有则记一条 debug 日志），因为属性名的语义就是字符串。
  *
  * @see PropertySource
+ * @see org.springframework.core.env.MapPropertySource
  */
 public class MapPropertySource extends PropertySource<Map<String, Object>> {
 

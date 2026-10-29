@@ -18,6 +18,8 @@ import org.springframework.core.io.Resource;
  * 真实对应物：{@code org.springframework.beans.factory.support.BeanDefinitionReader}（121 行，5
  * 个方法）。 我们留 3 个，砍掉 {@code getResourceLoader}／{@code getBeanClassLoader}／
  * {@code getBeanNameGenerator} 之外的其余重载。
+ *
+ * @see org.springframework.beans.factory.support.BeanDefinitionReader
  */
 public interface BeanDefinitionReader {
 

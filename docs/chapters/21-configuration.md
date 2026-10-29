@@ -587,12 +587,12 @@ ConstantPool() {
 | 我们 | 行数 | 真实 Spring | 行数 |
 |---|---|---|---|
 | `ConfigurationClassEnhancer.java` | 525 | `ConfigurationClassEnhancer.java` | 620 |
-| `ConfigMethodInterceptor.java` | 128 | （内含 `BeanMethodInterceptor`，`:343-620`） | — |
-| `ConfigurationClassPostProcessor.java` | 153 | `ConfigurationClassPostProcessor.java` | 827 |
+| `ConfigMethodInterceptor.java` | 129 | （内含 `BeanMethodInterceptor`，`:343-620`） | — |
+| `ConfigurationClassPostProcessor.java` | 154 | `ConfigurationClassPostProcessor.java` | 827 |
 | — | — | `ConfigurationClassParser.java` | 1162 |
 | — | — | `ConfigurationClassBeanDefinitionReader.java` | 511 |
 | — | — | `ConfigurationClassUtils.java` | 229 |
-| `FactoryMethodInProgress.java` | 76 | `SimpleInstantiationStrategy.java`（相关部分） | 205 |
+| `FactoryMethodInProgress.java` | 78 | `SimpleInstantiationStrategy.java`（相关部分） | 205 |
 | `@Bean` 方法 → 图纸 | 本章 `registerBeanMethods` 约 30 行 | `ConfigurationClassBeanDefinitionReader#loadBeanDefinitionsForBeanMethod`（`:185`） | 约 120 行 |
 
 `520` 对 `620` 看着差不多，但**我们的 520 行里有一半是手写常量池，真实 Spring 的这一半由 CGLIB 承担**（`net.sf.cglib` 是一个单独的库）。真正的等价物是「我们的生成器 + 手写的常量池」对「CGLIB 的 `Enhancer` + `ASM`」。
@@ -668,7 +668,7 @@ enhancer.setUseFactory(false);   // :182
 
 ### 5.5 覆盖率故事
 
-本章 349 个测试，行覆盖 88.0%、分支覆盖 79.8%。有意思的是覆盖率是怎么上去的：
+本章 351 个测试，行覆盖 88.0%、分支覆盖 79.8%。有意思的是覆盖率是怎么上去的：
 
 - 生成器有大量「按类型分支」的代码（`loadOpcode`、`returnOpcode`、`boxTypeName`、`unboxMethodName`、`descriptor` 各一条 switch）。这些分支**不可能**全部由「配置类里的 `@Bean` 方法」覆盖——用户不会写一个返回 `short` 的 `@Bean`。
 - 所以 `ConfigurationClassEnhancerTests` 直接对生成类做测试：一个 `Shapes` 样本类，8 种基本类型、数组、`void`、protected/包私有方法、五个 `long` 参数各一个方法，再加一个 `RecordingInterceptor`（继承 `ConfigMethodInterceptor` 覆写 `doInvoke`）把生成类的行为与容器解耦。

@@ -7,6 +7,8 @@ import java.lang.reflect.Method;
  * <p>
  * 名字里的 {@code Returning} 是重点：它只在方法正常返回时被调用，方法抛异常时**不会**执行。 而且它拿到的返回值**改不了** ——
  * 参数是值传递，这个方法没有返回值。想改返回值请用 {@link MethodInterceptor}（环绕增强可以 {@code return} 别的东西）。
+ *
+ * @see org.springframework.aop.AfterReturningAdvice
  */
 public interface AfterReturningAdvice extends AfterAdvice {
 

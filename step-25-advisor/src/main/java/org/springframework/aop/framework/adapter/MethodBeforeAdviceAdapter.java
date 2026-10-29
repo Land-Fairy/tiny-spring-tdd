@@ -6,6 +6,8 @@ import org.springframework.aop.MethodInterceptor;
 
 /**
  * 认识 {@link MethodBeforeAdvice} 的适配器。
+ *
+ * @see org.springframework.aop.framework.adapter.MethodBeforeAdviceAdapter
  */
 public class MethodBeforeAdviceAdapter implements AdvisorAdapter {
 

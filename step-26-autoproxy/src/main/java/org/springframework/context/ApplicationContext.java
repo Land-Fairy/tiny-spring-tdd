@@ -29,6 +29,7 @@ import org.springframework.context.event.ApplicationEventPublisher;
  * </ul>
  *
  * @see ConfigurableApplicationContext
+ * @see org.springframework.context.ApplicationContext
  */
 public interface ApplicationContext extends ListableBeanFactory, HierarchicalBeanFactory, ApplicationEventPublisher {
 

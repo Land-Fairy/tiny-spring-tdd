@@ -13,6 +13,7 @@ package org.springframework.core.convert.converter;
  *
  * @param <S> 源类型
  * @param <T> 目标类型
+ * @see org.springframework.core.convert.converter.Converter
  */
 @FunctionalInterface
 public interface Converter<S, T> {

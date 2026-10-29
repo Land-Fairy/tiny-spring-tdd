@@ -10,6 +10,8 @@ import org.springframework.aop.support.DefaultPointcutAdvisor;
  * {@code ProxyFactory} 也是这两个身份（中间隔了一层 {@code ProxyCreatorSupport}）。 本章只有 JDK 一条技术路线，所以
  * {@link #getProxy()} 直接 new 一个 {@code JdkDynamicAopProxy}； 等有了 CGLIB，这里就是
  * {@code DefaultAopProxyFactory} 做选择的地方。
+ *
+ * @see org.springframework.aop.framework.ProxyFactory
  */
 public class ProxyFactory extends AdvisedSupport implements AopProxy {
 

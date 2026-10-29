@@ -16,6 +16,8 @@ import org.springframework.aop.support.AopProxyUtils;
  * <p>
  * 本章只做「拦截得到」和「转发得回去」两件事；第 25 章会把单个 {@code InvocationHandler} 换成 一条
  * {@code MethodInterceptor} 链，届时 {@link #invoke} 的前几行会整个换掉，而 {@link #getProxy()} 一行不用动。
+ *
+ * @see org.springframework.aop.framework.JdkDynamicAopProxy
  */
 public class JdkDynamicAopProxy implements AopProxy, InvocationHandler {
 

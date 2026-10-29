@@ -27,6 +27,8 @@ import org.springframework.beans.factory.ListableBeanFactory;
  * 注意 {@link #getAdvicesAndAdvisorsForBean} 的返回值类型是 {@code Object[]} 而不是
  * {@code Advisor[]}：真实 Spring 允许这里同时返回拦截器与 Advisor，因为有些子类（按名字匹配那类）
  * 直接给拦截器。我们保留了同样的签名，代价是调用处多一个 {@code instanceof}。
+ *
+ * @see org.springframework.aop.framework.autoproxy.DefaultAdvisorAutoProxyCreator
  */
 public class AdvisorAutoProxyCreator extends AbstractAutoProxyCreator {
 

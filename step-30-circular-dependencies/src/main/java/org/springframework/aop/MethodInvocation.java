@@ -11,6 +11,8 @@ import java.lang.reflect.Method;
  * <li>{@link #getArguments()} —— 实参数组<b>是可改的</b>，改了之后目标方法收到的就是新值；</li>
  * <li>{@link #getThis()} —— 拿到代理对象自身（配合第 27 章的 {@code exposeProxy} 才真正有用）。</li>
  * </ol>
+ *
+ * @see org.aopalliance.aop.MethodInvocation
  */
 public interface MethodInvocation extends Joinpoint {
 

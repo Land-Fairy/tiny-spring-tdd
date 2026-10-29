@@ -50,6 +50,7 @@ package org.springframework.beans.factory;
  *
  * @see ListableBeanFactory
  * @see HierarchicalBeanFactory
+ * @see org.springframework.beans.factory.BeanFactory
  */
 public interface BeanFactory {
 

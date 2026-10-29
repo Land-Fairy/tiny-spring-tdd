@@ -38,6 +38,7 @@ import org.springframework.core.env.Environment;
  *
  * @see BeanFactoryPostProcessor
  * @see Environment
+ * @see org.springframework.context.support.PropertySourcesPlaceholderConfigurer
  */
 public class PropertySourcesPlaceholderConfigurer implements BeanFactoryPostProcessor {
 

@@ -19,6 +19,7 @@ import org.springframework.aop.framework.AdvisedSupport;
  * 调用方「同一个目标能不能被缓存」，本类省略。
  *
  * @param <T> 目标类型
+ * @see org.springframework.aop.TargetSource
  */
 public interface TargetSource<T> {
 

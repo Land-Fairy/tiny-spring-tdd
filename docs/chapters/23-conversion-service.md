@@ -190,9 +190,9 @@ try (GenericApplicationContext context = context(serviceWithMoney())) {
 beanFactory.addBeanPostProcessor(new AutowiredAnnotationBeanPostProcessor(beanFactory));
 ```
 
-### 红四之后：363 个测试全绿
+### 红四之后：365 个测试全绿
 
-模块内 363 个测试、六道闸门全绿。**干净构建**（`clean verify`）下行覆盖 86.4%、分支 76.1%。
+模块内 365 个测试、六道闸门全绿。**干净构建**（`clean verify`）下行覆盖 86.4%、分支 76.1%。
 
 这里有一个必须记下来的坑：先跑 `test`、再跑 `verify` 得到的数字会**偏高**（我们一度看到 87.2% / 76.5%）。原因是 jacoco 的 `target/jacoco.exec` 默认**追加**写入，先前那些临时探针测试（`ProbeTests` 之类，后来删掉了）留下的覆盖记录还在里面。断言覆盖率之前必须 `clean`，否则测的是「历史上所有跑过的测试」，不是「现在仓库里的测试」。
 

@@ -16,6 +16,8 @@ import org.springframework.core.io.ResourceLoader;
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.core.io.support.ResourcePatternResolver}
  * （83 行，多一个 {@code getResourceLoader()} 与「按 ant 匹配取资源」的文档约定）。
+ *
+ * @see org.springframework.core.io.support.ResourcePatternResolver
  */
 public interface ResourcePatternResolver extends ResourceLoader {
 

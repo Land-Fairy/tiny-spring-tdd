@@ -19,6 +19,8 @@ import java.util.List;
  * <b>真实 Spring 对应</b>：{@code org.springframework.util.AntPathMatcher}（1030 行，
  * 多出的大小来自：{@code {var:regex}} 模板变量、{@code extractPathWithinPattern}、 大小写开关、尾斜杠开关、以及一堆给
  * Spring MVC 用的路径抽取方法）。
+ *
+ * @see org.springframework.util.AntPathMatcher
  */
 public class AntPathMatcher implements PathMatcher {
 

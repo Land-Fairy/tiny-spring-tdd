@@ -24,6 +24,7 @@ package org.springframework.beans.factory.config;
  * {@code postProcessBeanDefinitionRegistry}，允许<b>新增</b>图纸而不只是修改。本书第 17 章包扫描时才会用到它。
  *
  * @see PropertySourcesPlaceholderConfigurer
+ * @see org.springframework.beans.factory.config.BeanFactoryPostProcessor
  */
 @FunctionalInterface
 public interface BeanFactoryPostProcessor {

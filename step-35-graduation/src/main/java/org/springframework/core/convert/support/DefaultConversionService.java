@@ -13,6 +13,8 @@ import org.springframework.core.convert.ConverterRegistry;
  * <b>真实 Spring 对应</b>：{@code DefaultConversionService}（243 行），它还装配了集合、数组、Map、
  * {@code Stream}、时区、{@code Class}、{@code Charset} 等一大票转换器，并实现了
  * {@code GenericConversionService.ConvertingConverter} 做「转两次」的串联。
+ *
+ * @see org.springframework.core.convert.support.DefaultConversionService
  */
 public class DefaultConversionService extends GenericConversionService {
 

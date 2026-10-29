@@ -12,6 +12,8 @@ import org.springframework.context.ApplicationContext;
  * <p>
  * <b>真实 Spring 对应</b>：{@code org.springframework.context.event.ContextRefreshedEvent}（40
  * 行）。
+ *
+ * @see org.springframework.context.event.ContextRefreshedEvent
  */
 public class ContextRefreshedEvent extends ApplicationContextEvent {
 

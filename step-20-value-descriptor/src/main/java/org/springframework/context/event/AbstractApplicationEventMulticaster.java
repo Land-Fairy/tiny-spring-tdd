@@ -33,6 +33,8 @@ import org.springframework.core.annotation.AnnotationAwareOrderComparator;
  * 对应</b>：{@code org.springframework.context.event.AbstractApplicationEventMulticaster}
  * （532 行）。真实版多了三样东西：监听器缓存（{@code ListenerCacheKey} + {@code ConcurrentHashMap}）、 基于
  * {@code ResolvableType} 的事件类型预筛、以及 {@code ListenerRetriever} 内部类。
+ *
+ * @see org.springframework.context.event.AbstractApplicationEventMulticaster
  */
 public abstract class AbstractApplicationEventMulticaster implements ApplicationEventMulticaster, BeanFactoryAware {
 

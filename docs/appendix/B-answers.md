@@ -957,13 +957,22 @@ if (!this.beanFactory.isSingleton("greeter")) {
 
 去掉 `assertThat(fromFile).isEqualTo(fromClasspath)`、只保留「两个都能读」会漏掉三类 bug：
 
-**一、编码相关的 bug。** `ClassPathResource` 与 `UrlResource` 如果一条路用 `StandardCharsets.UTF_8`、另一条用平台默认编码（`new InputStreamReader(in)`），那么在同一台机器上中文内容可能都「能读出来」，但**只有一条路的 `greeting.prefix=你好，` 是对的**。断言里 `contains("greeting.prefix=Hello,")` 只查 ASCII 前缀，永远不会红；`isEqualTo` 会因为值不同而红。
+**一、解析器的 bug——`isEqualTo` 也挡不住。** 把这一章的 `parse()` 改成顺手 `trim()` 值（一个极常见的"清理"），
+实测结果：`sameParserWorksForEverySource` **照样绿，连 `isEqualTo` 一起绿**——因为两边用的是同一个解析器，
+错得一样。抓到它的是另一条测试 `parsesLines` 的尾随空格断言。**这条相等性断言比的是"两个来源"，不是"两个实现"。**
 
-**二、行尾与 BOM 相关的 bug。** `Files.newInputStream` 与 `URLConnection.getInputStream` 对同一个文件给出的字节是相同的，但如果 `FileSystemResource` 走的是 `Files.readString`（会处理 BOM）而 `UrlResource` 用的是原始流（BOM 会变成 `\uFEFF` 留在第一行的 key 里），两边的 `Map` 的 key 就不同：一个是 `greeting.prefix`，另一个是 `\uFEFFgreeting.prefix`。两边都「能读出内容」，但只有 `isEqualTo` 会红。
+**二、编码相关的 bug——这一章的代码写不出来。** 解码字符集不归 `Resource` 决定：`PropertiesLoader` 在加载处
+显式 `new InputStreamReader(in, StandardCharsets.UTF_8)`。假如真有人在这里改成平台默认编码，那么两边**同时**变，
+`isEqualTo` 依旧绿。这是"本条断言覆盖不到"的边界，得靠一条钉住具体字节的测试。
 
-**三、解析细节的偏差。** 本章 `parse()` 特意保留值里的尾随空格（`"greeting.prefix" → "Hello, "`）。如果哪条路顺手 `trim()` 了整行，值会变成 `"Hello,"`——`containsKey` 仍然通过，`isEqualTo` 红。
+**三、BOM 相关的 bug——会先抛异常，不是静默变绿。** 给 classpath 那条路的流前面塞一个 BOM（模拟"一条路多吐三个字节"），
+实测 `parse()` 直接抛 `Malformed line (no '='): \ufeff# 第 07 章 classpath 测试资源`——弱断言与强断言都没机会执行。
+这个结局比"静默读到不一样的 Map"好得多，因为它指出的是行号和那一行的原文。
 
-这三类的共同特征：**它们都不是「读不到」，而是「读到了不一样的东西」**。`contains` 这类弱断言天生只能验证「有没有」，验证不了「一样不一样」。所以本章的验收断言必须是相等性断言。
+这三类合起来才是这条断言的真正价值：**它挡的是"两个来源给的字节不一样"（行尾、BOM、编码），
+挡不了"解析器错了"，也挡不了"两边一起错"。** 而"解析器错了"要靠 `parsesLines` 那种逐字断言，
+"两边一起错"只能靠对着规格写断言。弱断言（`containsKey`）确实不够——但换成 `isEqualTo` 也不是万能的，
+**每一层错误都需要一条能在那一层变红的断言**。
 
 这也是 `CODE-STANDARDS.md` 里那条「测试要钉住行为而不是钉住不崩溃」的具体体现。
 
@@ -1340,8 +1349,17 @@ XML 里 Bean 的 ${db.url} 被正确替换了，
 
 ### B-11-1　把第 6 步挪到最后，哪些测试会红？为什么真实项目里几周后才被发现？
 
-会红的只有 `BeanPostProcessorRegistrationTests` 的三条（`recorder` 的 `events()` 少两个事件、
-`getBeanPostProcessorCount()` 为 0、以及依赖注解注入的两条）。
+**会红的只有两条**（把 `registerBeanPostProcessors` 挪到 `finishRefresh()` 之前实测，209 条里红 2 条）：
+
+1. `BeanPostProcessorRegistrationTests#processorBeansAreRegisteredBeforeSingletonsAreCreated`
+   —— `recorder` 的 `events()` 少了处理器注册那段、`getBeanPostProcessorCount()` 为 0；
+2. **`RefreshStepOrderTests#stepsRunInAFixedOrder`** —— 这条测试唯一的存在理由就是钉住 12 步的顺序，
+   挪一步它就红。它是最该被想到的一条，却最容易在「凭印象列清单」时漏掉。
+
+一个反直觉的实测结论：**`AutowiredAnnotationBeanPostProcessorTests` 全部仍然绿**。因为它直接
+`new DefaultListableBeanFactory()` 手工注册处理器（`:74`、`:86`），从不走 `refresh()`，
+第 6 步排在哪儿与它无关。所以「挪走第 6 步 → `@Autowired` 全 null → 注解测试红」这个推理
+在**这个模块的测试布局下不成立**——它成立的是「真实应用里会全 null」，区别在于测试没有走那条路。
 
 真实项目里之所以发现得晚，是因为这个缺陷**不产生任何错误**：
 
@@ -1424,7 +1442,17 @@ XML 里 Bean 的 ${db.url} 被正确替换了，
 
 **问**：如果 `invokeAwareMethods` 挪到 `applyBeanPostProcessorsBeforeInitialization` 之后，本章哪个测试会红？会造成什么真实后果？
 
-**答**：红的是两条**顺序**断言——`AwareCallbackOrderTests#awareCallbacksRunAfterPropertyPopulationAndBeforeInit`（工厂级）和 `ApplicationContextAwareTests#applicationContextCallbackComesAfterTheFactoryCallbacks`（上下文级）。它们都会看到 `setApplicationContext` 跑到 `setBeanName` / `setBeanFactory` 前面。
+**答**：**只红一条**——`ApplicationContextAwareTests#applicationContextCallbackComesAfterTheFactoryCallbacks`（上下文级）。217 条里就这一条（实测）。
+
+而工厂级那条 `AwareCallbackOrderTests#awareCallbacksRunAfterPropertyPopulationAndBeforeInit` **仍然绿**，
+这不是测试不全，而是它测的东西不包含这项：它的工厂里**没有任何会写事件的 BeanPostProcessor**，
+所以把 `invokeAwareMethods` 挪到 before 链之后，它看到的序列（`constructor → setLabel → setBeanName →
+setBeanFactory → afterPropertiesSet`）一字不差。**它测得到「aware 在属性填充之后」，测不到「aware 在 before 链之前」。**
+能测到后者的只有上下文级那条，因为 `ApplicationContextAwareProcessor` 本身就是个 BPP，一挪位置
+`setApplicationContext` 就跑到最前面。
+
+真实后果不变：`setApplicationContext` 早于 `setBeanName`/`setBeanFactory`，Bean 在拿到自己的名字之前
+就先拿到了整个上下文——依赖注入类的回调读不到「我是谁」。
 
 真实后果有三层，一层比一层隐蔽：
 
@@ -1519,7 +1547,12 @@ public class Another implements ApplicationContextAware {
 
 因为 `invokeInitMethods` 有两条来源：一条是 `doCreateBean`（有图纸），一条是 `createBean(Class)`（无图纸——第 06 章的 `AutowireCapableBeanFactory` 能力，直接给一个类就造对象，不注册、不落图纸）。
 
-删掉判断后，第一行 `beanDefinition.getInitMethodName()` 就抛 `NullPointerException`。会红的是 `AutowireCapableBeanFactoryTests#createBeanDoesNotRegister` 这类测试。
+删掉判断后，第一行 `beanDefinition.getInitMethodName()` 就抛 `NullPointerException`（实测报的是
+`Cannot invoke "BeanDefinition.getInitMethodName()" because "beanDefinition" is null`）。
+
+会红的是**两条**：`AutowireCapableBeanFactoryTests#createBeanDoesNotRegisterTheResult`（`:35`）与
+`AutowireCapableBeanFactoryTests#initializeBeanInvokesTheCallback`（`:67`）——231 条里 error 2 条，全是这一处缺口。
+两者都走「没有图纸也造对象」这条路：一个是 `createBean(Class)`，一个是直接 `initializeBean(...)`。
 
 **为什么是 NPE 而不是编译错误**：`beanDefinition` 的类型是 `BeanDefinition`，Java 的类型系统只保证「要么是 `BeanDefinition` 实例，要么是 `null`」，不保证非空。null 是运行时信息，编译器无从判断——这正是「可空性」要靠 `@Nullable` 注解或 Optional 表达的原因，也是第 33 章异常体系要处理的第一类问题（NPE 是唯一没有消息的异常）。
 
@@ -2142,12 +2175,17 @@ protected AntPathStringMatcher getStringMatcher(String pattern) {
 `nameMatchOutranksPriority` 会红。样本 `ShadowHolder` 的字段名是 `germanTranslator`，
 两个候选 `frenchTranslator`（`@Order(1)`）与 `germanTranslator`（`@Order(2)`）。
 按真实顺序选名字对得上的 `germanTranslator`；顺序对调后优先级先跑，选 `frenchTranslator`，
-断言失败：
+断言失败（313 条里只红这一条）：
 
 ```
-expected: "Hallo"
- but was: "Bonjour"
+Expecting actual:
+  org.springframework.samples.ch19.FrenchTranslator@...
+to be an instance of:
+  org.springframework.samples.ch19.GermanTranslator
 ```
+
+注意断言比的是**类型**（`assertThat(holder.translator()).isInstanceOf(GermanTranslator.class)`），
+不是翻译出来的字符串——所以失败信息里不会出现 `"Hallo"` / `"Bonjour"`。
 
 如果 `germanTranslator` 上没有 `@Order`，`orderOf` 返回 `null`，优先级那一步只在
 **所有候选都没有顺序**时才放弃，于是 `best == null`，仍会落到名字匹配——结果碰巧一样。
@@ -2652,7 +2690,10 @@ if (distance < bestDistance) {   // bestDistance 初值就是 MAX_VALUE
 
 所以「换服务」不是热更新规则，它只在 `refresh()` 之前的装配窗口内有效。这也解释了真实 Spring 为什么把 `conversionService` 放在 `ConfigurableBeanFactory` 上、并在 `prepareBeanFactory` 阶段就固定下来 —— 它是**装配期配置**，不是运行期配置项。
 
-顺带一个真实的坑：如果有人在 `refresh()` 之后 `setConversionService`，行为是「一半新一半旧」—— 已建 Bean 用旧规则，后来者用新规则。这种不一致比「完全不生效」难查得多，因为大部分测试仍然绿。
+顺带一个真实的坑：如果有人在 `refresh()` 之后 `setConversionService`，行为是「一半新一半旧」—— 已建 Bean 用旧规则，后来者用新规则。这种不一致比「完全不生效」难查得多，因为大部分测试仍然绿——实测：把
+`setConversionService` 改成**空操作**（等价于"完全不生效"），本章 363 条测试里只有 1 条红
+（`valueInjectionUsesTheContainerWideConversionService`）；而"refresh 之后再换一次服务"，本章**一条测试都没有**。
+两条事实拼起来：换服务这件事，只有"从没生效过"会被发现，"生效了一半"不会。
 
 ### B-23-5：两种异常继承选择各自解释了什么？
 

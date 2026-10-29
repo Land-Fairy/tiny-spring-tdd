@@ -14,6 +14,8 @@ import org.springframework.aop.Pointcut;
  * {@code MethodMatcher} 的缓存里一次性存下静态结论。
  * <p>
  * 本类同时实现 {@link Pointcut} 与 {@link MethodMatcher}：切点的那一半（方法匹配器）就是它自己。
+ *
+ * @see org.springframework.aop.support.StaticMethodMatcherPointcut
  */
 public abstract class StaticMethodMatcherPointcut implements Pointcut, MethodMatcher {
 

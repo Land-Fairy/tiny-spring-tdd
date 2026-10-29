@@ -21,6 +21,8 @@ import org.springframework.aop.support.AopProxyUtils;
  * </ul>
  * 真实 Spring 的同名类 360 行，其 {@code :167} 起的 {@code invoke} 比我们多了
  * {@code equals}/{@code hashCode}/{@code Advised}/{@code exposeProxy} 四段特殊处理。
+ *
+ * @see org.springframework.aop.framework.JdkDynamicAopProxy
  */
 public class JdkDynamicAopProxy implements AopProxy, InvocationHandler {
 
