@@ -84,7 +84,13 @@ def parsed_rows(text: str) -> list[tuple[str, str, int, int]]:
     return rows
 
 
-def main() -> int:
+def _fmt(value: float) -> str:
+    if abs(value - round(value)) < 0.05:
+        return f"{int(round(value)):,}"
+    return f"{value:.1f}"
+
+
+def main(argv: list[str] | None = None) -> int:
     verbose = "--verbose" in sys.argv[1:]
     if not REF.is_dir():
         print(f"SKIP 找不到参照仓 {REF}，无法判定附录 C（这不是通过）", file=sys.stderr)
@@ -122,6 +128,7 @@ def main() -> int:
         "同名异包": len(paired) - same_pkg,
         "无同名类": len(book) - len(rows),
     }
+    fix = bool(argv) and "--fix" in argv
     for name, pattern in AGGREGATE.items():
         hit = pattern.search(text)
         if not hit:
@@ -129,13 +136,24 @@ def main() -> int:
             continue
         claimed = float(hit.group(1).replace(",", ""))
         if abs(claimed - actual[name]) > 0.05:
-            errors.append(f"聚合数字漂了：{name} 写 {hit.group(1)}，实 {actual[name]}")
+            if fix:
+                start, end = hit.span(1)
+                text = text[:start] + _fmt(actual[name]) + text[end:]
+                rows = parsed_rows(text)
+            else:
+                errors.append(f"聚合数字漂了：{name} 写 {hit.group(1)}，实 {actual[name]}")
+    if fix and not errors:
+        MAP.write_text(text, encoding="utf-8")
+        print("已按实测改写附录 C 的聚合数字")
 
     print(
         f"附录 C：{len(rows)} 行对照、{len(book)} 个框架类、"
         f"{up_lines}/{book_lines} 行（{actual['倍数']} 倍）、"
         f"{same_pkg} 同名同包 / {len(paired) - same_pkg} 同名异包 / {len(book) - len(rows)} 无同名类"
     )
+    if "--fix" in (argv or []) and not errors:
+        print("复跑校验：")
+        return main([])
     if errors:
         print(f"── 汇总: {len(errors)} 处对不上")
         for e in errors[:40]:
@@ -148,4 +166,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

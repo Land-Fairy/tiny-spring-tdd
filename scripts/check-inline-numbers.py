@@ -51,12 +51,24 @@ def module_of(chapter: int) -> pathlib.Path | None:
 
 
 def count_tests(module: pathlib.Path) -> int | None:
+    """该模块的测试总数。
+
+    只统计**源码还在**的测试类：`target/surefire-reports` 会留下上一次运行时
+    已删除/改名的测试类报告，不做过期过滤的话，本地数字会比干净构建多出几个
+    （2026-10-29 就这样多算了 ch23 的一个已删测试，CI 立刻抓到 366 vs 365）。
+    """
     files = glob.glob(str(module / "target" / "surefire-reports" / "*.txt"))
     if not files:
         return None
     total = 0
     for path in files:
         text = pathlib.Path(path).read_text(encoding="utf-8", errors="ignore")
+        found_class = re.search(r"^Test set: ([\w.$]+)", text, re.MULTILINE)
+        if found_class:
+            simple = found_class.group(1).split(".")[-1].split("$")[0]
+            matches = list((module / "src" / "test" / "java").rglob(f"{simple}.java"))
+            if not matches:
+                continue
         found = re.search(r"Tests run: (\d+)", text)
         if found:
             total += int(found.group(1))
