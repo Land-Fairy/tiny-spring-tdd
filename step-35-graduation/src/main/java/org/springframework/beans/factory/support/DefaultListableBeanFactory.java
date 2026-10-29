@@ -240,10 +240,10 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 		if (sharedInstance != null) {
 			return getObjectForBeanInstance(sharedInstance, name, beanName, beanDefinition);
 		}
-		if (beanDefinition == null) {
-			// 只有单例池里有：registerSingleton 直接注册的现成对象，没有图纸。
-			return getObjectForBeanInstance(getSingleton(beanName), name, beanName, null);
-		}
+		// 真实 Spring 在 `getBean` 里还有一段「单例池里有、图纸里没有」（`registerSingleton` 注册的现成对象）
+		// 的分支。第 30 章之前我们也有这一段；从本章起它变成了死代码——上面的 `getSingleton(beanName)`
+		// 已经提前返回了那种情况，走到这里时 `getSingleton(beanName)` 一定是 null，
+		// 再查一次只会把 null 交给 `getObjectForBeanInstance`。所以本章把它删掉。
 		return getObjectForBeanInstance(getBeanInstance(name, beanName, beanDefinition), name, beanName,
 				beanDefinition);
 	}
