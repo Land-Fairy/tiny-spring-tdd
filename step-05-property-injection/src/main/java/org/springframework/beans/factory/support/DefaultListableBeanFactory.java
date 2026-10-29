@@ -106,7 +106,7 @@ public class DefaultListableBeanFactory extends DefaultSingletonBeanRegistry imp
 	public void removeBeanDefinition(String beanName) {
 		BeanDefinition removed = this.beanDefinitionMap.remove(beanName);
 		if (removed == null) {
-			throw new NoSuchBeanException("No bean named '" + beanName + "' available");
+			throw new NoSuchBeanException(beanName, "No bean named '" + beanName + "' available");
 		}
 	}
 
@@ -119,7 +119,7 @@ public class DefaultListableBeanFactory extends DefaultSingletonBeanRegistry imp
 	public BeanDefinition getBeanDefinition(String beanName) {
 		BeanDefinition beanDefinition = this.beanDefinitionMap.get(beanName);
 		if (beanDefinition == null) {
-			throw new NoSuchBeanException("No bean named '" + beanName + "' available");
+			throw new NoSuchBeanException(beanName, "No bean named '" + beanName + "' available");
 		}
 		return beanDefinition;
 	}

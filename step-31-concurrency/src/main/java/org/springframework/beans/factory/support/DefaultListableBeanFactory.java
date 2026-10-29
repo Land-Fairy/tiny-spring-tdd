@@ -252,7 +252,7 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 	public <T> T getBean(String beanName, Class<T> requiredType) {
 		Object bean = getBean(beanName);
 		if (!requiredType.isInstance(bean)) {
-			throw new NoSuchBeanException("Bean named '" + beanName + "' is expected to be of type '"
+			throw new NoSuchBeanException(beanName, "Bean named '" + beanName + "' is expected to be of type '"
 					+ requiredType.getName() + "' but was actually of type '" + bean.getClass().getName() + "'");
 		}
 		return requiredType.cast(bean);
@@ -300,7 +300,7 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 	private Scope requireScope(String beanName, String scopeName) {
 		Scope scope = this.scopes.get(scopeName);
 		if (scope == null) {
-			throw new NoSuchBeanException(
+			throw new NoSuchBeanException(beanName,
 					"No Scope registered for scope name '" + scopeName + "' (bean '" + beanName + "')");
 		}
 		return scope;
@@ -458,7 +458,7 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 		if (parent != null && parent.containsBean(beanName)) {
 			return parent.getType(beanName);
 		}
-		throw new NoSuchBeanException("No bean named '" + beanName + "' available");
+		throw new NoSuchBeanException(beanName, "No bean named '" + beanName + "' available");
 	}
 
 	// ------------------------------------------------------------------
@@ -606,7 +606,7 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 	public void removeBeanDefinition(String beanName) {
 		BeanDefinition removed = this.beanDefinitionMap.remove(beanName);
 		if (removed == null) {
-			throw new NoSuchBeanException("No bean named '" + beanName + "' available");
+			throw new NoSuchBeanException(beanName, "No bean named '" + beanName + "' available");
 		}
 		this.beanDefinitionNames.remove(beanName);
 	}
@@ -615,7 +615,7 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 	public BeanDefinition getBeanDefinition(String beanName) {
 		BeanDefinition beanDefinition = this.beanDefinitionMap.get(beanName);
 		if (beanDefinition == null) {
-			throw new NoSuchBeanException("No bean named '" + beanName + "' available");
+			throw new NoSuchBeanException(beanName, "No bean named '" + beanName + "' available");
 		}
 		return beanDefinition;
 	}
@@ -649,13 +649,13 @@ public class DefaultListableBeanFactory extends FactoryBeanRegistrySupport
 		if (parent != null && parent.containsBean(beanName)) {
 			return parent.getBean(beanName);
 		}
-		throw new NoSuchBeanException("No bean named '" + beanName + "' available");
+		throw new NoSuchBeanException(beanName, "No bean named '" + beanName + "' available");
 	}
 
 	private BeanFactory requireParent(String beanName) {
 		BeanFactory parent = this.parentBeanFactory;
 		if (parent == null || !parent.containsBean(beanName)) {
-			throw new NoSuchBeanException("No bean named '" + beanName + "' available");
+			throw new NoSuchBeanException(beanName, "No bean named '" + beanName + "' available");
 		}
 		return parent;
 	}

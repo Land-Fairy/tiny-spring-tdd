@@ -70,7 +70,7 @@ public class DefaultListableBeanFactory {
 	public BeanDefinition getBeanDefinition(String beanName) {
 		BeanDefinition beanDefinition = this.beanDefinitionMap.get(beanName);
 		if (beanDefinition == null) {
-			throw new NoSuchBeanException("No bean named '" + beanName + "' available");
+			throw new NoSuchBeanException(beanName, "No bean named '" + beanName + "' available");
 		}
 		return beanDefinition;
 	}
