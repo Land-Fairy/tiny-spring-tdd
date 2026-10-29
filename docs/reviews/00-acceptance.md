@@ -41,7 +41,7 @@ ERROR ch35.md: `AbstractApplicationContext.java:634` 超出最长候选文件的
 
 ---
 
-## 二、13 道闸门的分工
+## 二、14 道闸门的分工
 
 前 6 道是 Maven 内置（`mvn verify` 就全跑），后 7 道是仓库脚本 + CI 步骤。
 **分工原则**：机器能判的，一律不给评审意见留余地。
@@ -161,7 +161,7 @@ bash    scripts/check-propagation.sh           # 约 1 分 20 秒：35 模块副
 | K5 判定手段 = 「源码契约测试（E5）」 | `E5` 全文未定义，**也不存在**这个测试 | 补齐：真写了 `K5SourceContractTests`（基线 137 个存量已于 2026-10-28 全部销账，基线现为空；新账强制） |
 | K3「方法 ≤30 行」 | `checkstyle.xml` 的 `MethodLength` = **40**；全仓 10 个方法在 31–39 | 文档改成「40 硬线、30 目标」，并写明差集归人工 |
 | K4「自定义异常构造器必须带 beanName」 | 13 个自定义异常，6 个带；`NoSuchBeanException` 只有字符串 | 改成「与单个 bean 相关的要结构化」，欠账进 issue 草稿 8 |
-| 13 道闸门表 | 13 道全部存在且都在 CI 里（`ci.yml` 逐一核对）；`LayeringTests` 35/35 | 无需改，这是全文最实的一段 |
+| 14 道闸门表 | 14 道全部存在且都在 CI 里（`ci.yml` 逐一核对）；`LayeringTests` 35/35 | 无需改，这是全文最实的一段 |
 
 **新闸门不是白写的**：`K5SourceContractTests` 第一次跑就红了，抓到
 `SmartInstantiationAwareBeanPostProcessor` 在第 30–35 章的 6 份副本里**丢了**「真实 Spring 对应」那段

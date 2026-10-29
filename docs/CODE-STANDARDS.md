@@ -2,7 +2,7 @@
 
 > 这不是一份"建议"，但也别把它读成"全部由机器执行"——2026-10-28 审计过一次，真实情况是：
 >
-> - **闸门 13 道**（§闸门一览）：全部由 `mvn verify` 或 CI 执行，违反即红灯。这部分是硬约束。
+> - **闸门 14 道**（§闸门一览）：全部由 `mvn verify` 或 CI 执行，违反即红灯。这部分是硬约束。
 > - **优雅六条 K1–K6**：只有 **K2、K5** 有源码契约测试（`K2SourceContractTests`、`K5SourceContractTests`），
 >   **K3 部分**由 checkstyle 兜住（`MethodLength` 40 行是硬线，不是 K3 写的 30），**K1/K4/K6 目前靠评审清单**。
 >
@@ -122,7 +122,7 @@ K3 真正管的是**类级**的理由数：一个 1120 行的工厂同时管注�
 ## 闸门一览
 
 代码注释里说的「第 N 道闸门」指的就是下面这张表的编号。1–6 在单个模块的 `mvn verify` 里跑；
-7–12 要看整个仓库才能判断，所以放在 CI 里单独跑。
+7–14 要看整个仓库才能判断，所以放在 CI 里单独跑。
 
 | # | 闸门 | 工具 | 阶段 | 违规后果 |
 |---|---|---|---|---|
@@ -139,12 +139,13 @@ K3 真正管的是**类级**的理由数：一个 1120 行的工厂同时管注�
 | 11 | 章节体量表数字 | `scripts/check-doc-tables.py`（CI 单独跑） | 仓库级 | 退出码 1 |
 | 12 | 评审文档形状（判决行 + 矩阵/复核/放弃点） | `scripts/check-review-format.py`（CI 单独跑）；`--stats` 现算 P0/P1 条数，验收记录与总评里的数字一律引它的输出，不手抄 | 仓库级 | 退出码 1 |
 | 13 | 评审文档的引用可解析 | `scripts/check-review-refs.py`（CI 单独跑） | 仓库级 | 退出码 1 |
+| 14 | 附录 C 类对照表可验证（类名 + 真实行数 + 聚合数字） | `scripts/check-class-map.py`（CI 单独跑，需上游源码树） | 仓库级 | 退出码 1（缺上游退 2） |
 
-一条命令跑 1–6：`mvn verify`；7–12 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、
+一条命令跑 1–6：`mvn verify`；7–14 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、
 `bash scripts/check-doc-links.sh`、`python3 scripts/check-chapter-refs.py`、`python3 scripts/check-doc-tables.py`、
-`python3 scripts/check-review-format.py`、`python3 scripts/check-review-refs.py`
-（7 查代码有没有退化；8–13 查文档的六类腐败：引用解析不了、链接指向空气、链接指错了门、
-体量表里的数字对不上、评审结论的写法各说各话、**评审自己引用的 file:line 指不到东西**）。
+`python3 scripts/check-review-format.py`、`python3 scripts/check-review-refs.py`、`python3 scripts/check-class-map.py`
+（7 查代码有没有退化；8–14 查文档的七类腐败：引用解析不了、链接指向空气、链接指错了门、
+体量表里的数字对不上、评审结论的写法各说各话、**评审自己引用的 file:line 指不到东西**、**附录 C 那张对照表的类名与行数悄悄漂了**）。
 
 闸门 10 判六条通道（v2.x）：**类名不符（判错）> 类名归属（通过）> 类名首现章 > 具体关键词 > 泛词唯一归属（WARN）> 泛词提示**。
 扫描范围含 `docs/**.md` **与 `step-35-graduation` 的 javadoc/行注释**（35 份副本内容相同，审最全的一份）。
@@ -666,3 +667,21 @@ git commit -am "fix(step-05): ..."
 **它和闸门 8 的区别**：闸门 8 查**书**（章节正文 + javadoc）的引用；闸门 13 查**评审**的引用。
 两者共用一个判断：引用必须指得到东西；但豁免表分开——书的豁免小于评审的豁免，因为评审天然要引用
 「不存在的东西」当证据。
+
+### 闸门 14：附录 C 类对照表
+
+**它防的是什么**：附录 C 是全书唯一一张「你读完该去打开哪个真实文件」的表，190 行，每行三句话：
+本书类在哪个包、真实类在哪个包、那个真实文件多少行。三句话任何一句漂了，读者按表去找就扑空。
+它此前**从没被机器校验过**——因为它表头是「本书类 | 真实 Spring 对应 | 真实行数 | 引入章 | 备注」，
+没有「本书行数」这一列，闸门 11 的形状匹配不到它。
+
+**判定语义**：① 本书类的全限定名（按表内的包段标题拼出来）必须真的存在于 `step-35-graduation/src/main/java/`；
+② 真实类的全限定名必须存在于 `SPRING_REF`；③ 表里写的行数必须等于那个文件的实际行数；
+④ 正文里的聚合数字（203 / 15,878 / 190 / 14,971 / 42,962 / 2.9 / 173 / 17 / 13）必须现算对得上——
+这些数字不在表格里，闸门 11 也管不到，手抄必然漂。
+
+**缺上游退 2**：拿不到 `SPRING_REF` 时不能判「对」，只能判「判不了」，退 2 让 CI 红在缺前置条件上。
+
+**第一次跑就抓到两件事**：`Qualifier` 被放在 `context.annotation` 段（本书它在 `beans.factory.annotation`，
+与真实同名同包，备注却写着「包名不同」）；正文的 14,372 / 15,256 / 3.0 三个聚合数字与本轮加过 javadoc 的
+实际值差了几百行。都已改正——**包括我自己上一轮加 `@see` 造成的漂移**。
