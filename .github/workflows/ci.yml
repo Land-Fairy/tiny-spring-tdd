@@ -104,3 +104,7 @@ jobs:
       # 第 15 道闸门查 ArchUnit 规则的 allowEmptyShould 有没有跟着代码毕业，不需要上游源码树。
       - name: 第 15 道闸门 · ArchUnit 规则不许空集放行放过头
         run: python3 scripts/check-archunit-vacuity.py
+
+      # 第 16 道闸门查 K4：类名带 Bean 的异常有没有结构化 beanName（不需要上游源码树）。
+      - name: 第 16 道闸门 · 类名带 Bean 的异常必须带结构化 beanName
+        run: python3 scripts/check-bean-name.py

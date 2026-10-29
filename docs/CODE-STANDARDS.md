@@ -2,9 +2,11 @@
 
 > 这不是一份"建议"，但也别把它读成"全部由机器执行"——2026-10-28 审计过一次，真实情况是：
 >
-> - **闸门 15 道**（§闸门一览）：全部由 `mvn verify` 或 CI 执行，违反即红灯。这部分是硬约束。
-> - **优雅六条 K1–K6**：只有 **K2、K5** 有源码契约测试（`K2SourceContractTests`、`K5SourceContractTests`），
->   **K3 部分**由 checkstyle 兜住（`MethodLength` 40 行是硬线，不是 K3 写的 30），**K1/K4/K6 目前靠评审清单**。
+> - **闸门 16 道**（§闸门一览）：全部由 `mvn verify` 或 CI 执行，违反即红灯。这部分是硬约束。
+> - **优雅六条 K1–K6**：**K2、K5** 有源码契约测试（`K2SourceContractTests`、`K5SourceContractTests`），
+>   **K3 部分**由 checkstyle 兜住（`MethodLength` 40 行是硬线，不是 K3 写的 30），
+>   **K4 部分**由闸门 16 兜住（`check-bean-name.py` 查「类名带 Bean 的异常有没有结构化 `beanName`」），
+>   **K1、K6 仍是人工**——它们要判「为什么这么选」和「两种写法是否等价」，机器判不了，只能人读。
 >
 > 下表「判定手段」一列标的就是这个真实状态。**把"应该被机器检查"写成"已被机器检查"，是本书最容易犯的错**
 > ——前 11 轮里这类谎话出现过 6 次（闸门 9 未接 CI、闸门 11 未写进规范、`allowEmptyShould(true)` 让四条
@@ -19,7 +21,7 @@
 | **K1 机制单一** | 同一件事只允许一种写法（并发容器、工厂、异常路径…）；若必须混用，**每个字段旁一行说明为什么** | **人工复核**（没有能判「为什么」的机器：单例池有 4 种并发机制，正是人工审出来的） | 同一类里四套并发机制，却没有一句话解释为什么 |
 | **K2 不变量可见** | 约束写在类型与构造器里，不写在注释里：与真实 Spring 同形的值对象用 `final class` + 全 `private final` + 构造期校验；本书自创、仅供内部使用的纯数据载体用 `record`；可变对象（`BeanDefinition` 系）全 `private` + 统一风格 setter + 构造期校验 | `K2SourceContractTests`（2 条：禁 public record、可变值对象须声明） | 注释写「name 不能为 null」，字段却是可变 `public` |
 | **K3 意志单一** | 一个类只有一个变化理由：方法行数是症状，变化理由是病根 | checkstyle `MethodLength` ≤**40**（硬线）、`ParameterNumber` ≤5、`NestedIfDepth` ≤3；≤30 只是写作目标 | 1120 行的 `DefaultListableBeanFactory` |
-| **K4 异常即文档** | 异常消息三段式：**谁 · 为什么 · 怎么办**；与单个 bean 相关的异常要把 `beanName` 作为结构化字段，不是只写进字符串 | **人工**（没有契约测试；欠账 1 处见下） | `throw new IllegalStateException("error")` |
+| **K4 异常即文档** | 异常消息三段式：**谁 · 为什么 · 怎么办**；与单个 bean 相关的异常要把 `beanName` 作为结构化字段，不是只写进字符串 | **闸门 16**（字段 / getter 的存在性；三段式措辞本身仍是人工） | `throw new IllegalStateException("error")` |
 | **K5 契约可见** | 新增 `public` 类必须有 `@see org.springframework.…` 与「砍掉了什么」一句话 | **`K5SourceContractTests`**：基线登记在 `k5-baseline.txt`（2026-10 存量 137 个，已**全部**销账，基线现为空），基线之外缺 `@see` 即红；补完必须删基线行。唯一例外：Spring 打包的 AOP Alliance 接口（`Advice`/`Joinpoint`/`MethodInvocation`/`MethodInterceptor`）在 `org.springframework.aop` 下没有同名类，`@see org.aopalliance.*` 才算真话，判据已单独放行；本书自建、上游确无同类的工具类，必须在 javadoc 里逐字写出 `K5 豁免：上游无同类` 并紧跟理由（写不出理由就不该有豁免） | 新类没有 `@see`，读者不知道它对应真实 Spring 的谁 |
 | **K6 成对对照** | 每章至少一对「朴素写法 / 优雅写法」，两者都编译、都过**同一组**断言 | **人工**（「测试文件计数」这条机制从未存在，别再写成机器判定） | 只有正确写法，读者无从比较 |
 
@@ -89,10 +91,14 @@ K3 真正管的是**类级**的理由数：一个 1120 行的工厂同时管注�
 
 见下一节「异常三段式」。
 
-**K4 的真实欠账（2026-10-28 实测）**：框架层 13 个自定义异常，6 个带 `beanName`。
-其中 `NoSuchBeanException(String message)` 把名字只写进了字符串，没有 `getBeanName()`——
-真实 Spring 的 `NoSuchBeanDefinitionException` 是有的。这条**没有机器兜着**，所以写在
-`docs/reviews/00-issue-drafts.md` 里当欠账，不假装闸门会拦住它。
+**K4 的实测状态（2026-10-29 复核）**：框架层 **16 个**自定义异常；类名带 `Bean` 的 **8 个**，
+其中 **2 个豁免**（`BeansException` 根异常、`FatalBeanException` 中间层基类——它们自己被抛出时不指向某个 Bean），
+其余 **6 个都有 `beanName` 字段**（`NoUniqueBeanDefinitionException` 从父类 `NoSuchBeanException` 继承）。
+
+这两处欠账已补：`NoSuchBeanException` 加了 `(beanName, message)` 与 `getBeanName()`（#80），
+`BeanDefinitionStoreException` 同轮补上字段与两个构造器（#79），XML 级抛点填 `null`、能归属到具体
+Bean 的两处（重复名、缺 class）把 `id` 传进去。**现在这条有机器兜着了**——闸门 16 的变异实测：
+新建一个 `BeanSnapshotException extends RuntimeException`（无字段）→ 闸门红；删掉恢复 → 绿。
 
 ### K5 契约可见：`@see` 与「砍掉了什么」
 
@@ -122,7 +128,7 @@ K3 真正管的是**类级**的理由数：一个 1120 行的工厂同时管注�
 ## 闸门一览
 
 代码注释里说的「第 N 道闸门」指的就是下面这张表的编号。1–6 在单个模块的 `mvn verify` 里跑；
-7–14 要看整个仓库才能判断，所以放在 CI 里单独跑。
+7–16 要看整个仓库才能判断，所以放在 CI 里单独跑。
 
 | # | 闸门 | 工具 | 阶段 | 违规后果 |
 |---|---|---|---|---|
@@ -141,13 +147,14 @@ K3 真正管的是**类级**的理由数：一个 1120 行的工厂同时管注�
 | 13 | 评审文档的引用可解析 | `scripts/check-review-refs.py`（CI 单独跑） | 仓库级 | 退出码 1 |
 | 14 | 附录 C 类对照表可验证（类名 + 真实行数 + 聚合数字） | `scripts/check-class-map.py`（CI 单独跑，需上游源码树） | 仓库级 | 退出码 1（缺上游退 2） |
 | 15 | ArchUnit 规则不许空集放行放过头 | `scripts/check-archunit-vacuity.py`（CI 单独跑） | 仓库级 | 退出码 1 |
+| 16 | 类名带 `Bean` 的异常必须带结构化 `beanName` | `scripts/check-bean-name.py`（CI 单独跑；`--all` 列全部被检查类） | 仓库级 | 退出码 1 |
 
-一条命令跑 1–6：`mvn verify`；7–14 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、
+一条命令跑 1–6：`mvn verify`；7–16 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、
 `bash scripts/check-doc-links.sh`、`python3 scripts/check-chapter-refs.py`、`python3 scripts/check-doc-tables.py`、
 `python3 scripts/check-review-format.py`、`python3 scripts/check-review-refs.py`、`python3 scripts/check-class-map.py`、
-`python3 scripts/check-archunit-vacuity.py`
-（7 查代码有没有退化；8–15 查文档与规则的八类腐败：引用解析不了、链接指向空气、链接指错了门、
-体量表里的数字对不上、评审结论的写法各说各话、**评审自己引用的 file:line 指不到东西**、**附录 C 那张对照表的类名与行数悄悄漂了**）。
+`python3 scripts/check-archunit-vacuity.py`、`python3 scripts/check-bean-name.py`
+（7 查代码有没有退化；8–16 查文档与规则的九类腐败：引用解析不了、链接指向空气、链接指错了门、
+体量表里的数字对不上、评审结论的写法各说各话、**评审自己引用的 file:line 指不到东西**、**附录 C 那张对照表的类名与行数悄悄漂了**、**异常改了却没能结构化告诉调用方是哪个 Bean**）。
 
 闸门 10 判六条通道（v2.x）：**类名不符（判错）> 类名归属（通过）> 类名首现章 > 具体关键词 > 泛词唯一归属（WARN）> 泛词提示**。
 扫描范围含 `docs/**.md` **与 `step-35-graduation` 的 javadoc/行注释**（35 份副本内容相同，审最全的一份）。
@@ -725,3 +732,28 @@ git commit -am "fix(step-05): ..."
 **第一次跑就抓到两件事**：`Qualifier` 被放在 `context.annotation` 段（本书它在 `beans.factory.annotation`，
 与真实同名同包，备注却写着「包名不同」）；正文的 14,372 / 15,256 / 3.0 三个聚合数字与本轮加过 javadoc 的
 实际值差了几百行。都已改正——**包括我自己上一轮加 `@see` 造成的漂移**。
+
+### 闸门 16：类名带 `Bean` 的异常必须带结构化 `beanName`
+
+**它防的是什么**：K4 要求「与单个 Bean 相关的异常要把名字作为结构化字段」——但这条从第 33 章建异常体系起
+就一直只是评审清单里的一行字。实际后果是可预测的：上层要「找不到就降级」时只能写
+`e.getMessage().contains("foo")`，**消息改一个字就静默失效**，而且这种失效没人会立刻发现。
+
+**判定语义**：`step-35-graduation/src/main/java` 下，凡「类名含 `Bean` 且父类名以 `Exception` / `Error` 结尾」
+的类型，必须能从**它自己或任一祖先**找到 `private final String beanName` 字段或 `getBeanName()`。
+两个条件都满足才算过——只写进消息不算。
+
+**为什么只扫最后一章**：35 章里这些异常类是逐章复制的副本，内容必须一致（不一致就是闸门 7 该报的
+「静默缺失」）。审最全的一份 + 由闸门 7 兜副本一致性，比扫 35 遍更快也不更弱。
+
+**豁免只允许一种理由**：「没有单个 Bean 可归属」。现有两条：`BeansException`（全书根异常，一次失败
+可能不指向任何 Bean）、`FatalBeanException`（中间层基类，自己被抛出时不带名字，带名字的是子类）。
+豁免写在脚本的 `EXEMPT` 表里，**必须带理由**，没有理由的条目加不进去。
+
+**变异实测（2026-10-29）**：新建 `BeanSnapshotException extends RuntimeException`（无字段）→ 闸门红并指出
+文件名；删除后 → 绿。另一条：删掉 `BeanDefinitionStoreException` 的字段但保留 getter → 仍绿（getter 在就能
+拿到名字），这是**有意的**：判据是「调用方能不能结构化拿到名字」，不是「字段必须长什么样」。
+
+**它的上限**：只判「存在性」，判不了「抛点是否真的填了名字」。`BeanDefinitionStoreException` 目前 13 个
+抛点里只有 2 个填了（重复名、缺 class），其余是 XML 级错误、没有单个 Bean 可归属——**填 null 是正确行为，
+但「该填的地方是否都填了」仍要人读**。这条已写进 `docs/reviews/00-issue-drafts.md`。
