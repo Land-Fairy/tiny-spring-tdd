@@ -113,12 +113,16 @@ c79ca22 docs(reviews): 35 篇评审的判决行统一
 
 ## 五、诚实的边界（这些**没有**做完）
 
-1. **六项待议没有落 GitHub issue。** 按「只探讨后落 issue」的口径，文本备在
-   `00-issue-drafts.md`，一条都没发。所以目标的第三部分（与用户探讨后落 issue）**未完成**。
-2. **`git push` 未成功。** 三次尝试都卡在 `Failed to connect to github.com port 443`，
-   本地领先 3 个提交。网络恢复后 `git push origin integration` 即可，不需要别的动作。
-3. **仍有 2 条代码级 P0 未修**（其余 108 条已修）：`step-30` 的不可达分支、`allowEmptyShould`
-   的渐变式毕业机制。两条都会改动教学结构，等授权（草稿 1、2）。
+1. ~~六项待议没有落 GitHub issue~~ → **2026-10-29 已落**：9 篇变成 issue #73–#81
+   （#81 现场关闭，内容是「K5 旧账已还清」的留档）。对照见 `00-issue-drafts.md` 每篇标题后的编号。
+2. `git push` 受网络影响反复失败（`Failed to connect to github.com port 443`），
+   恢复后 `git push origin integration` 即可；本地提交不等网络。
+3. ~~仍有 2 条代码级 P0 未修~~ → **2026-10-29 已清零**：
+   - `step-30`…`step-35` 的不可达分支已删（`step-06`…`step-29` 保留——那几章里它是活的），
+     第 30 章正文新增 §4.4 讲「加一条提前返回会让别处分支悄悄变死」；
+   - `allowEmptyShould` 的毕业机制已做成第 15 道闸门 `scripts/check-archunit-vacuity.py`：
+     `from` 包已出生就必须毕业（本次毕业 **91** 条，剩 49 条都是包还没出生的章）。
+     同时更正我先前的夸大：`allowEmptyShould(true)` 并不会关掉判定，实测带不带都红。
 4. **`check-chapter-refs.py` 的能力上限已摸清，且它的输入表自己也是坏的。**
    初版报 475 条「未判定」，查下去一半是闸门自己的缺陷：短语提取把 markdown 记号与连接词
    也算进主题，「」「**」「→」全成了待判项。v2.x 改成四条通道（类名归属 > 类名首现章 >

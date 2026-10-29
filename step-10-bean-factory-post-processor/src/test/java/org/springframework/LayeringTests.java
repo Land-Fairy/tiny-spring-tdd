@@ -47,8 +47,6 @@ class LayeringTests {
 		.should()
 		.dependOnClassesThat()
 		.resideInAPackage("org.springframework.context..")
-		// 早期章节还没有 context 包：允许「没类可查」而不是报错
-		.allowEmptyShould(true)
 		.because("依赖方向只能从 context 指向 beans；注解类属于外层，内层不许回头读它");
 
 	/**
@@ -90,7 +88,6 @@ class LayeringTests {
 		.should()
 		.dependOnClassesThat()
 		.resideInAnyPackage("org.springframework.beans..", "org.springframework.context..", "org.springframework.aop..")
-		.allowEmptyShould(true)
 		.because("core 是地基，地基不能回头依赖楼层");
 
 }

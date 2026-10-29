@@ -100,3 +100,7 @@ jobs:
         env:
           SPRING_REF: ${{ github.workspace }}/.spring-ref
         run: python3 scripts/check-class-map.py
+
+      # 第 15 道闸门查 ArchUnit 规则的 allowEmptyShould 有没有跟着代码毕业，不需要上游源码树。
+      - name: 第 15 道闸门 · ArchUnit 规则不许空集放行放过头
+        run: python3 scripts/check-archunit-vacuity.py

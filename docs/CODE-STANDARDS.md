@@ -2,7 +2,7 @@
 
 > 这不是一份"建议"，但也别把它读成"全部由机器执行"——2026-10-28 审计过一次，真实情况是：
 >
-> - **闸门 14 道**（§闸门一览）：全部由 `mvn verify` 或 CI 执行，违反即红灯。这部分是硬约束。
+> - **闸门 15 道**（§闸门一览）：全部由 `mvn verify` 或 CI 执行，违反即红灯。这部分是硬约束。
 > - **优雅六条 K1–K6**：只有 **K2、K5** 有源码契约测试（`K2SourceContractTests`、`K5SourceContractTests`），
 >   **K3 部分**由 checkstyle 兜住（`MethodLength` 40 行是硬线，不是 K3 写的 30），**K1/K4/K6 目前靠评审清单**。
 >
@@ -140,11 +140,13 @@ K3 真正管的是**类级**的理由数：一个 1120 行的工厂同时管注�
 | 12 | 评审文档形状（判决行 + 矩阵/复核/放弃点） | `scripts/check-review-format.py`（CI 单独跑）；`--stats` 现算 P0/P1 条数，验收记录与总评里的数字一律引它的输出，不手抄 | 仓库级 | 退出码 1 |
 | 13 | 评审文档的引用可解析 | `scripts/check-review-refs.py`（CI 单独跑） | 仓库级 | 退出码 1 |
 | 14 | 附录 C 类对照表可验证（类名 + 真实行数 + 聚合数字） | `scripts/check-class-map.py`（CI 单独跑，需上游源码树） | 仓库级 | 退出码 1（缺上游退 2） |
+| 15 | ArchUnit 规则不许空集放行放过头 | `scripts/check-archunit-vacuity.py`（CI 单独跑） | 仓库级 | 退出码 1 |
 
 一条命令跑 1–6：`mvn verify`；7–14 各一条：`bash scripts/check-propagation.sh`、`bash scripts/check-doc-refs.sh --all`、
 `bash scripts/check-doc-links.sh`、`python3 scripts/check-chapter-refs.py`、`python3 scripts/check-doc-tables.py`、
-`python3 scripts/check-review-format.py`、`python3 scripts/check-review-refs.py`、`python3 scripts/check-class-map.py`
-（7 查代码有没有退化；8–14 查文档的七类腐败：引用解析不了、链接指向空气、链接指错了门、
+`python3 scripts/check-review-format.py`、`python3 scripts/check-review-refs.py`、`python3 scripts/check-class-map.py`、
+`python3 scripts/check-archunit-vacuity.py`
+（7 查代码有没有退化；8–15 查文档与规则的八类腐败：引用解析不了、链接指向空气、链接指错了门、
 体量表里的数字对不上、评审结论的写法各说各话、**评审自己引用的 file:line 指不到东西**、**附录 C 那张对照表的类名与行数悄悄漂了**）。
 
 闸门 10 判六条通道（v2.x）：**类名不符（判错）> 类名归属（通过）> 类名首现章 > 具体关键词 > 泛词唯一归属（WARN）> 泛词提示**。
@@ -581,6 +583,27 @@ git commit -am "fix(step-05): ..."
 
 **上游源码树**：`SPRING_REF` 指向 `spring-framework` 6.2.x checkout。拿不到时脚本不装懂：
 标注「出处：」的引用打 INFO 跳过，本地行号越界降级为 WARN。
+
+### 行号基准：行号会漂，怎么办
+
+**问题**：行号是这本书最脆的东西。上游 `spring-framework` 一升版、本仓一章代码一动，行号就漂。
+而漂了的行号**不会报错**——它会指到隔壁一段看起来也很像的代码上，比找不到更难发现。
+
+**基准声明**（写书与评审都按这个来）：
+
+| 引用类型 | 基准 | 谁能查 |
+| --- | --- | --- |
+| 上游行号（`spring-beans` 等模块里的某个 `类名.java` 加行号） | 参照仓 `~/refs/spring-framework-6.2.x`，提交 **`daf9551`**（`scripts/refs.sh verify` 校验） | 闸门 8：行内必须标注出处，按上游树解析 |
+| 本仓行号（`step-NN` 里的文件:行） | 当前 `HEAD` | 闸门 8 / 13：文件在、行号不越界、栈帧里那个方法确实声明在该文件里 |
+
+**三条纪律**：
+
+1. **行号只能当加速器，不能当唯一锚点。** 任何引用必须同时给出可读的锚——类名、方法名、断言消息。
+   行号错了，读者还能靠名字找到；名字错了，行号对了也没用（第 01 章那 5 处假引用，全部是名字与行号一起编的）。
+2. **漂移分两种，只有一种能机器兜住。** 「解析不到」（文件没了、行号越界、方法不在那个文件）是闸门能红的；
+   「解析得到但已不是那段代码」是**语义漂移**，机器判不了，只能靠评审时逐条打开看一眼——写进每章评审的复核清单。
+3. **升上游就重扫。** 改 `daf9551` 这个基准提交时，必须重跑 `bash scripts/check-doc-refs.sh --all`，
+   按输出逐条修，不许「反正只差几十行」。
 
 ### 闸门 10：章节交叉引用的主题校验
 
