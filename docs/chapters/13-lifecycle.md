@@ -500,7 +500,7 @@ public void destroy() {
 }
 ```
 
-这是**初始化顺序的镜像**：初始化是「注解 → 接口 → 方法」，销毁也是。看起来反直觉（销毁不该逆序吗？），但理由不同：初始化时注解最先是因为它跑在更前面的环节；销毁时注解最先是因为 `DestructionAwareBeanPostProcessor` 的语义就是「在销毁动作**之前**做点事」（`postProcessBeforeDestruction`）——它拿到的还是完整可用的对象。
+这是**初始化顺序的同向版**，不是倒过来：初始化是「注解 → 接口 → 方法」，销毁也是。看起来反直觉（销毁不该逆序吗？），但理由不同：初始化时注解最先是因为它跑在更前面的环节；销毁时注解最先是因为 `DestructionAwareBeanPostProcessor` 的语义就是「在销毁动作**之前**做点事」（`postProcessBeforeDestruction`）——它拿到的还是完整可用的对象。
 
 至于「逆序」，那是**Bean 与 Bean 之间**的事（3.4 节），不是同一个 Bean 内部三条通道的事。这两件事容易混，值得单独记一笔。
 

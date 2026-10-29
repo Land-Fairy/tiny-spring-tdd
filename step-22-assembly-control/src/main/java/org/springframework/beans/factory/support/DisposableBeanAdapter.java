@@ -95,8 +95,13 @@ public class DisposableBeanAdapter implements DisposableBean {
 	 * 依次执行三种销毁回调：后处理器（{@code @PreDestroy}）→ {@code destroy()} → {@code destroy-method}。
 	 *
 	 * <p>
-	 * 与初始化顺序正好相反，这是刻意设计的：初始化是「从外到内」（框架回调 → 接口 → 自定义），
-	 * 销毁是「从内到外」——不对，准确说是**对称镜像**：谁最后准备，谁最先走。
+	 * 与初始化<b>同向</b>，不是倒过来：初始化是「框架回调 → 接口 → 用户自定义」 （{@code @PostConstruct} →
+	 * {@code afterPropertiesSet} → {@code init-method}）， 销毁也是「框架回调 → 接口 →
+	 * 用户自定义」（{@code @PreDestroy} → {@code destroy()} → {@code destroy-method}）。上游 Spring
+	 * 同样如此。
+	 * <p>
+	 * 容易混的是另一件事：「逆序」说的是 <b>Bean 与 Bean 之间</b>——依赖者先销毁、被依赖者后销毁 （见 3.4 节）。同一个 Bean
+	 * 内部的三条通道不逆序。
 	 */
 	@Override
 	public void destroy() {
