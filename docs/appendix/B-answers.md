@@ -1433,7 +1433,17 @@ XML 里 Bean 的 ${db.url} 被正确替换了，
 
 **问**：如果 `invokeAwareMethods` 挪到 `applyBeanPostProcessorsBeforeInitialization` 之后，本章哪个测试会红？会造成什么真实后果？
 
-**答**：红的是两条**顺序**断言——`AwareCallbackOrderTests#awareCallbacksRunAfterPropertyPopulationAndBeforeInit`（工厂级）和 `ApplicationContextAwareTests#applicationContextCallbackComesAfterTheFactoryCallbacks`（上下文级）。它们都会看到 `setApplicationContext` 跑到 `setBeanName` / `setBeanFactory` 前面。
+**答**：**只红一条**——`ApplicationContextAwareTests#applicationContextCallbackComesAfterTheFactoryCallbacks`（上下文级）。217 条里就这一条（实测）。
+
+而工厂级那条 `AwareCallbackOrderTests#awareCallbacksRunAfterPropertyPopulationAndBeforeInit` **仍然绿**，
+这不是测试不全，而是它测的东西不包含这项：它的工厂里**没有任何会写事件的 BeanPostProcessor**，
+所以把 `invokeAwareMethods` 挪到 before 链之后，它看到的序列（`constructor → setLabel → setBeanName →
+setBeanFactory → afterPropertiesSet`）一字不差。**它测得到「aware 在属性填充之后」，测不到「aware 在 before 链之前」。**
+能测到后者的只有上下文级那条，因为 `ApplicationContextAwareProcessor` 本身就是个 BPP，一挪位置
+`setApplicationContext` 就跑到最前面。
+
+真实后果不变：`setApplicationContext` 早于 `setBeanName`/`setBeanFactory`，Bean 在拿到自己的名字之前
+就先拿到了整个上下文——依赖注入类的回调读不到「我是谁」。
 
 真实后果有三层，一层比一层隐蔽：
 
@@ -1528,7 +1538,12 @@ public class Another implements ApplicationContextAware {
 
 因为 `invokeInitMethods` 有两条来源：一条是 `doCreateBean`（有图纸），一条是 `createBean(Class)`（无图纸——第 06 章的 `AutowireCapableBeanFactory` 能力，直接给一个类就造对象，不注册、不落图纸）。
 
-删掉判断后，第一行 `beanDefinition.getInitMethodName()` 就抛 `NullPointerException`。会红的是 `AutowireCapableBeanFactoryTests#createBeanDoesNotRegister` 这类测试。
+删掉判断后，第一行 `beanDefinition.getInitMethodName()` 就抛 `NullPointerException`（实测报的是
+`Cannot invoke "BeanDefinition.getInitMethodName()" because "beanDefinition" is null`）。
+
+会红的是**两条**：`AutowireCapableBeanFactoryTests#createBeanDoesNotRegisterTheResult`（`:35`）与
+`AutowireCapableBeanFactoryTests#initializeBeanInvokesTheCallback`（`:67`）——231 条里 error 2 条，全是这一处缺口。
+两者都走「没有图纸也造对象」这条路：一个是 `createBean(Class)`，一个是直接 `initializeBean(...)`。
 
 **为什么是 NPE 而不是编译错误**：`beanDefinition` 的类型是 `BeanDefinition`，Java 的类型系统只保证「要么是 `BeanDefinition` 实例，要么是 `null`」，不保证非空。null 是运行时信息，编译器无从判断——这正是「可空性」要靠 `@Nullable` 注解或 Optional 表达的原因，也是第 33 章异常体系要处理的第一类问题（NPE 是唯一没有消息的异常）。
 
