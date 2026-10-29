@@ -120,11 +120,12 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 		if (!namesInThisDocument.add(id)) {
 			// 真实 Spring 的措辞：BeanDefinitionParserDelegate#checkNameUniqueness
 			// "Bean name 'x' is already used in this <beans> element"
-			throw new BeanDefinitionStoreException("Bean name '" + id + "' is already used in this <beans> element");
+			throw new BeanDefinitionStoreException(id,
+					"Bean name '" + id + "' is already used in this <beans> element");
 		}
 		String className = element.getAttribute(CLASS_ATTRIBUTE);
 		if (className.isEmpty()) {
-			throw new BeanDefinitionStoreException("No bean class name specified on bean definition '" + id
+			throw new BeanDefinitionStoreException(id, "No bean class name specified on bean definition '" + id
 					+ "': the class attribute is required in this book");
 		}
 

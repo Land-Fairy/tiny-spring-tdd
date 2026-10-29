@@ -669,7 +669,7 @@ return initializedBean;
 | `@PreDestroy` | `jakarta.annotation.PreDestroy`（同上） | 23 / — |
 | `InitDestroyAnnotationBeanPostProcessor` | `...factory.annotation.InitDestroyAnnotationBeanPostProcessor` | 126 / **489** |
 | `DestructionAwareBeanPostProcessor` | `...factory.config.DestructionAwareBeanPostProcessor` | 37 / **61** |
-| `DisposableBeanAdapter` | `...factory.support.DisposableBeanAdapter` | 151 / **559** |
+| `DisposableBeanAdapter` | `...factory.support.DisposableBeanAdapter` | 156 / **559** |
 | `DefaultSingletonBeanRegistry` | 同名 | 322 / **841** |
 | `DefaultListableBeanFactory` | 同名 | 764 / **2778** |
 | `AbstractApplicationContext` | `...context.support.AbstractApplicationContext` | 466 / **1653** |
