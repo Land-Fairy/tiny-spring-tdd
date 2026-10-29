@@ -60,7 +60,7 @@ ERROR ch35.md: `AbstractApplicationContext.java:634` 超出最长候选文件的
 | 10 | check-chapter-refs | 「详见第 N 章」指向的章其实没讲这事 | `python3 scripts/check-chapter-refs.py` | 480 处带主题 / **0 指错**（另 329 处人工判、99 处仅泛词、31 处靠类名、264 处跳过、1 处按豁免放行） |
 | 11 | check-doc-tables | 体量表里的行数是手抄的、会漂 | `python3 scripts/check-doc-tables.py` | 14 表 / 169 数字 / 0 不符 |
 | 12 | check-review-format | 35 篇评审的判决行格式漂移 + 三节结构缺失 | `python3 scripts/check-review-format.py` | 35 篇 / 全部合规 |
-| 13 | check-review-refs | 评审自己的 `file:line` 指不到东西 | `python3 scripts/check-review-refs.py` | 39 篇 / 463 处引用全部可解析；**缺上游源码时退出码 2（无法判定），不判绿** |
+| 13 | check-review-refs | 评审自己的 `file:line` 指不到东西 | `python3 scripts/check-review-refs.py` | 40 篇 / 478 处引用全部可解析（篇数含附录 B 的抽查报告）；**缺上游源码时退出码 2（无法判定），不判绿** |
 
 **为什么后 7 道必须存在**：109 条 P0 里 **B（量化矛盾）+ A（虚构引用）= 68 条，占 62%**。
 这一类缺陷靠人眼审不完——审完第 1 章，第 35 章的数字又漂了。所以判断标准不是「这次审出来了」，

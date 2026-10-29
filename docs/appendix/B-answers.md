@@ -1340,8 +1340,17 @@ XML 里 Bean 的 ${db.url} 被正确替换了，
 
 ### B-11-1　把第 6 步挪到最后，哪些测试会红？为什么真实项目里几周后才被发现？
 
-会红的只有 `BeanPostProcessorRegistrationTests` 的三条（`recorder` 的 `events()` 少两个事件、
-`getBeanPostProcessorCount()` 为 0、以及依赖注解注入的两条）。
+**会红的只有两条**（把 `registerBeanPostProcessors` 挪到 `finishRefresh()` 之前实测，209 条里红 2 条）：
+
+1. `BeanPostProcessorRegistrationTests#processorBeansAreRegisteredBeforeSingletonsAreCreated`
+   —— `recorder` 的 `events()` 少了处理器注册那段、`getBeanPostProcessorCount()` 为 0；
+2. **`RefreshStepOrderTests#stepsRunInAFixedOrder`** —— 这条测试唯一的存在理由就是钉住 12 步的顺序，
+   挪一步它就红。它是最该被想到的一条，却最容易在「凭印象列清单」时漏掉。
+
+一个反直觉的实测结论：**`AutowiredAnnotationBeanPostProcessorTests` 全部仍然绿**。因为它直接
+`new DefaultListableBeanFactory()` 手工注册处理器（`:74`、`:86`），从不走 `refresh()`，
+第 6 步排在哪儿与它无关。所以「挪走第 6 步 → `@Autowired` 全 null → 注解测试红」这个推理
+在**这个模块的测试布局下不成立**——它成立的是「真实应用里会全 null」，区别在于测试没有走那条路。
 
 真实项目里之所以发现得晚，是因为这个缺陷**不产生任何错误**：
 
@@ -2142,12 +2151,17 @@ protected AntPathStringMatcher getStringMatcher(String pattern) {
 `nameMatchOutranksPriority` 会红。样本 `ShadowHolder` 的字段名是 `germanTranslator`，
 两个候选 `frenchTranslator`（`@Order(1)`）与 `germanTranslator`（`@Order(2)`）。
 按真实顺序选名字对得上的 `germanTranslator`；顺序对调后优先级先跑，选 `frenchTranslator`，
-断言失败：
+断言失败（313 条里只红这一条）：
 
 ```
-expected: "Hallo"
- but was: "Bonjour"
+Expecting actual:
+  org.springframework.samples.ch19.FrenchTranslator@...
+to be an instance of:
+  org.springframework.samples.ch19.GermanTranslator
 ```
+
+注意断言比的是**类型**（`assertThat(holder.translator()).isInstanceOf(GermanTranslator.class)`），
+不是翻译出来的字符串——所以失败信息里不会出现 `"Hallo"` / `"Bonjour"`。
 
 如果 `germanTranslator` 上没有 `@Order`，`orderOf` 返回 `null`，优先级那一步只在
 **所有候选都没有顺序**时才放弃，于是 `best == null`，仍会落到名字匹配——结果碰巧一样。
