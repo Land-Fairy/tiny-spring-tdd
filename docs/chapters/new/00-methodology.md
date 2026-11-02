@@ -572,7 +572,7 @@ $ find ~/refs/spring-framework-6.2.x -name 'StandardReflectionParameterNameDisco
 
 ### 2. 五个问题留给你
 
-答案在 **附录 B**（[`docs/appendix/B-answers.md`](../appendix/B-answers.md#第-00-章)）。先自己想，别急着翻。
+答案在 **附录 B**（[`docs/appendix/B-answers.md`](../../appendix/B-answers.md#第-00-章)）。先自己想，别急着翻。
 
 1. 你在 `getBean()` 下了一个断点，发现被中断了 300 次。除了条件断点，
    还有什么办法能把范围缩小到「只看我关心的那个 Bean」？（提示：想想断点能下在哪个

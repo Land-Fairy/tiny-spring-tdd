@@ -469,7 +469,7 @@ Object oldProxy = (proxyExposed ? AopContext.setCurrentProxy(proxy) : null);
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-28-章`](../appendix/B-answers.md#第-28-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-28-章`](../../appendix/B-answers.md#第-28-章)。
 
 1. 为什么 `AopContext` 用 `ThreadLocal` 而不是静态字段？请构造一个「用静态字段就会出错」的具体场景
    （提示：两个线程同时调用同一个代理的同一个方法）。

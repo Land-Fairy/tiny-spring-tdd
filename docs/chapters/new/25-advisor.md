@@ -715,7 +715,7 @@ boolean isRuntime();                                                    // 我�
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-25-章`](../appendix/B-answers.md#第-25-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-25-章`](../../appendix/B-answers.md#第-25-章)。
 
 1. `MethodBeforeAdviceInterceptor` 传给增强的第三个参数是 `invocation.getThis()`（代理对象），而不是目标对象。假设你在增强里写 `log.info("{} 调用了 {}", target.getClass().getSimpleName(), method.getName())`，日志里会打出什么？要打出业务类名，有哪两条路？（提示：一条靠 `AopProxyUtils` 解包，一条靠 `AopUtils`/`Advised` 接口。）
 2. 如果 `Pointcut` 只留一个 `matches(Method, Class)`、去掉 `getClassFilter()`，功能上并没有少，`matches` 内部完全可以自己判断类。请说出至少两个能力上的损失（提示：一类答案与哪些变量无关，另一类答案能否被单独缓存，还有谁能在需要时只做粗筛）。

@@ -666,7 +666,7 @@ if (!this.singletonLock.tryLock()) {
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-30-章`](../appendix/B-answers.md#第-30-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-30-章`](../../appendix/B-answers.md#第-30-章)。
 
 1. 为什么「提前暴露」的窗口只能在「实例化之后、填充属性之前」？请给出上界和下界各自的论证，并说明为什么这个窗口恰好推出「必须用工厂而不是对象」。
 2. 我们的 `getSingleton(beanName, true)` 在拿不到锁时用 `lock()` 等待，真实 Spring 用 `tryLock()` 并返回 `null`。请说明这两种做法在「并发创建 + 环」下分别发生什么，为什么我们的版本不会死锁、只是串行？串行又会让哪个线程多等多久？第 31 章与附录 B-30-2 有正式更正。

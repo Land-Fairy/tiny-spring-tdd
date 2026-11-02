@@ -657,7 +657,7 @@ Spring Boot 的可执行 jar 还有一个特殊之处，它的类在 `BOOT-INF/c
 
 ### 2. 五个问题留给你
 
-答案在 [`../appendix/B-answers.md#第-18-章`](../appendix/B-answers.md#第-18-章)。
+答案在 [`../../appendix/B-answers.md#第-18-章`](../../appendix/B-answers.md#第-18-章)。
 
 1. **`a/**` 能不能匹配 `a`？** 本章的答案是「能」。如果让你改成「不能」，改哪一行？
    真实 Spring 的 `AntPathMatcher` 是哪种语义？（提示：`pathExhausted()` 之后的那次检查。）

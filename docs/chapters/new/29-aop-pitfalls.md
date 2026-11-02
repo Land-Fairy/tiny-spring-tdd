@@ -368,7 +368,7 @@ public Object getEarlyBeanReference(Object bean, String beanName) {
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-29-章`](../appendix/B-answers.md#第-29-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-29-章`](../../appendix/B-answers.md#第-29-章)。
 
 1. 场景二里 `final` 方法在 JDK 代理下能拦。请从「代理类继承自谁」这个角度解释为什么 CGLIB 做不到，
    并说明为什么「`final` 类不能代理」这条常识只在 CGLIB 下成立。

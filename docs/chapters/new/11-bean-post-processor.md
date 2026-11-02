@@ -751,7 +751,7 @@ AOT 与 Native Image 对后处理器有额外约束，它们必须在构建期�
 
 ### 2. 五个问题留给你
 
-答案在[附录 B](../appendix/B-answers.md#第-11-章)。
+答案在[附录 B](../../appendix/B-answers.md#第-11-章)。
 
 1. **11-1** 把 `registerBeanPostProcessors` 挪到 `refresh()` 的最后一步（`finishRefresh` 之后），哪些测试会红？为什么这个缺陷在真实项目里往往几周后才被发现，而不是启动时就暴露？
 2. **11-2** 如果某个后处理器的 `postProcessAfterInitialization` 返回了一个不是原对象的代理，那么「这个 Bean 是单例吗」这个问题还成立吗？`getSingleton` 拿到的和 `getBean` 返回的是同一个对象吗？
