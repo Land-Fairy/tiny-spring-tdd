@@ -1,0 +1,523 @@
+# 第 31 章：并行不悖，并发模型：锁、延迟 ObjectFactory
+
+作者：Land-Fairy
+<br/>仓库：[https://github.com/Land-Fairy/tiny-spring-tdd](https://github.com/Land-Fairy/tiny-spring-tdd)
+
+> 沉淀、分享、成长，让自己和他人都能有所收获！😄
+
+**本章代码**：`step-31-concurrency/`
+**真实 Spring 对照基线**：`6.2.x`，本地参照仓 commit `daf955157871e4ac6f192e06b71d6cc595eb979b`
+**本章只交付一件事**：把单例池摆到两个线程面前，看清锁该盖住哪一段、哪张表必须换成并发容器。
+
+## 一、前言
+
+`加了锁，单例就安全了？`
+
+去年冬天看过一个抽奖的单子，压测跑到 200 个并发，一个下单请求要在 800 毫秒里走完三层服务，同一批请求里有 8 个打进了同一个单例的创建流程。那天日志里冒出一条 `IllegalStateException`，说同一个 bean 名字下已经绑了一个对象。
+
+开发同学第一反应是不可能，单例怎么会造出两个来。他们翻了两个小时日志、三个小时代码，笔记记了 30 多行，最后定位到两个线程进的是同一段创建流程，中间隔了 7 毫秒。
+
+其实这个错算客气的，它至少喊了一嗓子。真正难受的是那些不喊的，多出来的那个对象被人拿去用了三天，两个身份在同一份缓存里打架，谁也说不出哪个是真的。
+
+所以并发这件事落到容器里，不是「加把锁」四个字能打发的。就编程开发来讲，锁的位置比锁的存在重要得多，谁的手能伸到锁外，比锁本身更重要。
+
+而本章节说到并发模型，就是因为我们需要把第 30 章那条三级缓存的路，放到两个线程下重新走一遍。*这一章不动业务，只折腾三个词的顺序：判空、创建、放回。*
+
+## 二、目标
+
+第 30 章我们把三级缓存落进了 `DefaultSingletonBeanRegistry`。`singletonObjects`、`earlySingletonObjects`、`singletonFactories` 三张表齐了，`ObjectFactory` 也挂到第三级上了，环能解开，测试全绿。
+
+不过那一批绿建立在一个很弱的前提上，你回头看看前面三十章的代码，全在一个线程里跑完，没有第二个线程同时进来。
+
+这一章要把「单例」这个词放到多线程下重新验一遍。结论会让人不太舒服，其中一部分是我们早就做对的，另一部分是我们做错了，而且单线程测试永远发现不了。
+
+先看三个听着挺像回事的错误答案。
+
+错误答案一，加 `synchronized` 就完事。加在哪里呢？加到 `getBean` 上，锁会把整棵依赖树都串起来，加到那一行 `if (singleton == null)` 上，等于`白加`，因为判空和放回之间还有一整个创建过程。
+
+错误答案二，用 `ConcurrentHashMap` 就线程安全。并发容器只保证单次操作是原子的，`containsKey` 之后再 `put` 是两次操作，中间那段窗口照样能塞进第二个线程。
+
+它救得了「单独一次读或写」，救不了「读、判断、写」这三步组成的协议。
+
+错误答案三，单例创建不用管并发，Spring 启动是单线程的。前半句对，`refresh()` 里的 `preInstantiateSingletons()` 就是一个 `for` 循环，一个线程。后半句是本章最危险的一句话。
+
+`getBean` 是公开 API，一个 Bean 可以在启动后被懒加载，可以在某个 `ApplicationRunner` 里被取，可以在第一个 HTTP 请求打进来时才被创建。真实应用里「第一次 `getBean` 发生在并发请求下」是常态，不是例外。
+
+所以问题得换个问法，问这三句：
+
+- 锁的边界在哪一步，必须覆盖「判空 + 创建 + 放回」这个整体。
+- 哪些数据会跑到锁外，跑到锁外的表必须是并发容器，留在锁内的可以不是。
+- 代价是什么，一把锁保护一切，代价是无关的 Bean 也被串行化，这不是 bug，是选择，但必须能说出这个选择买到了什么。
+
+**那么本章的目标就很明显了，来把这个洞填上！**
+
+本章挂着五个测试，两类断言，红的那几个会一条一条告诉你洞在哪。
+
+## 三、设计
+
+这一章的测试有个共同特征，断言发生在别的线程里。单线程测试看不见锁，因为它们从不需要等。
+
+### 1. 先用测试把「单例」量出来
+
+样本 Bean 的构造器里放一道闸门：
+
+```java
+public GatedBean() throws InterruptedException {
+    CREATED.incrementAndGet();      // 进了构造器就 +1
+    entered.countDown();
+    release.await(5, TimeUnit.SECONDS);   // 卡在这里，直到测试放行
+}
+```
+
+测试分两步，中间那一下正是「第一个线程已经进构造器、其余七个还在等」的时刻：
+
+```java
+assertThat(GatedBean.entered.await(5, SECONDS)).isTrue();
+assertThat(GatedBean.CREATED.get()).as("此刻只该有一个线程在构造器里").isEqualTo(1);
+GatedBean.release();
+// 放行之后：八个线程拿到的必须是同一个对象
+```
+
+这条测试一开始就是绿的。它的价值不是发现 bug，而是把「单例」这个说法变成一个可以观测的量，如果锁只盖住了判空和放回、漏掉了创建，`CREATED` 在这一刻就会是 8。
+
+一个能测出来的正确性，比一句「我们的单例是线程安全的」值钱得多。你去翻求助帖，敢说自己线程安全的，十个里有九个没测过这一下。
+
+### 2. 探清楚 `ObjectFactory` 什么时候被执行
+
+三级缓存里那个工厂，注册的时候一次都不该被调用：
+
+```java
+registry.addSingletonFactory("alpha", factory);
+assertThat(evaluations.get()).as("注册时不求值").isZero();
+assertThat(registry.getSingleton("alpha")).isNull();          // 不在创建中，不推导提前引用
+assertThat(evaluations.get()).isZero();                       // 查成品也不求值
+
+registry.beforeSingletonCreation("alpha");
+assertThat(registry.getSingleton("alpha")).isEqualTo("early");
+assertThat(evaluations.get()).isEqualTo(1);                    // 第一次要，才求值
+assertThat(registry.getSingleton("alpha")).isEqualTo("early");
+assertThat(evaluations.get()).as("工厂只该被执行一次").isEqualTo(1);   // 第二次读二级缓存
+```
+
+「延迟」在这里有三层，每层都挂着断言。注册不求值，查询成品也不求值，只有真的有人要提前引用才求值，而且只求一次。
+
+少这三层，「延迟」两个字就只是嘴上说说，谁都证明不了它延到哪一步。
+
+### 3. 红一：提前引用查询排队等别人的创建
+
+一个线程正在创建 `alpha`，于是它手里攥着创建锁。另一个线程过来问，`alpha` 的提前引用呢？
+
+正确答案是立刻说不知道。第 30 章的写法是 `singletonLock.lock()`，排队等。测试把这个代价量化出来：
+
+**实测输出**
+
+```
+java.lang.AssertionError: 提前引用查询阻塞在别人的创建锁上（第 30 章的 lock() 就是这个后果）
+  Caused by: java.util.concurrent.TimeoutException
+    at java.util.concurrent.FutureTask.get(FutureTask.java:204)
+```
+
+300 毫秒内没返回。这就是「等」的代价，为了一个自己无权推导的东西去排队。
+
+这里得给附录 B-30-2 补一句修正。那里描述的死锁时序，T1、T2 各自持有 `singletonLock`，其实不成立，我们只有一把可重入锁，两个线程不可能同时持有它。
+
+所以第 30 章的单锁设计死锁不了，它只是串行。真正把「串行」变成「死锁」的，是引入 `tryLock` 或无锁路径之后的细粒度设计。
+
+那正是真实 Spring 6.2 的处境。这个修正值得留在这里，粗粒度锁用串行换安全，细粒度锁用复杂度换吞吐。
+
+### 4. 红二：去掉锁之后，工厂被执行了两次
+
+红一的直接修法是让提前引用路径不进创建锁。改完立刻冒出第二个问题：
+
+**实测输出**
+
+```
+expected: 1
+ but was: 2
+```
+
+`earlyReferenceFactoryIsEvaluatedOnlyOnceUnderRace`，两个线程同时要 `alpha` 的提前引用，两个都读到了同一个 `ObjectFactory`，于是 `getObject()` 被调了两次。
+
+对代理来说就是造出了两个代理，其中一个被丢弃。丢弃的那个如果已经注册进了某个后处理器的缓存里，就是第 29 章场景六那种「两个身份」的变体。
+
+这条红是本章最有价值的一课，去掉锁不等于放弃互斥，而是要换一种互斥。我们换的是令牌制。
+
+### 5. 三块职责怎么分
+
+到这一步，设计上的矛盾已经很清楚了。为了「锁盖住一整套协议、锁外的表能并发、求值资格只给一个人」，就得把三件事分到三个位置上，不能挤在一处。
+
+这道题你在食堂天天能看见。一口锅、八个师傅，窗口那把锁只该盖住「看锅里还有没有、盛一勺、记账」这三下，不能连师傅在案板上切菜也盖进去。案板上的刀谁拿到谁切，不用排队。
+
+**图 31-1**　锁盖住哪一段、哪张表被锁外的人碰过（设计图待补）
+
+那么职责就这么分：
+
+- 首先，`DefaultSingletonBeanRegistry` 是本章唯一动手的类，它管着三张表加一把锁，谁在锁内、谁在锁外，全由它自己说了算。
+- 那么，`ObjectFactory` 一行都不用改，它本来就只是「以后能算出提前引用」的办法，改动全在谁来调、什么时候调。
+- 另外，`addSingleton`、`beforeSingletonCreation`、`afterSingletonCreation` 三个方法各守一段状态，谁挪出临界区，谁就留下一个窗口。
+
+分完这三块，设计就算定了。*设计这一章，其实就是设计一张「谁在锁里、谁在锁外」的名单。*
+
+## 四、实现
+
+### 1. 工程结构
+
+这一章改的地方很少，425 行的 **`DefaultSingletonBeanRegistry`** 就是全部战场。去掉一段锁、把一个 `HashMap` 换成 `ConcurrentHashMap`、把提前引用的求值资格交给一次原子操作。
+
+```text
+step-31-concurrency/
+└── src/main/java/org/springframework/beans/factory/support/
+    └── DefaultSingletonBeanRegistry.java   ← 本章只动这一个文件
+```
+
+**工程源码**：GitHub 仓库 `Land-Fairy/tiny-spring-tdd`，本章代码在 `step-31-concurrency/`
+
+### 2. 获取单例，锁只盖住没命中的那一次
+
+先看入口。同一个方法有两条路，命中就直接返回，没命中才去抢锁：
+
+**包：org.springframework.beans.factory.support**
+
+```java
+public Object getSingleton(String beanName, ObjectFactory<?> singletonFactory) {
+    Object singletonObject = this.singletonObjects.get(beanName);   // ① 锁外读：命中率最高的一步
+    if (singletonObject != null) {
+        return singletonObject;
+    }
+    this.singletonLock.lock();                                      // ② 没命中才抢锁
+    try {
+        singletonObject = this.singletonObjects.get(beanName);      // ③ 进锁后再读一遍
+        if (singletonObject == null) {
+            beforeSingletonCreation(beanName);
+            boolean created = false;                                // ④' 先记「还没造出来」
+            try {
+                singletonObject = singletonFactory.getObject();     // ④ 创建
+                created = true;
+            }
+            finally {
+                afterSingletonCreation(beanName);
+            }
+            if (created) {                                          // ④'' 失败就别放回池子
+                addSingleton(beanName, singletonObject);            // ⑤ 放回
+            }
+        }
+        return singletonObject;
+    }
+    finally {
+        this.singletonLock.unlock();
+    }
+}
+```
+
+- 从这段代码可以看到，进锁之后的第一件事是再读一遍单例池。少了这一下，第一个线程造完放回、释放锁之后，第二个线程会拿着它抢锁之前读到的 `null` 再走一遍创建，「只创建一次」当场失效。
+- 这里需要注意的是那个 `created` 标记，创建失败的时候它还是 `false`，池子里就不会留下一个半成品。
+
+### 3. 把判空、创建、放回关进同一个临界区
+
+`beforeSingletonCreation` 与 `addSingleton` 这一对只解决「记录状态」，真正保证唯一性的是判空、创建、放回三步在同一个临界区里。任何一步挪出去都会留下一个窗口：
+
+| 挪出去的那一步 | 窗口里会发生什么 |
+| --- | --- |
+| 判空 | 两个线程都判空成功 |
+| 创建 | 两个线程都造完，后者的 `putIfAbsent` 抛 `IllegalStateException`（我们）或静默覆盖（更糟） |
+| 放回 | 第三个线程拿不到已经造好的对象，又造一个 |
+
+第二行值得注意，我们的 `addSingleton` 用的是 `putIfAbsent` 且冲突就抛异常。这不是防并发的手段，而是「如果并发真的发生了，我要你立刻知道」，把静默的错误变成响亮的错误。
+
+### 4. 给锁外的表换并发容器
+
+这是本章唯一一条你可以机械执行的规则。改动之后，`singletonFactories` 的读写分布变成了这样：
+
+| 操作 | 在锁内吗 | 位置 |
+| --- | --- | --- |
+| `put`（登记工厂） | 是 | `doCreateBean` 里，创建线程持锁期间 |
+| `remove`（抢占令牌） | **否** | 提前引用路径，任何线程 |
+| `remove`（清理痕迹） | 是 | `addSingleton` |
+| `get`（旧写法） | **否** | 已被令牌制取代 |
+
+一旦有 `remove` 跑到锁外，`HashMap` 就不再合格。`remove` 与另一个线程的 `put` 并发时，`HashMap` 可能丢条目，扩容时可以死循环。
+
+所以这一章你得`动手`把它换掉：
+
+**包：org.springframework.beans.factory.support**
+
+```java
+private final Map<String, ObjectFactory<?>> singletonFactories = new ConcurrentHashMap<>(16);
+```
+
+- 从这一行可以看到，真实 Spring 6.2 的同一行（`DefaultSingletonBeanRegistry.java:88`）也是 `ConcurrentHashMap`。
+- 这里需要注意的是原因，不是「并发容器更快」，而是「这张表有人会在锁外碰它」。
+
+### 5. 用令牌制裁决求值资格
+
+**包：org.springframework.beans.factory.support**
+
+```java
+protected Object getSingleton(String beanName, boolean allowEarlyReference) {
+    Object singletonObject = this.singletonObjects.get(beanName);            // ① 成品
+    if (singletonObject == null && isSingletonCurrentlyInCreation(beanName)) {
+        singletonObject = this.earlySingletonObjects.get(beanName);          // ② 算好的提前引用
+        if (singletonObject == null && allowEarlyReference) {
+            // 令牌：remove 只有一个线程能拿到非 null 的工厂
+            ObjectFactory<?> singletonFactory = this.singletonFactories.remove(beanName);
+            if (singletonFactory != null) {
+                singletonObject = singletonFactory.getObject();              // ③ 我拿到令牌，我来求值
+                this.earlySingletonObjects.put(beanName, singletonObject);
+            }
+            else {
+                singletonObject = this.earlySingletonObjects.get(beanName);  // ④ 令牌被抢走：读结果
+            }
+        }
+    }
+    return singletonObject;
+}
+```
+
+三个要点你得掰开看。
+
+- 从这段代码可以看到，令牌就是 `remove` 的返回值。`ConcurrentHashMap#remove` 是原子的，两个线程并发 `remove` 同一个键，只有一个是非 `null`，谁拿到非 `null`，谁才有资格调 `getObject()`。
+- 这里需要注意的是不需要锁，因为互斥已经被数据结构的原子性提供了。这一条是这一章的地基。
+
+这条路径不进创建锁，它只跟三级缓存这三张表有关，跟「谁的创建过程」无关。把它塞进创建锁里，就是锁的范围超过了它保护的数据。
+
+令牌制留下两对后果，都很窄，但都真实。第一对是读不到，令牌被抢走的线程可能读到 `null`，因为对方还在求值、尚未 `put`，于是返回 `null`，调用方走向「自己创建」。
+
+第二对是写回旧值。拿到令牌的线程求值期间，对象可能已经完工并 `addSingleton`，这一步同时清掉了二、三级缓存，随后这次求值再把旧的提前引用 `put` 回二级缓存，留下一张永不过期的旧图纸。
+
+它读不到，一级缓存已命中，且 `isSingletonCurrentlyInCreation` 已为 false，代价是一处内存残留。这两对窗口真实 Spring 用锁加 `tryLock` 关掉了，我们留着，并写进缺陷表。
+
+第 3 步和第 4 步之间没有任何睡眠、重试或等待，这是有意的。「等」在锁内是死锁，在锁外是浪费，提前引用是一条「有就快给、没有就算了」的路，不值得为它等。
+
+### 6. 注册成品，一次原子写加两行清理
+
+**包：org.springframework.beans.factory.support**
+
+```java
+protected void addSingleton(String beanName, Object singletonObject) {
+    Object oldObject = this.singletonObjects.putIfAbsent(beanName, singletonObject);
+    if (oldObject != null) {
+        throw new IllegalStateException("Could not register object [" + singletonObject + "] under bean name '"
+                + beanName + "': there is already object [" + oldObject + "] bound");
+    }
+    this.registeredSingletons.add(beanName);
+    this.earlySingletonObjects.remove(beanName);
+    this.singletonFactories.remove(beanName);
+}
+```
+
+- 从这段代码可以看到，`putIfAbsent` 是一次原子操作，查和写一起完成，中间没有窗口，先用 `containsKey` 再 `put` 就漏了。
+- 这里需要注意的是抛异常而不是覆盖，同名双写意味着「单例」这个词已经被破坏，静默覆盖会把 bug 藏起来。后两行是第 30 章的教训，不清二、三级，下一次解析依赖还能拿到被替换掉的旧对象。
+
+### 7. 成对标记创建状态
+
+**包：org.springframework.beans.factory.support**
+
+```java
+protected void beforeSingletonCreation(String beanName) {
+    if (!this.singletonsCurrentlyInCreation.add(beanName)) {
+        throw new BeanCurrentlyInCreationException(beanName);
+    }
+}
+```
+
+- 从这段代码可以看到，`Set#add` 返回 `false` 就是「已经在创建中」。这个语义在单线程下等于「环」，在多线程下还包含「另一个线程正在创建它」，两者都会抛 `BeanCurrentlyInCreationException`。
+- 这里需要注意的是这是本章的第二个真实缺陷，多线程下第二个线程被误判成环。真实 Spring 处理这件事用的是 `currentCreationThreads`（`:118`），先看创建者是不是我自己，不是的话就等它造完（`lenientCreationFinished.await()`，`:330`），而不是抛异常。我们没做，缺陷表记录。
+
+### 8. 认清一把锁的代价
+
+锁的粒度定了，你就得认这个代价。`unrelatedBeansAreCreatedUnderTheSameCoarseLock` 把这件事量出来，两个毫不相干的 Bean，构造器各睡 200 毫秒，两个线程同时创建，总耗时断言不小于 350 毫秒：
+
+```java
+assertThat(elapsed).as("两个 200 毫秒的 Bean 被串行化：总耗时应接近 400 毫秒")
+    .isGreaterThanOrEqualTo(Duration.ofMillis(350));
+```
+
+- 从这条断言可以看到，全局创建锁买到了「不可能死锁」，只有一个线程能在创建流程里，等待图里不可能出现环，代价是吞吐。
+- 这里需要注意的是真实 Spring 6.2 不再接受这个代价，大应用启动和懒加载的并发度要求变高了，于是它花了一整套 `tryLock` 加宽松创建的机制换回一部分吞吐，同时也把死锁风险请了回来，需要额外的等待图检测兜底。
+
+整条路径连起来看是这样的：
+
+```
+getBean("alpha")
+  └─ getSingleton("alpha", factory)
+       ├─ ① singletonObjects.get  ── 命中 → 返回（无锁，绝大多数调用走这里）
+       └─ ② lock()
+            ├─ ③ 再读一次       ── 命中 → 返回（别的线程已造好）
+            ├─ beforeSingletonCreation（同名重入 → 抛环异常）
+            ├─ factory.getObject()
+            │    └─ doCreateBean → addSingletonFactory（登记三级缓存）
+            │         └─ populateBean → 依赖 beta → getBean("beta") …（同线程，锁可重入）
+            │              └─ beta 要 alpha → getSingleton("alpha", true)
+            │                   └─ ③④ 令牌制 → 求值 → 交提前引用
+            ├─ afterSingletonCreation（finally）
+            └─ addSingleton + 清二、三级
+```
+
+看点有两个。锁的可重入性让同线程的嵌套创建能继续，否则一次依赖注入就自锁。令牌制让另一个线程不必进创建锁也能拿到提前引用。
+
+**图 31-2**　本章最终的类关系（类关系图待补）
+
+- 这一章没有新增类，也没有新增接口，改动全在 **`DefaultSingletonBeanRegistry`** 里。
+- 结构上新长出来的只有一条路，令牌制那条，它是唯一不进创建锁的写路径。
+
+*锁的边界画在哪儿，只有把调用链摊开才看得见。*
+
+## 五、测试
+
+### 1. 事先准备
+
+这一章的测试不走 XML 配置，全部手工搭一个 **`DefaultSingletonBeanRegistry`** 出来，再往里塞 `ObjectFactory`。跑法是：
+
+```bash
+./mvnw -pl step-31-concurrency test
+```
+
+慢的 Bean 有两个，构造器各睡 200 毫秒。那个样本 Bean 的构造器里带着闸门，什么时候放行由测试说了算。
+
+### 2. 单元测试
+
+五个测试，两类断言。前两个是绿的，一个量「八个线程只要一个对象」，一个量「工厂什么时候被求值」。后三个是红的，红一量「等」的代价，红二分两步量「求值次数」。
+
+它们和普通的单元测试不一样，断言写在别的线程里，靠闸门和超时把时序固定下来。这也是为什么单线程测试发现不了这些洞，那些测试从不需要等，自然也就没见过锁。
+
+### 3. 测试结果
+
+**测试结果**：测试 437 个（比上一章净减 5），行覆盖 86.2%（3022/3506），分支覆盖 75.5%（1166/1544）。
+
+**图 31-3**　控制台输出（截图占位，待补）
+
+两条真红在第三节里贴过原文，这里不重复。红一那条是 `TimeoutException` 套在 `AssertionError` 里，红二那条只有两行，`expected: 1` 和 `but was: 2`。
+
+*能打出数字的失败，比一句「并发有问题」有用得多。*
+
+## 六、总结
+
+- 本章做了什么：在 **`DefaultSingletonBeanRegistry`** 里挪了锁的位置，把 `singletonFactories` 换成 `ConcurrentHashMap`，用 `remove` 的原子返回值做了令牌制，让提前引用不再进创建锁。
+- 这条技术线背后的设计道理：锁的位置由协议决定，不由变量决定，「判空 + 创建 + 放回」是一个协议，盖住其中一行等于没盖。
+- 给你的动作：把你项目里所有 `containsKey` 之后 `put` 的地方列出来，`挨个`问一句中间能不能插进第二个线程。*看只能是知道，动手才能学会！*
+
+一句话，并发正确性不是「加锁」，而是「说清楚哪一步必须原子、哪张表谁在碰」。
+
+这句话能带出三条可迁移的经验。
+
+第一，锁的位置由协议决定，不由变量决定。「判空 + 创建 + 放回」是一个协议，锁必须盖住整个协议，盖住其中一行等于没盖。
+
+第二，谁跑到锁外，谁就必须是并发容器。这条规则可以机械执行，先列一张「操作 × 是否在锁内」的表，再决定容器类型。反过来说，把所有表都换成 `ConcurrentHashMap` 并不能证明你安全了。
+
+第三，你删锁的时候，得找出新的互斥在哪里。令牌制把互斥交给了 `ConcurrentHashMap#remove` 的原子性，找不到新的互斥就删锁，等于删掉正确性。
+
+### 1. 对回真实 Spring：我们砍掉了什么
+
+**深水区：一张行号表**
+
+先把两边的字段和方法摊成一张表，行号出自 6.2.x 的 `DefaultSingletonBeanRegistry`。
+
+| 我们的实现 | 真实 Spring（6.2.x，`DefaultSingletonBeanRegistry`，841 行） | 行 |
+| --- | --- | --- |
+| `singletonLock = new ReentrantLock()` | 同名字段 | `:82` |
+| `singletonObjects` | `ConcurrentHashMap<>(256)` | `:85` |
+| `singletonFactories` | `ConcurrentHashMap<>(16)` | `:88` |
+| `earlySingletonObjects` | `ConcurrentHashMap<>(16)` | `:94` |
+| `registeredSingletons` | `Collections.synchronizedSet(LinkedHashSet)` | `:97` |
+| `singletonsCurrentlyInCreation` | `ConcurrentHashMap.newKeySet(16)` | `:100` |
+| （我们没有） | `lenientCreationLock` / `lenientCreationFinished` | `:106` / `:109` |
+| （我们没有） | `singletonsInLenientCreation` / `currentCreationThreads` | `:112` / `:118` |
+| 提前引用路径的 `lock()` | `tryLock()`，失败 `return null` | `:213-217` |
+| 创建路径的单锁 | `tryLock()` + 双模判定 | `:261-263` |
+| （我们没有） | 宽松创建入口（日志 + 登记） | `:268-288` |
+| （我们没有） | 撞上「别人在创建」时等待并复读 | `:315-343` |
+| `beforeSingletonCreation` / `afterSingletonCreation` | 同名方法 | `:542` / `:554` |
+| `isCurrentThreadAllowedToHoldSingletonLock` | 允许子类声明「这次可以持锁」 | `:461-463` |
+
+**深水区：锁粒度阶梯，我们停在第 1 级**
+
+真实 Spring 6.2 的创建路径有三种模式并存，阶梯是这样的：
+
+| 级 | 做法 | 买到 | 代价 |
+| --- | --- | --- | --- |
+| 1 | 全局锁，创建全程持锁（**我们**） | 不可能死锁 | 无关 Bean 串行 |
+| 2 | `tryLock`，抢不到就排队 | 分出「能立刻做」与「要排队」 | 排队的那条路仍可能互等 |
+| 3 | 抢不到就**不进锁**创建（宽松创建）+ 等到别人造完再复读 | 高并发下不死等 | 需要等待图检测、可能重复创建 |
+
+它的 `getSingleton(String, ObjectFactory)` 从 `tryLock` 开始：
+
+```java
+Thread currentThread = Thread.currentThread();
+Boolean lockFlag = isCurrentThreadAllowedToHoldSingletonLock();
+boolean acquireLock = !Boolean.FALSE.equals(lockFlag);
+boolean locked = (acquireLock && this.singletonLock.tryLock());
+```
+
+**深水区：两路分岔的开关**
+
+`lockFlag` 是一个 `Boolean` 三态。`TRUE` 是「我在一次协调好的启动过程里，允许持锁」，`FALSE` 是「别持锁」，`null` 是「不知道，按默认来」。
+
+抢不到锁时分两路走。`lockFlag == TRUE` 走宽松创建（`:268-288`），打一条 info 日志 `"Obtaining singleton bean '...' while other thread holds singleton lock for other beans ..."`，把名字放进 `singletonsInLenientCreation`，然后不进锁创建。
+
+`lockFlag == null` 就走 `lock()` 排队（`:292`），进锁后复读一次池子。
+
+而 `beforeSingletonCreation` 抛出的 `BeanCurrentlyInCreationException` 在宽松模式下会被 catch（`:313-343`），先看 `currentCreationThreads.get(beanName)`。
+
+创建者是我自己，或者有依赖等待环，那就是真的环，重新抛。创建者是别的线程，就 `lenientCreationFinished.await()` 等它造完，醒来复读池子，拿到就返回。
+
+这套机制的复杂度，正好等于「把串行换成并行」的价格。我们停在第 1 级，并把差价写进缺陷表。
+
+**深水区：`tryLock` 那句注释**
+
+```java
+if (!this.singletonLock.tryLock()) {
+    // Avoid early singleton inference outside of original creation thread.
+    return null;
+}
+```
+
+一句话说清了一件容易做错的事，提前引用只该由「正在创建它的那个线程」推导。别的线程既没有资格，它不知道创建进行到哪一步，也不该等，等就可能死锁。
+
+我们把它做成了「任何线程都能抢令牌」，功能上更宽松，语义上更含糊，缺陷表第 3 条。
+
+**深水区：跟第 30 章是什么关系**
+
+第 30 章证明了三级缓存是为了正确性，这一章证明了那三级缓存的并发实现是为了不发生意外。同一段代码，两个问题：
+
+| 问题 | 章 | 一句话答案 |
+| --- | --- | --- |
+| 为什么要第三级？ | 30 | 交出去的时刻代理还不存在，只能交「以后能算出代理的办法」 |
+| 为什么三级缓存的读写要这样安排？ | 31 | 谁在锁外碰表，表就必须是并发容器；求值资格必须原子裁决 |
+
+**深水区：省略掉的清单**
+
+下面这张表里每一条，都对应一个我们主动放弃的能力。
+
+| 省略的东西 | 真实 Spring 怎么做 | 影响 |
+| --- | --- | --- |
+| `tryLock` + 三态 `lockFlag` | `:261-263`、`:461-463` | 我们永不「放弃持锁」，所以无关 Bean 全串行 |
+| 宽松创建（不进锁创建） | `:268-288` | 高并发下我们的吞吐被单锁封顶 |
+| 「别的线程在创建就等它」 | `:315-343`（`lenientCreationFinished`） | 我们把「别人在创建」误判成环异常 |
+| 等待图检测（`checkDependentWaitingThreads`） | `:318-323` | 真死锁时我们只能靠超时暴露 |
+| 「提前引用只由创建线程推导」 | `:213-217` 注释 | 我们允许任何线程抢令牌求值 |
+| `singletonsCurrentlyInDestruction` 检查 | `:302-309` | 销毁过程中取 Bean 的行为未定义 |
+| 抑制异常收集（`suppressedExceptions`） | `:474-478` | 失败创建的相关异常会丢 |
+
+缺陷表第 3 条那个 `null` 窗口，与第 5 条令牌给谁，是同一个设计选择的两面。我们用更宽松的语义换「不需要锁」，真实 Spring 用更严格的语义换「不需要担心」。
+
+### 2. 五个问题留给你
+
+先自己写，再看 [`../appendix/B-answers.md#第-31-章`](../appendix/B-answers.md#第-31-章)。
+
+1. 如果把 `getSingleton(beanName, factory)` 里的「③ 再读一遍」删掉，请构造一个能稳定触发的
+   测试（提示：两个线程 + 构造器闸门），并说明为什么「八个线程」那次实验反而可能仍然只创建一次。
+2. `addSingleton` 在检测到同名双写时抛 `IllegalStateException`。如果改成「静默覆盖」，
+   哪些现象会变得难以排查？请给出两个具体场景（提示：`registerSingleton` 与
+   `@Bean` 方法返回同一个名字）。
+3. 令牌制里，④ 分支可能返回 `null`（令牌被抢走、对方尚未 `put`）。请写出一个能观察到这个窗口的
+   测试，并说明为什么真实 Spring 能在锁内关掉它。
+4. 我们的 `beforeSingletonCreation` 在多线程下会把「另一个线程正在创建」误判成环。
+   如果只允许改这一个方法（不能加新字段），你能把它改对吗？为什么（不）行？
+5. 3.5 节的断言是「耗时 ≥ 350ms」。如果换成 `≤ 250ms`，测试会红。但这真的是「性能问题」吗？
+   请区分「预期内的串行」与「意外的串行」，并各举一个例子。
+
+### 3. 下一章
+
+下一章把整条 `getBean` 调用链摊开逐行读一遍：从 `AbstractBeanFactory#getBean` 到 `DefaultListableBeanFactory#doCreateBean`，中间经过的十几个方法、每一次状态变化、以及前面三十章埋下的每一个钩子，会在同一条栈上全部出现。那是本书前半程的收束点。
+
+*并发正确性不是「加锁」，而是「说清楚哪一步必须原子、哪张表谁在碰」。*
