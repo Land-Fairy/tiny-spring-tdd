@@ -645,7 +645,7 @@ public AopProxy createAopProxy(AdvisedSupport config) throws AopConfigException 
 
 ### 2. 五个问题留给你
 
-先自己写，再看[附录 B](../appendix/B-answers.md#第-24-章)。
+先自己写，再看[附录 B](../../appendix/B-answers.md#第-24-章)。
 
 1. 代理对象 `p` 满足 `p instanceof Greeter` 但 `p instanceof GreeterImpl` 是 `false`，那么 `p.equals(target)` 应该返回什么？我们的实现（`interceptor == null` 时反射转发给目标）会返回什么？真实 Spring 在什么条件下才使用目标自己的 `equals`？
 2. `getClass()` 拦不到，`toString()` 能拦到，两句话都成立，为什么？这对「用代理实现懒加载」意味着什么？

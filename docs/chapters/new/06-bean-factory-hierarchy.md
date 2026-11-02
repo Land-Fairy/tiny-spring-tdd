@@ -985,7 +985,7 @@ getBean(beanName)
 
 ### 2. 五个问题留给你
 
-先自己写，再看[附录 B](../appendix/B-answers.md#第-06-章)。
+先自己写，再看[附录 B](../../appendix/B-answers.md#第-06-章)。
 
 **6-1** 本章把「枚举」（`Listable`）和「取一个」（`BeanFactory`）拆成了两层。如果把 `getBeanNamesForType` 直接加在 `BeanFactory` 上、少拆一层，会有什么具体损失？请举一个「有实际影响」的例子，而不是「不整洁」。
 

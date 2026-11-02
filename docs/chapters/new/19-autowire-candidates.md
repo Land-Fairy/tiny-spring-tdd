@@ -632,7 +632,7 @@ Dependency annotations: {@org.springframework.beans.factory.annotation.Autowired
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-19-章`](../appendix/B-answers.md#第-19-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-19-章`](../../appendix/B-answers.md#第-19-章)。
 
 1. **如果把 ③ 名字匹配和 ④ 优先级对调（直觉顺序），哪个已存在的测试会失败？**
    如果再让 `@Order` 出现在 `ShadowHolder.germanTranslator` 上，结果会怎样？

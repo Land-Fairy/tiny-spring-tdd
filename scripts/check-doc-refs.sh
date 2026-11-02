@@ -134,16 +134,58 @@ resolves() {
 	return 1
 }
 
-resolve_path() {
-	local name="$1" module="${2:-}" hit
+# 同名文件常常不止一份：step-05 里 ch04 与 ch05 都有 GreetingService.java。
+# 挑哪一份不能交给 find 的文件系统顺序——同一个引用会本地绿、CI 红（第 05 章
+# 「afterPropertiesSet 的异常必须加壳」那段示例栈帧就是这么抖起来的）。
+# 规则：本模块里有同名文件就只认本模块的（排序后交给调用方按引用挑），
+# 一份都没有才退到仓库索引、再退到上游——不因为别处碰巧有个同名文件就放行。
+resolve_candidates() {
+	local name="$1" module="${2:-}" hits
 	if [ -n "$module" ]; then
-		hit=$(find "$module" -name "$name" -not -path '*/target/*' 2>/dev/null | head -1)
-		if [ -n "$hit" ]; then printf '%s' "$hit"; return 0; fi
+		hits=$(find "$module" -name "$name" -not -path '*/target/*' 2>/dev/null | sort)
+		if [ -n "$hits" ]; then printf '%s\n' "$hits"; return 0; fi
 	fi
-	hit=$(awk -F'\t' -v n="$name" '$1 == n { print $2; exit }' "$(local_files)")
-	if [ -n "$hit" ]; then printf '%s' "$hit"; return 0; fi
-	hit=$(awk -F'\t' -v n="$name" '$1 == n { print $2; exit }' "$(upstream_files)")
-	if [ -n "$hit" ]; then printf '%s' "$hit"; return 0; fi
+	{
+		awk -F'\t' -v n="$name" '$1 == n { print $2 }' "$(local_files)"
+		awk -F'\t' -v n="$name" '$1 == n { print $2 }' "$(upstream_files)"
+	} | awk '!seen[$0]++'
+}
+
+# 按引用本身能不能成立挑候选，一个都不成立才交给调用方报错。
+#   kind=method：文件里真的有这个方法声明（先剥注释，注释里可以写任何东西）
+#   kind=line  ：文件至少有这么长，行号落得进去
+pick_candidate() {
+	local name="$1" module="${2:-}" kind="$3" want="$4" cand total
+	while IFS= read -r cand; do
+		[ -n "$cand" ] || continue
+		case "$kind" in
+			method)
+				# 这里必须用 grep -c 而不是 grep -q：脚本开了 pipefail，grep -q 提前退出会让
+				# 上游 sed 收到 SIGPIPE(141)，管道被判定为失败——大小文件表现不同，时红时绿。
+				if [ "$(sed -e 's://.*::' -e '/^[[:space:]]*\*/d' -e '/^[[:space:]]*\/\*/d' "$cand" |
+					grep -cE "^[^/]*[^A-Za-z0-9_]${want}[[:space:]]*\(" 2>/dev/null)" -gt 0 ]; then
+					printf '%s' "$cand"
+					return 0
+				fi
+				;;
+			line)
+				total=$(wc -l <"$cand")
+				if [ "$total" -ge "$want" ]; then
+					printf '%s' "$cand"
+					return 0
+				fi
+				;;
+		esac
+	done < <(resolve_candidates "$name" "$module")
+	return 1
+}
+
+# 第一份候选：只用于「候选一个都不满足」时给报错找个落脚点，以及单纯问「有没有这个文件」。
+resolve_path() {
+	local first
+	# sed 读到文件尾，不像 head 那样提前关管道，pipefail 下不会误判成失败。
+	first=$(resolve_candidates "$@" | sed -n '1p')
+	if [ -n "$first" ]; then printf '%s' "$first"; return 0; fi
 	return 1
 }
 
@@ -215,23 +257,19 @@ check_doc_refs() {
 			# lambda$method$0 是 JVM 自己生成的栈帧名，源码里当然找不到，不是编的
 			case "$method" in lambda\$*) continue ;; esac
 			if in_list "${file%.java}" "$(jdk_types)"; then continue; fi
-			path=$(resolve_path "$file" "$module")
+			# 只认代码里的方法声明（剥注释这一步在 pick_candidate 里做）。
+			# 同名文件可能有几份，挑真有这个方法的那份；一份都没有才算编的。
+			path=$(pick_candidate "$file" "$module" method "$method")
 			if [ -z "$path" ]; then
-				if allow_missing "$file"; then
-					note "$doc:$line_no: $file 在 doc-refs-allow-missing.txt 里（文中已声明不是仓库文件）"
+				if [ -z "$(resolve_path "$file" "$module")" ]; then
+					if allow_missing "$file"; then
+						note "$doc:$line_no: $file 在 doc-refs-allow-missing.txt 里（文中已声明不是仓库文件）"
+					else
+						err "$doc:$line_no: 栈帧引用的文件不存在: $file"
+					fi
 				else
-					err "$doc:$line_no: 栈帧引用的文件不存在: $file"
+					err "$doc:$line_no: $file 里没有方法 ${method}() —— 栈帧是编的"
 				fi
-				continue
-			fi
-			# 只认代码里的方法声明：先剥注释，注释里可以写任何东西。
-			# 这里必须用 grep -c 而不是 grep -q：脚本开了 pipefail，grep -q 提前退出会让上游
-			# sed 收到 SIGPIPE(141)，管道被判定为失败——大小文件表现不同，同一个栈帧时红时绿。
-			local hits
-			hits=$(sed -e 's://.*::' -e '/^[[:space:]]*\*/d' -e '/^[[:space:]]*\/\*/d' "$path" |
-				grep -cE "^[^/]*[^A-Za-z0-9_]${method}[[:space:]]*\(" 2>/dev/null)
-			if [ "${hits:-0}" -eq 0 ]; then
-				err "$doc:$line_no: $file 里没有方法 ${method}() —— 栈帧是编的"
 			fi
 		done < <(grep -oE '[A-Za-z0-9_$]+\([A-Za-z0-9_$]+\.java:[0-9]+\)' <<<"$line")
 
@@ -260,7 +298,10 @@ check_doc_refs() {
 					continue
 				fi
 			else
-				path=$(resolve_path "$file" "$module")
+				# 同名文件有几份时，挑行号落得进去的那份；都落不进去就退回第一份来报错，
+				# 这样「本地只有 N 行」的诊断仍然准确。
+				path=$(pick_candidate "$file" "$module" line "$end")
+				[ -n "$path" ] || path=$(resolve_path "$file" "$module")
 				if [ -z "$path" ]; then
 					if allow_missing "$file"; then
 						note "$doc:$line_no: $file 在 doc-refs-allow-missing.txt 里（文中已声明不是仓库文件）"

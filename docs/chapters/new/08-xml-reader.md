@@ -909,7 +909,7 @@ XML 配置在 Spring 6 里的位置，三个事实：
 4. `loadBeanDefinitions` 用「注册表前后数量之差」而不是「数文档里的 `<bean>` 元素」。请构造一个场景，让这两种算法给出不同结果，并说明哪个更符合调用方的预期。
 5. 本章的 `resolvePlaceholders` 返回一个新的 `MutablePropertyValues`，而不是就地修改图纸。请说明如果就地修改会发生什么，并指出哪一个作用域会最先坏掉。
 
-先自己写，再看 [`../appendix/B-answers.md#第-08-章`](../appendix/B-answers.md#第-08-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-08-章`](../../appendix/B-answers.md#第-08-章)。
 
 ### 3. 下一章
 

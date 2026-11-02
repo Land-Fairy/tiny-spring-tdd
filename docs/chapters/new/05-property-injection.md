@@ -1123,7 +1123,7 @@ BeanCreationException: Invocation of afterPropertiesSet of bean 'service' failed
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-05-章`](../appendix/B-answers.md#第-05-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-05-章`](../../appendix/B-answers.md#第-05-章)。
 
 **5-1** `MutablePropertyValues` 用 `List` 而不是 `Map`，本章给了两个理由。如果现在要求你必须用 `Map` 实现，你会怎么补回这两个理由丢掉的保证？
 

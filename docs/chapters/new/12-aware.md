@@ -674,7 +674,7 @@ Aware 回调              →  拿到工厂，lookupGreeter() 正常工作
 
 ### 2. 五个问题留给你
 
-先自己写，再看[附录 B](../appendix/B-answers.md#第-12-章)。
+先自己写，再看[附录 B](../../appendix/B-answers.md#第-12-章)。
 
 1. **如果 `invokeAwareMethods` 挪到 `applyBeanPostProcessorsBeforeInitialization` 之后**，本章哪个测试会红？会造成什么真实后果？（提示：`ApplicationContextAwareProcessor` 是 BPP，它在前置链里跑。）
 2. `ApplicationContextAwareProcessor` 是包私有的，而且是在 `prepareBeanFactory` 里用 `new` 造出来的。**如果改成 public 并允许用户自己 `addBeanPostProcessor(new ApplicationContextAwareProcessor(myContext))`，会出什么问题？**（提示：`this` 是谁？）

@@ -556,7 +556,7 @@ AOP 侧四个，`templateMethodLeavesOnlyOneHoleToTheSubclass`、`strategySwapsT
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-34-章`](../appendix/B-answers.md#第-34-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-34-章`](../../appendix/B-answers.md#第-34-章)。
 
 1. `BeanWrapperImpl` 为什么不算装饰器？请写出 GoF 定义里被违反的那一条，并举一个「同样违反它、但工程上仍被叫装饰器」的例子（提示：Servlet 的 `HttpServletRequestWrapper`）。
 

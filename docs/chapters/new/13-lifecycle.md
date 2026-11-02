@@ -829,7 +829,7 @@ getBean(beanName)
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-13-章`](../appendix/B-answers.md#第-13-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-13-章`](../../appendix/B-answers.md#第-13-章)。
 
 **Q1.** `invokeInitMethods` 里为什么要判 `beanDefinition == null`？如果删掉这个判断，哪个测试会红？为什么红的方式是 `NullPointerException` 而不是编译错误？
 

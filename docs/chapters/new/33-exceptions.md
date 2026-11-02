@@ -779,7 +779,7 @@ public String toString() {
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-33-章`](../appendix/B-answers.md#第-33-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-33-章`](../../appendix/B-answers.md#第-33-章)。
 
 1. **`FatalBeanException` 与「可恢复异常」的边界在哪？** 举出本书里的两个例子：什么情况下 `BeanDefinitionStoreException`（fatal）该被重试逻辑忽略，什么情况下不该。
 
