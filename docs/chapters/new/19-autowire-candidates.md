@@ -630,7 +630,7 @@ Dependency annotations: {@org.springframework.beans.factory.annotation.Autowired
 | 集合注入不支持 `@Order` 排序 | `List` 顺序即注册顺序 | 真实 `resolveMultipleBeans` 会排序 |
 | 集合零候选时返回空集合（真实 Spring `required=true` 直接抛 `NoSuchBeanDefinitionException`） | 配置错误被推迟到运行时 | 真实 `resolveMultipleBeanCollection` 的 `isEmpty() → return null` |
 
-### 2. 五个问题留给你
+### 2. 六个问题留给你
 
 先自己写，再看 [`../../appendix/B-answers.md#第-19-章`](../../appendix/B-answers.md#第-19-章)。
 
@@ -645,6 +645,9 @@ Dependency annotations: {@org.springframework.beans.factory.annotation.Autowired
    为什么这个区分对排障很重要？（提示：`expected at least 1` vs `expected single`。）
 5. **本章的 `narrowToPrimary` 在两个 `@Primary` 时选择「当作没标」，真实 Spring 选择「立刻抛」。**
    各举一个「宽容更好」和「严格更好」的场景，并说明你的项目里更该选哪个。
+6. **`determineCandidateConstructors` 为什么不能待在 `InstantiationAwareBeanPostProcessor` 上？**
+   那个 `required=false` 的构造器凑不齐时，为什么只能退回无参构造器，而不能干脆塞一个 `null` 进去？
+   （提示：两个回调的签名，以及 `final` 字段。）
 
 ### 3. 下一章
 
