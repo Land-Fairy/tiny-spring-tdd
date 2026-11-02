@@ -681,7 +681,7 @@ protected void destroyBeans() {
 
 **9-5** `GenericApplicationContext` 不允许二次 `refresh()`，而真实 Spring 的 `AbstractRefreshableApplicationContext` 允许，销毁旧工厂、建新工厂。同一句 `context.refresh()` 在两条继承线下承诺不同，这种「同名不同承诺」在阅读 Spring 源码时该如何识别？给出你自己的检查清单。
 
-五道题的答案在 [附录 B](../appendix/B-answers.md#第-09-章)。
+五道题的答案在 [附录 B](../../appendix/B-answers.md#第-09-章)。
 
 ### 3. 下一章
 

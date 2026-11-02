@@ -675,7 +675,7 @@ Object convert(Object source, TypeDescriptor sourceType, TypeDescriptor targetTy
 
 ### 2. 五个问题留给你
 
-答案在[附录 B](../appendix/B-answers.md#第-23-章)。
+答案在[附录 B](../../appendix/B-answers.md#第-23-章)。
 
 1. **`canConvert(String.class, Object.class)` 为什么该是 `true`？** 如果它返回 `false`，注入逻辑会把一个「本来什么都不用做」的依赖判成「无法满足」。请说明「不需要转换」和「能转换」在语义上为什么必须合并，以及合并之后「没有转换器」的判定该怎么写。
 

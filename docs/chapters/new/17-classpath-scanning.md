@@ -800,7 +800,7 @@ JVM 规范把「主动使用」列成有限几条（JVMS §5.5，语言层对应
 
 ### 2. 五个问题留给你
 
-答案在 [`../appendix/B-answers.md#第-17-章`](../appendix/B-answers.md#第-17-章)。
+答案在 [`../../appendix/B-answers.md#第-17-章`](../../appendix/B-answers.md#第-17-章)。
 
 1. **`@Retention(CLASS)` 的注解，本章的解析器读得到吗？** 如果读不到，是解析器的 bug 吗？（提示：字节码里有 `RuntimeInvisibleAnnotations` 属性。）
 2. **`isMetaAnnotated` 里的 `visited` 如果换成 `static` 的 `Set`，会出什么事？** 提示：修一个测试时把它改成 static，然后连续跑两次，两次结果会不会一样？

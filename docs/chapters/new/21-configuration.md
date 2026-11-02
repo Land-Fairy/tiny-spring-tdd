@@ -840,7 +840,7 @@ enhancer.setUseFactory(false);   // :182
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [附录 B](../appendix/B-answers.md#第-21-章)。
+先自己写，再看 [附录 B](../../appendix/B-answers.md#第-21-章)。
 
 1. **如果 `@Bean` 方法是 `static` 的**，full 模式的拦截还有必要吗？为什么我们的 `findBeanMethods` 直接跳过 `static` 方法，而真实 Spring 允许（并推荐）`static` 的 `@Bean`？（提示：`BeanFactoryPostProcessor` 类型的 `@Bean` 方法。）
 2. 我们的 `isFullConfigurationClass` 只看**直接标注**的 `@Configuration`。如果用户写了 `@SpringBootConfiguration`（它标了 `@Configuration`），本章的代码会把它当 lite 处理。要让元注解也生效，最少需要改哪几行？第 17 章的哪个工具正好能用？

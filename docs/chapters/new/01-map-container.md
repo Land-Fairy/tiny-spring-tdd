@@ -571,7 +571,7 @@ public NoSuchBeanDefinitionException(ResolvableType type, String message)
 
 ### 2. 五个问题留给你
 
-答案在[附录 B](../appendix/B-answers.md#第-01-章)。
+答案在[附录 B](../../appendix/B-answers.md#第-01-章)。
 
 1. `register(String, Object)` 如果改成 `register(String, Class<?>)`，你需要在容器的 `getBean` 里多做哪三件事？为什么这三件事会直接引出第 02、03、04 章？
 2. 把 `HashMap` 换成 `LinkedHashMap` 会让缺陷 2 消失吗？（提示，想清楚「消失」是指「结果可预测」还是指「结果正确」。）

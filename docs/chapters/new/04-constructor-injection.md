@@ -744,7 +744,7 @@ private final InjectionPoint injectionPoint;    // :36
 
 ### 2. 五个问题留给你
 
-答案在[附录 B](../appendix/B-answers.md#第-04-章)。**先自己写，再看答案。**
+答案在[附录 B](../../appendix/B-answers.md#第-04-章)。**先自己写，再看答案。**
 
 1. 为什么不检查 `isNamePresent()` 时，容器能成功「找到」一个叫 `arg0` 的 Bean 吗？如果容器里恰好真有个 Bean 叫 `arg0`，会发生什么？
 2. 如果 `ConstructorResolver` 按参数个数**从少到多**排序，`MultiConstructor` 那个测试会怎样失败？为什么这种失败比崩溃更难查？

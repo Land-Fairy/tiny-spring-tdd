@@ -502,7 +502,7 @@ if (!this.singletonLock.tryLock()) {
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-31-章`](../appendix/B-answers.md#第-31-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-31-章`](../../appendix/B-answers.md#第-31-章)。
 
 1. 如果把 `getSingleton(beanName, factory)` 里的「③ 再读一遍」删掉，请构造一个能稳定触发的
    测试（提示：两个线程 + 构造器闸门），并说明为什么「八个线程」那次实验反而可能仍然只创建一次。

@@ -541,7 +541,7 @@ for (String name : advisorNames) {
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-26-章`](../appendix/B-answers.md#第-26-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-26-章`](../../appendix/B-answers.md#第-26-章)。
 
 1. 代理为什么必须在 `postProcessAfterInitialization`，而不是 `postProcessBeforeInitialization`？请从「`afterPropertiesSet` 里调自己的方法」这个角度给出解释。再想一步，如果有人在这个方法里通过 `context.getBean(getBeanName())` 拿一次自己，会拿到目标还是代理？（提示：那时单例池里还没有它。）
 2. 「没有匹配 Advisor 就不造代理」如果只是性能优化，本章为什么把它列成**正确性**问题？举两个具体的失效点，其中一个必须涉及「按类注入」而不是「按接口注入」。

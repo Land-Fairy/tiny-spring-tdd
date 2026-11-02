@@ -796,7 +796,7 @@ $ find . -name 'BeanDefinitionRegistryPostProcessor.java'
 
 ### 2. 五个问题留给你
 
-答案在[附录 B](../appendix/B-answers.md#第-10-章)。
+答案在[附录 B](../../appendix/B-answers.md#第-10-章)。
 
 1. **10-1** 为什么「优先级」不需要一个 `priority` 字段？如果给每个 `PropertySource` 加一个 `int priority`，会多出哪些问题？
 2. **10-2** 如果把 `MutablePropertySources` 的底层从 `CopyOnWriteArrayList` 换成 `HashMap`（名字 → 来源），`getProperty` 还能工作吗？会丢掉什么能力？

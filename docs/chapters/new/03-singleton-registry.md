@@ -783,7 +783,7 @@ return getSingleton(beanName, () -> createBean(beanName, beanDefinition));
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-03-章`](../appendix/B-answers.md#第-03-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-03-章`](../../appendix/B-answers.md#第-03-章)。
 
 1. 去掉快路径：如果把 `getSingleton` 开头那次锁外读取删掉，功能上还正确吗？代价是什么？真实 Spring 为什么坚持保留它？
 2. `putIfAbsent` 与前置校验：`addSingleton` 用 `putIfAbsent` 一次完成「查 + 写」，那 `registerSingleton` 为什么还要在前面单独判 `beanName == null` 和 `singletonObject == null`？不判会怎样？

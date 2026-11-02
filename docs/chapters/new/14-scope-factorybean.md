@@ -803,7 +803,7 @@ public class ScopedProxyFactoryBean extends ProxyConfig
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-14-章`](../appendix/B-answers.md#第-14-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-14-章`](../../appendix/B-answers.md#第-14-章)。
 
 **Q1.** 为什么 `singleton` 与 `prototype` 不需要 `registerScope`，而 `thread` / `request` 必须注册？如果反过来把四个作用域全做成 `Scope` 实现（包括单例），代码会更统一，代价是什么？
 

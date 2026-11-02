@@ -662,7 +662,7 @@ Object getBean(String name) throws BeansException;
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`docs/appendix/B-answers.md`](../appendix/B-answers.md#第-02-章)。
+先自己写，再看 [`docs/appendix/B-answers.md`](../../appendix/B-answers.md#第-02-章)。
 
 1. **为什么 `isSingleton()` 里要把 `SCOPE_DEFAULT`（空串）也算成单例，而不是让默认值直接等于 `"singleton"`？** 提示，考虑一张「还没确定作用域、等着从父定义继承」的图纸，如果它此刻 `isSingleton()` 返回 `false`，容器会在哪个分支里出问题？
 2. **`setScope(null)` 之后，图纸既不是单例也不是多例。** 那么在 `AbstractBeanFactory#doGetBean` 里，一个既非单例也非原型的对象会走哪条分支？请你先猜，再看第 14 章的答案。提示，`else` 分支。

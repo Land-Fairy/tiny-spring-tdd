@@ -921,7 +921,7 @@ public interface ResourcePatternResolver extends ResourceLoader {
 
 ### 2. 五个问题留给你
 
-先自己写，再看 [`../appendix/B-answers.md#第-07-章`](../appendix/B-answers.md#第-07-章)。
+先自己写，再看 [`../../appendix/B-answers.md#第-07-章`](../../appendix/B-answers.md#第-07-章)。
 
 1. **7-1** 本书的 `ClassPathResource` 故意不提供 `getFile()`。请举出一个「不提供它会带来麻烦」的真实场景，并说明真实 Spring 是怎么在不破坏抽象的前提下提供它的。
 2. **7-2** `AbstractResource.exists()` 用 `catch (Exception ex) { return false; }`。这会让「没权限」和「不存在」变成同一个答案。`FileSystemResource` 覆写了 `exists()` 来区分二者，但 `ClassPathResource` 没有。请说明，classpath 上「没权限」这种情况存不存在？如果存在，`ClassPathResource.exists()` 返回 `false` 会造成什么后果？
